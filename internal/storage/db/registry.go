@@ -166,6 +166,19 @@ func (r *Registry) OpenOrgGraph(path string) error {
 	return nil
 }
 
+// MountedProjectIDs returns the IDs of all currently mounted project graph DBs,
+// always including "org". Used by the substrate reader to search all projects.
+func (r *Registry) MountedProjectIDs() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	ids := make([]string, 0, len(r.projects)+1)
+	ids = append(ids, "org")
+	for id := range r.projects {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // CloseAll closes all open database connections.
 // Alias for Close() — used by the runner's Engine.Close().
 func (r *Registry) CloseAll() error {

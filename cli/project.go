@@ -1,15 +1,22 @@
 package cli
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
+
+	"github.com/atheory/context-engine/internal/storage/db"
+	"github.com/atheory/context-engine/internal/storage/migrations"
+	"github.com/atheory/context-engine/internal/storage/queries"
 )
 
 func newProjectCmd() *cobra.Command {
@@ -206,8 +213,45 @@ func writeCEYAML(path string, data map[string]any) error {
 	return enc.Encode(data)
 }
 
-// registerProject writes a project record to meta.db.
-// Phase 1 stub — project DB operations not yet implemented.
-func registerProject(_, _, _, _ string) error {
+// registerProject writes a project record and its filesystem path to meta.db.
+func registerProject(absPath, gitURL, basePrompt, archPrompt string) error {
+	dataDir := viper.GetString("data_dir")
+	if dataDir == "" {
+		home, _ := os.UserHomeDir()
+		dataDir = filepath.Join(home, ".ce")
+	}
+
+	registry := db.NewRegistry()
+	metaPath := filepath.Join(dataDir, "meta.db")
+	if err := registry.OpenMeta(metaPath); err != nil {
+		return fmt.Errorf("open meta.db: %w", err)
+	}
+	defer registry.Close()
+
+	if err := migrations.RunMeta(registry.Meta()); err != nil {
+		return fmt.Errorf("migrate meta.db: %w", err)
+	}
+
+	ctx := context.Background()
+	now := time.Now().UnixMilli()
+	name := filepath.Base(absPath)
+
+	p := queries.Project{
+		ID:         "local",
+		GitURL:     gitURL,
+		Name:       name,
+		Status:     "unindexed",
+		BasePrompt: sql.NullString{String: basePrompt, Valid: basePrompt != ""},
+		ArchPrompt: sql.NullString{String: archPrompt, Valid: archPrompt != ""},
+		CreatedAt:  now,
+		LastSeenAt: now,
+		Properties: "{}",
+	}
+	if err := queries.UpsertProject(ctx, registry.Meta(), p); err != nil {
+		return fmt.Errorf("upsert project: %w", err)
+	}
+	if err := queries.UpsertProjectPath(ctx, registry.Meta(), "local", absPath, now); err != nil {
+		return fmt.Errorf("upsert project path: %w", err)
+	}
 	return nil
 }

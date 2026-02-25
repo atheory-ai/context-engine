@@ -211,9 +211,20 @@ func (e *Engine) Index(ctx context.Context, rootDir string, full bool) (indexer.
 		return stats, fmt.Errorf("flush write buffer: %w", flushErr)
 	}
 
-	// Update last_indexed_at in meta.db (best-effort — don't mask index errors).
+	// Update project record in meta.db (best-effort — don't mask index errors).
 	if runErr == nil {
-		_ = queries.UpdateLastIndexedAt(ctx, e.dbRegistry.Meta(), string(projectID), time.Now().UnixMilli())
+		now := time.Now().UnixMilli()
+		_ = queries.UpsertProject(ctx, e.dbRegistry.Meta(), queries.Project{
+			ID:         string(projectID),
+			GitURL:     e.cfg.Project.GitURL,
+			Name:       filepath.Base(rootDir),
+			Status:     "indexed",
+			CreatedAt:  now,
+			LastSeenAt: now,
+			Properties: "{}",
+		})
+		_ = queries.UpsertProjectPath(ctx, e.dbRegistry.Meta(), string(projectID), rootDir, now)
+		_ = queries.UpdateLastIndexedAt(ctx, e.dbRegistry.Meta(), string(projectID), now)
 	}
 
 	return stats, runErr

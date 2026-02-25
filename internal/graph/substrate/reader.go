@@ -28,9 +28,7 @@ func NewReader(dbProvider writebuffer.DBProvider) *Reader {
 // Node retrieves a single node by ID. Searches all mounted project databases.
 // Returns nil if not found in any mounted database.
 func (r *Reader) Node(ctx context.Context, id core.NodeID) (*core.Node, error) {
-	// We don't know which DB this node is in — iterate mounted projects.
-	// For org-level nodes, "org" is tried first by convention.
-	for _, projectID := range []string{"org"} {
+	for _, projectID := range r.allProjectIDs() {
 		db, err := r.dbProvider.GraphDB(projectID)
 		if err != nil {
 			continue // not mounted
@@ -58,8 +56,6 @@ func (r *Reader) NodeInProject(ctx context.Context, projectID core.ProjectID, id
 // Edges returns all edges from a node, optionally filtered by type.
 // Searches the project database for the node's project ID.
 func (r *Reader) Edges(ctx context.Context, nodeID core.NodeID, edgeType string) ([]core.Edge, error) {
-	// Look up the node first to find its project ID.
-	// Try each mounted database.
 	db, err := r.resolveDB(ctx, nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve db for node %s: %w", nodeID, err)
@@ -68,6 +64,18 @@ func (r *Reader) Edges(ctx context.Context, nodeID core.NodeID, edgeType string)
 		return nil, nil // node not found in any mounted DB
 	}
 	return queries.GetEdgesFromNode(ctx, db, string(nodeID), edgeType)
+}
+
+// EdgesTo returns all edges where the given node is the target, optionally filtered by type.
+func (r *Reader) EdgesTo(ctx context.Context, nodeID core.NodeID, edgeType string) ([]core.Edge, error) {
+	db, err := r.resolveDB(ctx, nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve db for node %s: %w", nodeID, err)
+	}
+	if db == nil {
+		return nil, nil
+	}
+	return queries.GetEdgesToNode(ctx, db, string(nodeID), edgeType)
 }
 
 // TopK returns the top-K nodes by activation level for a project, with edges loaded.
@@ -194,10 +202,16 @@ func (r *Reader) resolveDB(ctx context.Context, nodeID core.NodeID) (*sql.DB, er
 	return nil, nil
 }
 
+// projectIDLister is an optional extension of DBProvider that lists mounted projects.
+type projectIDLister interface {
+	MountedProjectIDs() []string
+}
+
 // allProjectIDs returns the set of project IDs to search.
-// org is always included. Per-project DBs are added by the Registry.
-// For Phase 1, the reader searches org + the active project (set by Mount).
-// TODO: When Registry exposes MountedProjects(), use that here.
+// If the DBProvider implements projectIDLister, use it; otherwise fall back to ["org", "local"].
 func (r *Reader) allProjectIDs() []string {
-	return []string{"org"}
+	if pl, ok := r.dbProvider.(projectIDLister); ok {
+		return pl.MountedProjectIDs()
+	}
+	return []string{"org", "local"}
 }

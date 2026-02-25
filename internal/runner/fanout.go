@@ -71,6 +71,7 @@ func (f *fanoutNode) Run(rc *core.RunContext) ([]core.Emission, error) {
 				RunID:     rc.RunID,
 				TurnID:    rc.TurnID,
 				LoopIndex: rc.CurrentLoop(),
+				ProjectID: rc.ProjectID,
 				IR:        *rc.IR,
 				Anchors:   anchors,
 			}

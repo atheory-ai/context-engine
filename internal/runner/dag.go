@@ -2,7 +2,9 @@ package runner
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/atheory/context-engine/internal/agent/preflight"
 	"github.com/atheory/context-engine/internal/agent/reviewer"
@@ -11,6 +13,7 @@ import (
 	"github.com/atheory/context-engine/internal/config"
 	"github.com/atheory/context-engine/internal/core"
 	"github.com/atheory/context-engine/internal/graph/activation"
+	"github.com/atheory/context-engine/internal/storage/queries"
 )
 
 // dag holds references to all constructed cognitive loop nodes.
@@ -63,10 +66,20 @@ func (d *dag) Run(ctx context.Context, query string) (retErr error) {
 		return fmt.Errorf("preflight: %w", err)
 	}
 
-	// Always close the session on exit, even on error.
-	// Phase 1: no-op (no session DB tracking yet).
-	// Phase 2: close session and turn in audit.db.
+	// Always close the session and turn on exit, even on error.
 	defer func() {
+		bg := context.Background()
+		now := time.Now().UnixMilli()
+		status := "complete"
+		if retErr != nil {
+			status = "error"
+		}
+		_ = queries.UpdateTurn(bg, d.engine.dbRegistry.Audit(), string(rc.TurnID),
+			sql.NullInt64{Int64: now, Valid: true},
+			sql.NullInt64{Int64: int64(rc.CurrentLoop()), Valid: true},
+			status,
+		)
+		_ = queries.EndSession(bg, d.engine.dbRegistry.Audit(), string(rc.SessionID), now)
 		_ = d.engine.dbRegistry.Unmount(string(rc.ProjectID))
 	}()
 

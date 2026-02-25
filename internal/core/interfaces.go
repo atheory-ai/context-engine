@@ -158,6 +158,7 @@ type ToolRequest struct {
 	RunID     RunID
 	TurnID    TurnID
 	LoopIndex int
+	ProjectID ProjectID
 	IR        IR
 	Anchors   []Anchor
 	Substrate SubstrateReader
@@ -181,6 +182,7 @@ type ToolResult struct {
 type SubstrateReader interface {
 	Node(ctx context.Context, id NodeID) (*Node, error)
 	Edges(ctx context.Context, nodeID NodeID, edgeType string) ([]Edge, error)
+	EdgesTo(ctx context.Context, nodeID NodeID, edgeType string) ([]Edge, error)
 	TopK(ctx context.Context, projectID ProjectID, k int) ([]Anchor, error)
 	Query(ctx context.Context, q SubstrateQuery) ([]Node, error)
 }
