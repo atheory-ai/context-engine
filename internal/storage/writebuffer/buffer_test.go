@@ -1,0 +1,297 @@
+package writebuffer_test
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/atheory/context-engine/internal/storage/db"
+	"github.com/atheory/context-engine/internal/storage/migrations"
+	"github.com/atheory/context-engine/internal/storage/writebuffer"
+)
+
+// testProvider implements DBProvider for tests using a single in-memory database.
+type testProvider struct {
+	db *sql.DB
+}
+
+func (p *testProvider) GraphDB(_ string) (*sql.DB, error) {
+	return p.db, nil
+}
+
+// setupGraphDB creates an in-memory database with the graph schema applied.
+func setupGraphDB(t *testing.T) *sql.DB {
+	t.Helper()
+	graphDB, err := db.Open(":memory:")
+	if err != nil {
+		t.Fatalf("open in-memory db: %v", err)
+	}
+	if err := migrations.RunGraph(graphDB); err != nil {
+		t.Fatalf("run graph migration: %v", err)
+	}
+	t.Cleanup(func() { graphDB.Close() })
+	return graphDB
+}
+
+// insertTestNode inserts a minimal node row for FK-constrained tests.
+func insertTestNode(t *testing.T, graphDB *sql.DB, nodeID, projectID string) {
+	t.Helper()
+	_, err := graphDB.Exec(`
+		INSERT INTO nodes (id, project_id, type, label, canonical_id, source_class, created_at, updated_at, properties)
+		VALUES (?, ?, 'symbol', ?, ?, 'structural', 0, 0, '{}')
+	`, nodeID, projectID, nodeID, nodeID)
+	if err != nil {
+		t.Fatalf("insert test node: %v", err)
+	}
+}
+
+// insertTestEdge inserts a minimal edge row for FK-constrained tests.
+func insertTestEdge(t *testing.T, graphDB *sql.DB, edgeID, projectID, sourceID, targetID string) {
+	t.Helper()
+	_, err := graphDB.Exec(`
+		INSERT INTO edges (id, project_id, source_id, target_id, type, source_class, created_at, properties)
+		VALUES (?, ?, ?, ?, 'calls', 'structural', 0, '{}')
+	`, edgeID, projectID, sourceID, targetID)
+	if err != nil {
+		t.Fatalf("insert test edge: %v", err)
+	}
+}
+
+// newTestBuffer creates a buffer with small flush interval for tests.
+func newTestBuffer(ctx context.Context, provider writebuffer.DBProvider) writebuffer.Buffer {
+	return writebuffer.New(ctx, provider, 1024, 5*time.Millisecond)
+}
+
+func TestActivationDeduplication(t *testing.T) {
+	graphDB := setupGraphDB(t)
+	insertTestNode(t, graphDB, "node1", "proj1")
+
+	ctx := context.Background()
+	buf := newTestBuffer(ctx, &testProvider{db: graphDB})
+	defer buf.Close(ctx)
+
+	// Send 10 activation updates for the same node — only the last should persist.
+	for i := 0; i < 10; i++ {
+		if err := buf.Send(writebuffer.WriteOp{
+			Type:      writebuffer.OpUpdateActivation,
+			ProjectID: "proj1",
+			Payload: writebuffer.ActivationUpdate{
+				NodeID:     "node1",
+				Activation: float64(i),
+				UpdatedAt:  time.Now().UnixMilli(),
+			},
+		}); err != nil {
+			t.Fatalf("send op %d: %v", i, err)
+		}
+	}
+
+	if err := buf.Flush(ctx); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	var activation float64
+	if err := graphDB.QueryRow(
+		`SELECT activation FROM node_activation WHERE node_id = ?`, "node1",
+	).Scan(&activation); err != nil {
+		t.Fatalf("query activation: %v", err)
+	}
+	if activation != 9.0 {
+		t.Errorf("got activation=%.1f, want 9.0", activation)
+	}
+}
+
+func TestPeakActivationTracked(t *testing.T) {
+	graphDB := setupGraphDB(t)
+	insertTestNode(t, graphDB, "node1", "proj1")
+
+	ctx := context.Background()
+	buf := newTestBuffer(ctx, &testProvider{db: graphDB})
+	defer buf.Close(ctx)
+
+	// Send: 5.0, then 2.0. Peak should be 5.0; current should be 2.0.
+	for _, a := range []float64{5.0, 2.0} {
+		buf.Send(writebuffer.WriteOp{
+			Type:      writebuffer.OpUpdateActivation,
+			ProjectID: "proj1",
+			Payload:   writebuffer.ActivationUpdate{NodeID: "node1", Activation: a, UpdatedAt: time.Now().UnixMilli()},
+		})
+		// Flush between sends so both writes actually hit the DB.
+		buf.Flush(ctx)
+	}
+
+	var activation, peakActivation float64
+	if err := graphDB.QueryRow(
+		`SELECT activation, peak_activation FROM node_activation WHERE node_id = ?`, "node1",
+	).Scan(&activation, &peakActivation); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if activation != 2.0 {
+		t.Errorf("got activation=%.1f, want 2.0", activation)
+	}
+	if peakActivation != 5.0 {
+		t.Errorf("got peak_activation=%.1f, want 5.0", peakActivation)
+	}
+}
+
+func TestWeightCoActivationAccumulation(t *testing.T) {
+	graphDB := setupGraphDB(t)
+	insertTestNode(t, graphDB, "src1", "proj1")
+	insertTestNode(t, graphDB, "tgt1", "proj1")
+	insertTestEdge(t, graphDB, "edge1", "proj1", "src1", "tgt1")
+
+	ctx := context.Background()
+	buf := newTestBuffer(ctx, &testProvider{db: graphDB})
+	defer buf.Close(ctx)
+
+	// Send 3 weight updates with delta=1 each. CoActivationCount should be 3.
+	for range 3 {
+		buf.Send(writebuffer.WriteOp{
+			Type:      writebuffer.OpUpdateWeight,
+			ProjectID: "proj1",
+			Payload: writebuffer.WeightUpdate{
+				EdgeID:            "edge1",
+				Weight:            1.5,
+				SourceClass:       "associative",
+				CoActivationDelta: 1,
+				UpdatedAt:         time.Now().UnixMilli(),
+			},
+		})
+	}
+
+	if err := buf.Flush(ctx); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	var count int
+	var weight float64
+	if err := graphDB.QueryRow(
+		`SELECT co_activation_count, weight FROM edge_weight WHERE edge_id = ?`, "edge1",
+	).Scan(&count, &weight); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	// Deduplication merges the 3 ops into 1 — accumulated delta is 3.
+	if count != 3 {
+		t.Errorf("got co_activation_count=%d, want 3", count)
+	}
+	if weight != 1.5 {
+		t.Errorf("got weight=%.2f, want 1.5", weight)
+	}
+}
+
+func TestEnrichmentAlwaysAppends(t *testing.T) {
+	graphDB := setupGraphDB(t)
+
+	ctx := context.Background()
+	buf := newTestBuffer(ctx, &testProvider{db: graphDB})
+	defer buf.Close(ctx)
+
+	// Send 3 enrichment records — all should be written (no deduplication).
+	for i := range 3 {
+		buf.Send(writebuffer.WriteOp{
+			Type:      writebuffer.OpRecordEnrichment,
+			ProjectID: "proj1",
+			Payload: writebuffer.EnrichmentRecord{
+				ID:         fmt.Sprintf("enr%d", i),
+				RunID:      "run1",
+				TurnID:     "turn1",
+				LoopIndex:  i,
+				EntityType: "node",
+				EntityID:   "node1",
+				Action:     "created",
+				AfterState: `{"label":"foo"}`,
+				CreatedAt:  time.Now().UnixMilli(),
+			},
+		})
+	}
+
+	if err := buf.Flush(ctx); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	var count int
+	if err := graphDB.QueryRow(
+		`SELECT COUNT(*) FROM enrichments WHERE run_id = 'run1'`,
+	).Scan(&count); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("got %d enrichments, want 3", count)
+	}
+}
+
+func TestNodeUpsertDeduplication(t *testing.T) {
+	graphDB := setupGraphDB(t)
+
+	ctx := context.Background()
+	buf := newTestBuffer(ctx, &testProvider{db: graphDB})
+	defer buf.Close(ctx)
+
+	// Send two upserts for the same node — only the final label should win.
+	for i, label := range []string{"first", "second"} {
+		_ = i
+		buf.Send(writebuffer.WriteOp{
+			Type:      writebuffer.OpUpsertNode,
+			ProjectID: "proj1",
+			Payload: writebuffer.NodeUpsert{
+				ID:          "node-dedup",
+				ProjectID:   "proj1",
+				Type:        "symbol",
+				Label:       label,
+				CanonicalID: "pkg:Foo",
+				SourceClass: "structural",
+				Properties:  `{}`,
+				CreatedAt:   time.Now().UnixMilli(),
+				UpdatedAt:   time.Now().UnixMilli(),
+			},
+		})
+	}
+
+	if err := buf.Flush(ctx); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	var label string
+	var nodeCount int
+	graphDB.QueryRow(`SELECT COUNT(*) FROM nodes WHERE id = 'node-dedup'`).Scan(&nodeCount)
+	graphDB.QueryRow(`SELECT label FROM nodes WHERE id = 'node-dedup'`).Scan(&label)
+
+	if nodeCount != 1 {
+		t.Errorf("got %d node rows, want 1", nodeCount)
+	}
+	if label != "second" {
+		t.Errorf("got label=%q, want %q", label, "second")
+	}
+}
+
+func TestCloseFlushesRemaining(t *testing.T) {
+	graphDB := setupGraphDB(t)
+	insertTestNode(t, graphDB, "nodeX", "proj1")
+
+	ctx := context.Background()
+	buf := newTestBuffer(ctx, &testProvider{db: graphDB})
+
+	buf.Send(writebuffer.WriteOp{
+		Type:      writebuffer.OpUpdateActivation,
+		ProjectID: "proj1",
+		Payload:   writebuffer.ActivationUpdate{NodeID: "nodeX", Activation: 7.0, UpdatedAt: time.Now().UnixMilli()},
+	})
+
+	// Close should flush before exiting.
+	closeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := buf.Close(closeCtx); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	var activation float64
+	if err := graphDB.QueryRow(
+		`SELECT activation FROM node_activation WHERE node_id = ?`, "nodeX",
+	).Scan(&activation); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if activation != 7.0 {
+		t.Errorf("got activation=%.1f after close, want 7.0", activation)
+	}
+}
