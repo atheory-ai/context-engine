@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory/context-engine/internal/graph/activation"
 )
 
 // runLoop executes the activation → fan-out → reviewer cycle until convergence
@@ -38,7 +39,7 @@ func (d *dag) runLoop(rc *core.RunContext) error {
 		}
 
 		// ── Activation pass ───────────────────────────────────────────────
-		anchors, err := d.activation.Run(rc.Ctx, rc.ProjectID, rc.IR)
+		anchors, err := d.activation.Run(rc.Ctx, rc.ProjectID, rc.IR, d.engine.substrate)
 		if err != nil {
 			return fmt.Errorf("loop %d activation: %w", loopIdx, err)
 		}
@@ -82,9 +83,29 @@ func (d *dag) runLoop(rc *core.RunContext) error {
 		// Emit reviewer thinking.
 		rc.AppendEmissions(review.Emissions)
 
+		// ── Hebbian weight updates ─────────────────────────────────────────
+		if err := activation.UpdateWeights(
+			rc.Ctx,
+			rc.ProjectID,
+			rc.ReadAnchors(),
+			d.engine.substrate,
+		); err != nil {
+			rc.Ch.Emit(core.Emission{
+				RunID:   rc.RunID,
+				TurnID:  rc.TurnID,
+				Channel: core.ChanWarning,
+				Content: fmt.Sprintf("hebbian update: %v", err),
+			})
+		}
+
 		// ── Convergence check ─────────────────────────────────────────────
 		if review.Converged {
 			return nil // clean exit — proceed to Synthesizer
+		}
+
+		// ── Reset activation before next iteration ────────────────────────
+		if err := activation.ResetActivation(rc.Ctx, rc.ProjectID, d.engine.substrate); err != nil {
+			return fmt.Errorf("reset activation: %w", err)
 		}
 
 		// Update open queries for next iteration based on Reviewer guidance.

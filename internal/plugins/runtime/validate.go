@@ -14,6 +14,26 @@ type expectedSig struct {
 	results []api.ValueType
 }
 
+// collectExports returns the set of function names exported by the WASM binary.
+// Used to populate pluginInstance.exports for HasCustomMatch checks.
+func collectExports(wasmBytes []byte) (map[string]bool, error) {
+	rt := wazero.NewRuntime(context.Background())
+	defer rt.Close(context.Background())
+
+	compiled, err := rt.CompileModule(context.Background(), wasmBytes)
+	if err != nil {
+		return nil, fmt.Errorf("compile module: %w", err)
+	}
+	defer compiled.Close(context.Background())
+
+	exports := compiled.ExportedFunctions()
+	result := make(map[string]bool, len(exports))
+	for name := range exports {
+		result[name] = true
+	}
+	return result, nil
+}
+
 // validateExports inspects a WASM binary's export section without executing it.
 // Returns an error if the mandatory ce_plugin_manifest export is missing,
 // or if any present optional exports have incorrect signatures.

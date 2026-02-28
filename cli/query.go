@@ -9,6 +9,7 @@ import (
 
 	"github.com/atheory/context-engine/internal/config"
 	"github.com/atheory/context-engine/internal/runner"
+	"github.com/atheory/context-engine/tui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -50,15 +51,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	}
 
 	forceTUI, _ := cmd.Flags().GetBool("tui")
-	if len(args) == 0 || forceTUI {
-		return runTUI(cfg)
-	}
 
-	query := strings.Join(args, " ")
-	return runCLIQuery(cmd, cfg, query)
-}
-
-func runCLIQuery(_ *cobra.Command, cfg *config.Config, query string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
@@ -67,6 +60,20 @@ func runCLIQuery(_ *cobra.Command, cfg *config.Config, query string) error {
 		return fmt.Errorf("engine init: %w", err)
 	}
 	defer engine.Close(context.Background())
+
+	switch {
+	case len(args) == 0:
+		return tui.Run(engine, cfg)
+	case forceTUI:
+		return tui.RunWithQuery(engine, cfg, strings.Join(args, " "))
+	default:
+		return runCLIQuery(cmd, cfg, engine, strings.Join(args, " "))
+	}
+}
+
+func runCLIQuery(_ *cobra.Command, cfg *config.Config, engine *runner.Engine, query string) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
 
 	ch := engine.Channels()
 
@@ -85,9 +92,4 @@ func runCLIQuery(_ *cobra.Command, cfg *config.Config, query string) error {
 	return queryErr
 }
 
-func runTUI(_ *config.Config) error {
-	fmt.Println("TUI mode is not yet implemented in Phase 1.")
-	fmt.Println("Use: ce query \"your question here\"")
-	return nil
-}
 

@@ -1,0 +1,58 @@
+project_name: ce
+
+builds:
+  - id: ce
+    main: ./cmd/ce
+    binary: ce
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    overrides:
+      - goos: linux
+        goarch: amd64
+        env:
+          - CC=x86_64-linux-gnu-gcc
+      - goos: linux
+        goarch: arm64
+        env:
+          - CC=aarch64-linux-gnu-gcc
+      - goos: darwin
+        env:
+          - CC=clang
+      - goos: windows
+        goarch: amd64
+        env:
+          - CC=x86_64-w64-mingw32-gcc
+
+archives:
+  - format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "ce_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+brews:
+  - repository:
+      owner: atheory
+      name: homebrew-tap
+    homepage: https://atheory.ai
+    description: "Context Engine — AI-powered codebase intelligence"
+    install: |
+      bin.install "ce"
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: atheory
+    name: context-engine

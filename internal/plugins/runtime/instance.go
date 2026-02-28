@@ -18,7 +18,14 @@ type pluginInstance struct {
 	version  string
 	wasm     *extism.Plugin
 	manifest PluginManifest
+	wasmDir  string            // directory containing the plugin .wasm file
+	exports  map[string]bool   // set of exported function names
 	mu       sync.Mutex
+}
+
+// hasExport returns true if the plugin exports the given function name.
+func (p *pluginInstance) hasExport(name string) bool {
+	return p.exports[name]
 }
 
 func (p *pluginInstance) ID() core.PluginID { return p.id }

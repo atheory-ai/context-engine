@@ -1,6 +1,5 @@
 // Package filecontext implements the filecontext tool.
-// It retrieves file-level nodes and their immediate symbol neighbors from
-// the substrate, providing surrounding code context.
+// It surfaces the full structural context of files containing anchor nodes.
 package filecontext
 
 import (
@@ -9,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory/context-engine/internal/tools/shared"
 )
 
 // Tool implements the filecontext built-in tool.
@@ -26,140 +26,106 @@ func (t *Tool) Description() string { return "Retrieves file-level nodes and the
 
 // ActivationHint satisfies the strategizer.ToolWithHint interface.
 func (t *Tool) ActivationHint() string {
-	return "query involves understanding the context of a specific file or directory"
+	return "predicate.filecontext=true, or file-type anchors in IR"
 }
 
-// Activate returns true when the IR has the filecontext predicate set.
+// Activate returns true when the IR has the filecontext predicate OR has file-type anchors.
 func (t *Tool) Activate(ir core.IR) bool {
-	return ir.Predicates["filecontext"] == "true"
+	if ir.Predicates["filecontext"] == "true" {
+		return true
+	}
+	for _, anchor := range ir.Anchors {
+		if anchor.Type == "file" {
+			return true
+		}
+	}
+	return false
 }
 
 // Execute retrieves file nodes and their contained symbols.
-// For file/directory anchors: lists defined symbols via "contains" and "defines" edges.
-// For symbol anchors: walks up to the containing file and lists siblings.
 func (t *Tool) Execute(ctx context.Context, req core.ToolRequest) (core.ToolResult, error) {
-	if len(req.Anchors) == 0 {
-		return core.ToolResult{
-			Emissions: []core.Emission{{
-				RunID:     req.RunID,
-				TurnID:    req.TurnID,
-				LoopIndex: req.LoopIndex,
-				Source:    "tool:filecontext",
-				Channel:   core.ChanAction,
-				Content:   "filecontext: no anchors to retrieve",
-			}},
-		}, nil
-	}
+	var emissions []core.Emission
 
-	kLimit := req.IR.KLimit
-	if kLimit <= 0 {
-		kLimit = core.DefaultKLimit
-	}
-
-	type fileEntry struct {
-		fileLabel string
-		symbols   []string
-		imports   []string
-	}
-	var files []fileEntry
-
+	// Collect unique file paths from anchors.
+	fileSet := make(map[string]struct{})
 	for _, anchor := range req.Anchors {
 		if anchor.Node == nil {
 			continue
 		}
-		if len(files) >= kLimit {
-			break
-		}
-
-		var fileNode *core.Node
-
-		// If anchor is a file node, use it directly.
-		if anchor.Node.Type == core.NodeTypeFile || anchor.Node.Type == core.NodeTypeDirectory {
-			fileNode = anchor.Node
+		if anchor.Node.Type == core.NodeTypeFile {
+			fileSet[anchor.Node.CanonicalID] = struct{}{}
 		} else {
-			// For symbol anchors, find the containing file via belongs_to or defines edges.
-			parentEdges, err := t.sub.EdgesTo(ctx, anchor.Node.ID, core.EdgeTypeDefines)
-			if err == nil && len(parentEdges) > 0 {
-				fileNode, _ = t.sub.Node(ctx, parentEdges[0].SourceID)
-			}
-			if fileNode == nil {
-				parentEdges2, err := t.sub.Edges(ctx, anchor.Node.ID, core.EdgeTypeBelongsTo)
-				if err == nil && len(parentEdges2) > 0 {
-					fileNode, _ = t.sub.Node(ctx, parentEdges2[0].TargetID)
-				}
+			if fp := extractFilePath(anchor.Node); fp != "" {
+				fileSet[fp] = struct{}{}
 			}
 		}
-
-		// Get children of the file node.
-		var entry fileEntry
-		if fileNode != nil {
-			entry.fileLabel = fileNode.Label
-		} else {
-			entry.fileLabel = anchor.Node.Label
-			fileNode = anchor.Node
-		}
-
-		// Get symbols defined in this file.
-		for _, edgeType := range []string{core.EdgeTypeContains, core.EdgeTypeDefines} {
-			children, err := t.sub.Edges(ctx, fileNode.ID, edgeType)
-			if err != nil {
-				continue
-			}
-			for _, e := range children {
-				child, err := t.sub.Node(ctx, e.TargetID)
-				if err != nil || child == nil {
-					continue
-				}
-				if child.Type == core.NodeTypeSymbol {
-					entry.symbols = append(entry.symbols, child.Label)
-				}
-			}
-		}
-
-		// Get imports.
-		importEdges, err := t.sub.Edges(ctx, fileNode.ID, core.EdgeTypeImports)
-		if err == nil {
-			for _, e := range importEdges {
-				imp, err := t.sub.Node(ctx, e.TargetID)
-				if err == nil && imp != nil {
-					entry.imports = append(entry.imports, imp.Label)
-				}
-			}
-		}
-
-		files = append(files, entry)
 	}
 
-	// Format output.
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("File context for %d anchor(s):\n\n", len(req.Anchors)))
-	for _, f := range files {
-		sb.WriteString(fmt.Sprintf("### %s\n", f.fileLabel))
-		if len(f.symbols) > 0 {
-			sb.WriteString(fmt.Sprintf("Defined symbols (%d): %s\n",
-				len(f.symbols), strings.Join(f.symbols, ", ")))
+	for filePath := range fileSet {
+		fileNode, err := t.sub.GetFileNode(ctx, req.ProjectID, filePath)
+		if err != nil || fileNode == nil {
+			continue
 		}
-		if len(f.imports) > 0 {
-			sb.WriteString(fmt.Sprintf("Imports (%d): %s\n",
-				len(f.imports), strings.Join(f.imports, ", ")))
+
+		fileNodes, err := t.sub.GetNodesForFile(ctx, req.ProjectID, filePath)
+		if err != nil {
+			return core.ToolResult{}, fmt.Errorf("get nodes for file %s: %w", filePath, err)
 		}
-		if len(f.symbols) == 0 && len(f.imports) == 0 {
-			sb.WriteString("(no symbols or imports found)\n")
+
+		imports, err := t.sub.GetFileImports(ctx, req.ProjectID, fileNode.ID)
+		if err != nil {
+			return core.ToolResult{}, fmt.Errorf("get imports for %s: %w", filePath, err)
 		}
-		sb.WriteString("\n")
-	}
-	if len(files) == 0 {
-		sb.WriteString("(no file nodes found for anchors)\n")
+
+		content := shared.TruncateContent(formatFileContext(filePath, fileNodes, imports), 2000)
+		emissions = append(emissions, shared.Thinking(req, "filecontext", content, map[string]any{
+			"tool":       "filecontext",
+			"file":       filePath,
+			"node_count": len(fileNodes),
+		}))
 	}
 
-	return core.ToolResult{
-		Emissions: []core.Emission{{
-			RunID:     req.RunID,
-			TurnID:    req.TurnID,
-			LoopIndex: req.LoopIndex,
-			Source:    "tool:filecontext",
-			Channel:   core.ChanAction,
-			Content:   sb.String(),
-		}},
-	}, nil
+	return core.ToolResult{Emissions: emissions}, nil
+}
+
+// extractFilePath infers the file path from a node's properties or canonical ID.
+func extractFilePath(node *core.Node) string {
+	if node.Type == core.NodeTypeFile {
+		return node.CanonicalID
+	}
+	if fp, ok := node.Properties["file_path"].(string); ok {
+		return fp
+	}
+	return ""
+}
+
+func formatFileContext(filePath string, nodes []core.Node, imports []core.Node) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("## File: %s\n\n", filePath))
+
+	byType := make(map[string][]core.Node)
+	for _, n := range nodes {
+		if n.Type != core.NodeTypeFile {
+			byType[n.Type] = append(byType[n.Type], n)
+		}
+	}
+
+	for _, t := range []string{core.NodeTypeSymbol, core.NodeTypeNamespace, core.NodeTypeConcept} {
+		if nodeGroup, ok := byType[t]; ok {
+			b.WriteString(fmt.Sprintf("**%ss** (%d):\n", t, len(nodeGroup)))
+			for _, n := range nodeGroup {
+				b.WriteString(fmt.Sprintf("  - `%s`\n", n.Label))
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	if len(imports) > 0 {
+		b.WriteString(fmt.Sprintf("**Imports** (%d):\n", len(imports)))
+		for _, imp := range imports {
+			b.WriteString(fmt.Sprintf("  - `%s`\n", imp.CanonicalID))
+		}
+	}
+
+	return b.String()
 }

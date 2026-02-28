@@ -232,7 +232,7 @@ func runPluginExtract(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("plugin %s does not declare a language handler", plugin.Name())
 	}
 
-	extraction, err := lang.Extract(inp.FilePath, []byte(inp.Content))
+	extraction, err := lang.Extract(inp.FilePath, []byte(inp.Content), nil)
 	if err != nil {
 		return fmt.Errorf("extract: %w", err)
 	}

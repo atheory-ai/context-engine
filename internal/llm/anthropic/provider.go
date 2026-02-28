@@ -23,6 +23,7 @@ type Config struct {
 type Provider struct {
 	client       *anthropicsdk.Client
 	defaultModel string
+	retrier      *Retrier
 }
 
 // New creates an Anthropic Provider from config.
@@ -43,10 +44,12 @@ func New(cfg Config) *Provider {
 	return &Provider{
 		client:       &client,
 		defaultModel: model,
+		retrier:      NewRetrier(3),
 	}
 }
 
 // Complete sends a completion request to the Anthropic API and returns the full response.
+// Retries up to 3 times with exponential backoff on transient errors.
 func (p *Provider) Complete(ctx context.Context, req core.CompletionRequest) (core.CompletionResponse, error) {
 	model := req.Model
 	if model == "" {
@@ -55,7 +58,12 @@ func (p *Provider) Complete(ctx context.Context, req core.CompletionRequest) (co
 
 	params := buildMessageParams(model, req)
 
-	msg, err := p.client.Messages.New(ctx, params)
+	var msg *anthropicsdk.Message
+	err := p.retrier.Do(ctx, func() error {
+		var e error
+		msg, e = p.client.Messages.New(ctx, params)
+		return e
+	})
 	if err != nil {
 		return core.CompletionResponse{}, fmt.Errorf("anthropic complete: %w", err)
 	}

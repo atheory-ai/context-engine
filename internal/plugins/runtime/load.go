@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	extism "github.com/extism/go-sdk"
@@ -27,9 +28,13 @@ func (r *Runtime) Load(ctx context.Context, wasmPath string, pluginConfig map[st
 
 	wasmHash := WASMHash(wasmBytes)
 
-	// ── 2. Validate exports ──────────────────────────────────────────────────
+	// ── 2. Validate exports + collect export set ─────────────────────────────
 	if err := validateExports(wasmBytes); err != nil {
 		return nil, fmt.Errorf("validate %s: %w", wasmPath, err)
+	}
+	exports, err := collectExports(wasmBytes)
+	if err != nil {
+		exports = map[string]bool{} // non-fatal — degrade gracefully
 	}
 
 	// ── 3. Touch cache metadata if already cached ────────────────────────────
@@ -94,5 +99,7 @@ func (r *Runtime) Load(ctx context.Context, wasmPath string, pluginConfig map[st
 		version:  pmeta.Version,
 		wasm:     extismPlugin,
 		manifest: pmeta,
+		wasmDir:  filepath.Dir(wasmPath),
+		exports:  exports,
 	}, nil
 }

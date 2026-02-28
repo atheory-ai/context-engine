@@ -7,124 +7,163 @@ import (
 	"github.com/atheory/context-engine/internal/core"
 )
 
-const (
-	// DecayFactor is the fraction of activation propagated to each neighbor per hop.
-	// Lower = tighter activation cluster around seed nodes.
-	DecayFactor = 0.5
-
-	// ActivationThreshold is the minimum activation a node must have to spread
-	// activation further. Prevents noise propagation.
-	ActivationThreshold = 0.1
-)
-
-// Node is the activation pass node in the cognitive loop DAG.
-// It resolves IR anchors, spreads activation through the graph,
-// and returns the top-K activated nodes for the current iteration.
-type Node struct {
-	sub core.SubstrateAccessor
+// activationEntry tracks a node's current activation and propagation depth.
+type activationEntry struct {
+	nodeID     core.NodeID
+	activation float64
+	depth      int
 }
 
-// NewNode creates an activation Node backed by the given substrate accessor.
-func NewNode(sub core.SubstrateAccessor) *Node {
-	return &Node{sub: sub}
-}
-
-// Run executes the activation pass for one cognitive loop iteration.
-// It does not take a *runner.RunContext to avoid an import cycle —
-// the runner passes individual values instead.
+// spreadActivation runs the spreading activation algorithm from seed nodes.
+// Returns a map of nodeID → final activation value for all activated nodes.
 //
-// Steps:
-//  1. Resolve IR anchor refs to concrete substrate nodes (seeds)
-//  2. Spread activation one hop through the graph using edge weights
-//  3. Write all activation updates via the write buffer (fire-and-forget)
-//  4. Return top-K anchors by activation for the fan-out node
-func (n *Node) Run(ctx context.Context, projectID core.ProjectID, ir *core.IR) ([]core.Anchor, error) {
-	// ── 1. Resolve anchor refs ──────────────────────────────────────────────
-	seeds, err := ResolveAnchors(ctx, n.sub, projectID, ir.Anchors)
-	if err != nil {
-		return nil, fmt.Errorf("resolve anchors: %w", err)
+// Algorithm (Dijkstra-style max-activation priority):
+//  1. Initialize priority queue with seed nodes at their initial activation
+//  2. Pop highest-activation node from queue
+//  3. For each outgoing edge from that node:
+//     a. Compute neighbor activation = current * decay * edge_weight
+//     b. If neighbor_activation > threshold AND depth < max_depth:
+//     - If neighbor not yet visited OR new activation > existing: push to queue
+//  4. Record final activation for each visited node
+//  5. Repeat until queue empty
+func spreadActivation(
+	ctx context.Context,
+	substrate core.SubstrateReader,
+	projectID core.ProjectID,
+	seeds []seedNode,
+) (map[core.NodeID]float64, error) {
+	// activationMap tracks the best (highest) activation seen for each node.
+	activationMap := make(map[core.NodeID]float64)
+
+	// Priority queue — highest activation first.
+	pq := newActivationQueue()
+
+	// Initialize with seed nodes.
+	for _, seed := range seeds {
+		activationMap[seed.node.ID] = seed.activation
+		pq.Push(activationEntry{
+			nodeID:     seed.node.ID,
+			activation: seed.activation,
+			depth:      0,
+		})
 	}
 
-	// If no anchors resolved, fall back to top-K from current substrate state.
-	if len(seeds) == 0 {
-		k := ir.KLimit
-		if k <= 0 {
-			k = core.DefaultKLimit
-		}
-		return TopK(ctx, n.sub, projectID, k)
-	}
-
-	// ── 2. Build in-memory activation map ──────────────────────────────────
-	activations := make(map[core.NodeID]float64, len(seeds)*4)
-	nodes := make(map[core.NodeID]*core.Node, len(seeds)*4)
-	edgeMap := make(map[core.NodeID][]core.Edge, len(seeds)*4)
-
-	// Seed activation from resolved anchors.
-	for i := range seeds {
-		anchor := &seeds[i]
-		if anchor.Node == nil {
-			continue
-		}
-		activations[anchor.Node.ID] = anchor.Activation
-		nodes[anchor.Node.ID] = anchor.Node
-		edgeMap[anchor.Node.ID] = anchor.Edges
-	}
-
-	// ── 3. Single-hop spreading ─────────────────────────────────────────────
-	// For each seed above threshold, spread activation to its neighbors.
-	newActivations := make(map[core.NodeID]float64)
-
-	for nodeID, srcActivation := range activations {
-		if srcActivation < ActivationThreshold {
-			continue
+	// Propagate.
+	for pq.Len() > 0 {
+		// Check context cancellation.
+		select {
+		case <-ctx.Done():
+			return activationMap, ctx.Err()
+		default:
 		}
 
-		for _, edge := range edgeMap[nodeID] {
-			spread := srcActivation * edge.Weight * DecayFactor
-			if spread < ActivationThreshold {
+		current := pq.Pop()
+
+		// Skip if we've already processed this node at higher activation
+		// (stale entry in the priority queue).
+		if existing, ok := activationMap[current.nodeID]; ok {
+			if existing > current.activation {
 				continue
 			}
-			newActivations[edge.TargetID] += spread
 		}
-	}
 
-	// Merge spread activations (don't overwrite seed activations with lower values).
-	for targetID, spread := range newActivations {
-		if existing := activations[targetID]; spread > existing {
-			activations[targetID] = spread
+		// Stop propagating if below threshold or at max depth.
+		if current.activation < core.ActivationThreshold {
+			continue
 		}
-		// Load the target node if we haven't seen it yet.
-		if nodes[targetID] == nil {
-			node, err := n.sub.Node(ctx, targetID)
-			if err != nil {
-				return nil, fmt.Errorf("load spread node %s: %w", targetID, err)
+		if current.depth >= core.MaxPropagationDepth {
+			continue
+		}
+
+		// Fetch outgoing edges for this node.
+		edges, err := substrate.GetEdgesFrom(ctx, projectID, current.nodeID)
+		if err != nil {
+			return nil, fmt.Errorf("get edges from %s: %w", current.nodeID, err)
+		}
+
+		for _, edge := range edges {
+			weight := edge.Weight
+			if weight <= 0 {
+				weight = core.DefaultEdgeWeight
 			}
-			if node != nil {
-				nodes[targetID] = node
-				// Load edges for spread nodes too — they may be needed next iteration.
-				edges, err := n.sub.Edges(ctx, targetID, "")
-				if err != nil {
-					return nil, fmt.Errorf("load spread edges %s: %w", targetID, err)
+			neighborActivation := current.activation * core.ActivationDecay * weight
+
+			if neighborActivation < core.ActivationThreshold {
+				continue
+			}
+
+			// Only update if this activation is higher than what we've seen.
+			if existing, ok := activationMap[edge.TargetID]; ok {
+				if neighborActivation <= existing {
+					continue
 				}
-				edgeMap[targetID] = edges
 			}
+
+			activationMap[edge.TargetID] = neighborActivation
+			pq.Push(activationEntry{
+				nodeID:     edge.TargetID,
+				activation: neighborActivation,
+				depth:      current.depth + 1,
+			})
 		}
 	}
 
-	// ── 4. Write activation updates (fire-and-forget) ───────────────────────
-	for nodeID, activation := range activations {
-		if err := n.sub.UpdateActivation(ctx, nodeID, activation); err != nil {
-			// Non-fatal — buffer full or similar. Log via error return is optional;
-			// the loop continues with the computed activations regardless.
-			_ = err
+	return activationMap, nil
+}
+
+// activationQueue is a max-heap priority queue ordered by activation value.
+type activationQueue struct {
+	items []activationEntry
+}
+
+func newActivationQueue() *activationQueue {
+	return &activationQueue{}
+}
+
+func (q *activationQueue) Len() int { return len(q.items) }
+
+func (q *activationQueue) Push(entry activationEntry) {
+	q.items = append(q.items, entry)
+	q.siftUp(len(q.items) - 1)
+}
+
+func (q *activationQueue) Pop() activationEntry {
+	top := q.items[0]
+	last := len(q.items) - 1
+	q.items[0] = q.items[last]
+	q.items = q.items[:last]
+	if len(q.items) > 0 {
+		q.siftDown(0)
+	}
+	return top
+}
+
+func (q *activationQueue) siftUp(i int) {
+	for i > 0 {
+		parent := (i - 1) / 2
+		if q.items[parent].activation >= q.items[i].activation {
+			break
 		}
+		q.items[parent], q.items[i] = q.items[i], q.items[parent]
+		i = parent
 	}
+}
 
-	// ── 5. Return top-K ─────────────────────────────────────────────────────
-	k := ir.KLimit
-	if k <= 0 {
-		k = core.DefaultKLimit
+func (q *activationQueue) siftDown(i int) {
+	n := len(q.items)
+	for {
+		largest := i
+		left, right := 2*i+1, 2*i+2
+		if left < n && q.items[left].activation > q.items[largest].activation {
+			largest = left
+		}
+		if right < n && q.items[right].activation > q.items[largest].activation {
+			largest = right
+		}
+		if largest == i {
+			break
+		}
+		q.items[i], q.items[largest] = q.items[largest], q.items[i]
+		i = largest
 	}
-
-	return TopKFromMap(activations, nodes, edgeMap, k), nil
 }

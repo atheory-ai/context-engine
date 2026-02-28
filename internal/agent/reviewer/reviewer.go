@@ -106,76 +106,69 @@ func (r *Node) Run(rc *core.RunContext, loopEmissions []core.Emission) (ReviewRe
 }
 
 // buildSystemPrompt returns the static system prompt for the Reviewer.
-func (r *Node) buildSystemPrompt(rc *core.RunContext) string {
-	return fmt.Sprintf(`You are the Reviewer for a codebase intelligence engine.
-Your job is to decide whether the cognitive loop has gathered enough information
-to answer the user's query, or whether more investigation is needed.
-
-You do NOT answer the query. You evaluate the evidence collected so far.
-
-Evaluate on three criteria:
-1. Open queries answered: Are the specific sub-questions resolved by the current evidence?
-2. Sufficient depth: Is there enough substrate context to write a useful answer?
-3. Diminishing returns: Is the latest loop adding materially new information?
-
-Convergence requires satisfaction on all three criteria.
-
-Original query: %q
-
-Open queries being investigated:
-%s
-
-────────────────────────────────────────────────────────────────────────────
-OUTPUT FORMAT
-────────────────────────────────────────────────────────────────────────────
-
-After your analysis, output exactly these XML tags:
-
-<converged>true</converged>
-OR
-<converged>false</converged>
-
-If not converged, list the remaining open queries:
-<open_queries>
-  <open_query>specific unresolved question</open_query>
-</open_queries>
-
-If any tool proposed substrate enrichments worth approving, list them:
-<enrichments>
-  <enrichment action="promote" entity_type="edge" entity_id="ID" rationale="reason"/>
-</enrichments>
-
-Be decisive. If most questions are answered and the remaining gaps are minor,
-converge and let the Synthesizer handle the partial answer.`,
-		rc.Query,
-		formatOpenQueries(rc.IR),
-	)
+func (r *Node) buildSystemPrompt(_ *core.RunContext) string {
+	return reviewerSystemPrompt
 }
 
 // buildMessages builds the conversation messages for the Reviewer LLM call.
+// Includes the original query, IR state, prior-iteration findings, and this
+// iteration's tool findings (ChanThinking emissions).
 func (r *Node) buildMessages(rc *core.RunContext, loopEmissions []core.Emission) []core.Message {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Loop %d/%d evidence:\n\n", rc.CurrentLoop(), rc.MaxLoops))
 
-	// Summarize tool emissions.
-	actionCount := 0
-	for _, e := range loopEmissions {
-		if e.Channel == core.ChanAction || e.Channel == core.ChanMessage {
-			sb.WriteString(fmt.Sprintf("- %s\n", e.Content))
-			actionCount++
+	sb.WriteString("## Original Query\n\n")
+	sb.WriteString(rc.Query)
+	sb.WriteString("\n\n")
+
+	sb.WriteString("## Investigation Plan (IR)\n\n")
+	if rc.IR != nil {
+		sb.WriteString(fmt.Sprintf("Mode: %s\n", rc.IR.Mode))
+		sb.WriteString(fmt.Sprintf("Loop: %d/%d\n\n", rc.CurrentLoop(), rc.MaxLoops))
+		if len(rc.IR.OpenQueries) > 0 {
+			sb.WriteString("Open queries:\n")
+			for _, q := range rc.IR.OpenQueries {
+				sb.WriteString(fmt.Sprintf("- %s\n", q))
+			}
+			sb.WriteString("\n")
 		}
 	}
-	if actionCount == 0 {
-		sb.WriteString("(no tool emissions this loop)\n")
+
+	// Previous iterations' tool findings.
+	prevThinking := filterThinkingEmissions(rc.Emissions)
+	if len(prevThinking) > 0 {
+		sb.WriteString("## Previous Iterations\n\n")
+		for _, e := range prevThinking {
+			sb.WriteString(e.Content)
+			sb.WriteString("\n\n")
+		}
 	}
 
-	// Include accumulated emissions summary.
-	sb.WriteString(fmt.Sprintf("\nTotal accumulated emissions: %d across %d loop(s).\n",
-		len(rc.Emissions)+len(loopEmissions), rc.CurrentLoop()))
+	// This iteration's tool findings.
+	sb.WriteString("## This Iteration (tool findings)\n\n")
+	thisThinking := filterThinkingEmissions(loopEmissions)
+	if len(thisThinking) == 0 {
+		sb.WriteString("(no tool findings this iteration)\n\n")
+	} else {
+		for _, e := range thisThinking {
+			sb.WriteString(e.Content)
+			sb.WriteString("\n\n")
+		}
+	}
 
 	return []core.Message{
 		{Role: "user", Content: sb.String()},
 	}
+}
+
+// filterThinkingEmissions returns only ChanThinking emissions (tool findings).
+func filterThinkingEmissions(emissions []core.Emission) []core.Emission {
+	var result []core.Emission
+	for _, e := range emissions {
+		if e.Channel == core.ChanThinking {
+			result = append(result, e)
+		}
+	}
+	return result
 }
 
 // parseResponse extracts structured data from the Reviewer's XML output.
@@ -267,13 +260,3 @@ func extractEnrichments(s string, rc *core.RunContext) []core.Enrichment {
 	return enrichments
 }
 
-func formatOpenQueries(ir *core.IR) string {
-	if ir == nil || len(ir.OpenQueries) == 0 {
-		return "(none)"
-	}
-	var sb strings.Builder
-	for i, q := range ir.OpenQueries {
-		sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, q))
-	}
-	return sb.String()
-}

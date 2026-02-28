@@ -50,9 +50,52 @@ type Edge struct {
 // The activation layer resolves them to Anchors (concrete nodes + edges).
 type Anchor struct {
 	Ref        AnchorRef
-	Node       *Node  // nil if not resolved to a node
-	Edges      []Edge // outbound edges from this node
+	Node       *Node           // nil if not resolved to a node
+	Edges      []EdgeWithWeight // outbound + inbound edges from this node
 	Activation float64
+}
+
+// NodeWithActivation pairs a node with its current activation value.
+type NodeWithActivation struct {
+	Node
+	Activation float64
+}
+
+// EdgeWithWeight pairs an edge with its current weight and Hebbian metadata.
+// Weight shadows Edge.Weight (both reflect the edge_weight table value).
+// SourceClass reflects the weight source class (not the edge's structural source class).
+// CoActivationCount is the number of times this edge's endpoints co-activated.
+type EdgeWithWeight struct {
+	Edge
+	Weight            float64
+	SourceClass       string
+	CoActivationCount int
+}
+
+// ReferenceResult is a node that references a given substrate node.
+// Used by the references tool.
+type ReferenceResult struct {
+	Node     NodeWithActivation
+	EdgeType string
+	Weight   float64
+}
+
+// OrgMatch is a node found in the org graph matching a cross-project query.
+// Used by the crossproject tool.
+type OrgMatch struct {
+	Node        Node
+	ProjectID   ProjectID
+	ProjectName string
+	Similarity  float64
+}
+
+// WeightUpdate carries the data for an edge weight update from Hebbian learning.
+type WeightUpdate struct {
+	EdgeID            EdgeID
+	ProjectID         ProjectID
+	NewWeight         float64
+	CoActivationDelta int    // increment to co_activation_count
+	SourceClass       string // updated source class if promotion occurred
 }
 
 // AnchorRef is the symbolic pointer the Strategizer emits.

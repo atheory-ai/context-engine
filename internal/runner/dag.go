@@ -50,7 +50,7 @@ func (e *Engine) buildDAG() *dag {
 	return &dag{
 		preflight:   preflight.New(e.dbRegistry, e.llmRouter),
 		strategizer: strat,
-		activation:  activation.NewNode(e.substrate),
+		activation:  activation.NewNode(e.substrate.Reader),
 		fanout:      &fanoutNode{tools: tools},
 		reviewer:    reviewer.New(e.llmRouter, e.substrate),
 		synthesizer: synthesizer.New(e.llmRouter),
@@ -58,10 +58,21 @@ func (e *Engine) buildDAG() *dag {
 	}
 }
 
-// Run executes the full DAG for a single query.
-func (d *dag) Run(ctx context.Context, query string) (retErr error) {
+// Run executes the full DAG for a single query using the engine's own channels.
+func (d *dag) Run(ctx context.Context, query string) error {
+	return d.run(ctx, query, d.engine.channels)
+}
+
+// RunWithChannels executes the full DAG using caller-supplied channels.
+// Used by QueryWithChannels so the WebSocket handler can provide its own channel set.
+func (d *dag) RunWithChannels(ctx context.Context, query string, ch *core.AppChannels) error {
+	return d.run(ctx, query, ch)
+}
+
+// run is the shared DAG execution path.
+func (d *dag) run(ctx context.Context, query string, ch *core.AppChannels) (retErr error) {
 	// ── 1. Pre-flight ──────────────────────────────────────────────────────
-	rc, err := d.preflight.Run(ctx, query, d.engine.cfg, d.engine.channels)
+	rc, err := d.preflight.Run(ctx, query, d.engine.cfg, ch)
 	if err != nil {
 		return fmt.Errorf("preflight: %w", err)
 	}

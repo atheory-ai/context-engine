@@ -8,18 +8,22 @@ import (
 	"time"
 
 	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory/context-engine/internal/storage/queries"
 	"github.com/atheory/context-engine/internal/storage/writebuffer"
 )
 
 // Writer implements core.SubstrateWriter by forwarding all writes to the buffer.
+// For operations that require direct SQL (DecayEdgeWeights, ResetActivation),
+// it uses the dbProvider to access the graph database directly.
 // Fire-and-forget — callers never block on write confirmation.
 type Writer struct {
-	buffer writebuffer.Buffer
+	buffer     writebuffer.Buffer
+	dbProvider writebuffer.DBProvider
 }
 
 // NewWriter creates a Writer that sends all ops to the given buffer.
-func NewWriter(buffer writebuffer.Buffer) *Writer {
-	return &Writer{buffer: buffer}
+func NewWriter(buffer writebuffer.Buffer, dbProvider writebuffer.DBProvider) *Writer {
+	return &Writer{buffer: buffer, dbProvider: dbProvider}
 }
 
 // UpsertNode queues a node insert/update via the write buffer.
@@ -71,10 +75,6 @@ func (w *Writer) UpsertEdge(_ context.Context, edge core.Edge) error {
 
 // UpdateActivation queues an activation update for a node.
 func (w *Writer) UpdateActivation(_ context.Context, nodeID core.NodeID, activation float64) error {
-	// ProjectID is not needed for activation updates — the node_activation
-	// table is in the same DB as the node. The buffer resolves DB by ProjectID,
-	// but activation updates are sent with the node's project ID.
-	// Callers should use UpdateActivationForProject when project ID is known.
 	return w.buffer.Send(writebuffer.WriteOp{
 		Type:      writebuffer.OpUpdateActivation,
 		ProjectID: "", // resolved by the caller via UpdateActivationForProject
@@ -100,23 +100,72 @@ func (w *Writer) UpdateActivationForProject(_ context.Context, projectID core.Pr
 	})
 }
 
-// UpdateWeight queues an edge weight update.
-func (w *Writer) UpdateWeight(_ context.Context, edgeID core.EdgeID, delta core.WeightDelta) error {
+// UpdateEdgeWeight queues an edge weight update from Hebbian learning.
+func (w *Writer) UpdateEdgeWeight(_ context.Context, update core.WeightUpdate) error {
 	return w.buffer.Send(writebuffer.WriteOp{
 		Type:      writebuffer.OpUpdateWeight,
-		ProjectID: "", // edge weight is global — project ID set by caller
+		ProjectID: string(update.ProjectID),
 		Payload: writebuffer.WeightUpdate{
-			EdgeID:            string(edgeID),
-			Weight:            delta.NewWeight,
-			SourceClass:       string(delta.NewSourceClass),
-			CoActivationDelta: delta.CoActivationDelta,
+			EdgeID:            string(update.EdgeID),
+			Weight:            update.NewWeight,
+			SourceClass:       update.SourceClass,
+			CoActivationDelta: update.CoActivationDelta,
 			UpdatedAt:         time.Now().UnixMilli(),
 		},
 	})
 }
 
-// RecordEnrichment queues an enrichment record (never deduplicated).
-func (w *Writer) RecordEnrichment(_ context.Context, e core.Enrichment) error {
+// DecayEdgeWeights reduces all edge weights for a project by decayRate.
+// Runs as a single SQL UPDATE — bypasses write buffer for atomicity.
+func (w *Writer) DecayEdgeWeights(ctx context.Context, projectID core.ProjectID, decayRate float64) error {
+	db, err := w.dbProvider.GraphDB(string(projectID))
+	if err != nil {
+		return fmt.Errorf("graph db for project %s: %w", projectID, err)
+	}
+	return queries.DecayEdgeWeightsSQL(ctx, db, string(projectID), decayRate, time.Now().UnixMilli())
+}
+
+// ResetActivation zeroes all activation values for a project.
+// Called at the start of each new query to prevent cross-query bleed.
+// Runs as a single SQL UPDATE — bypasses write buffer.
+func (w *Writer) ResetActivation(ctx context.Context, projectID core.ProjectID) error {
+	db, err := w.dbProvider.GraphDB(string(projectID))
+	if err != nil {
+		return fmt.Errorf("graph db for project %s: %w", projectID, err)
+	}
+	return queries.ResetActivationSQL(ctx, db, string(projectID), time.Now().UnixMilli())
+}
+
+// ApplyEnrichment applies an approved enrichment to the substrate.
+// Records the enrichment AND applies the structural change (if action requires it).
+func (w *Writer) ApplyEnrichment(ctx context.Context, e core.Enrichment) error {
+	switch e.Action {
+	case "promoted":
+		// Promoted means source_class upgraded (speculative → associative).
+		// Apply via weight update with the new source class.
+		if e.EntityType == "edge" {
+			if err := w.buffer.Send(writebuffer.WriteOp{
+				Type:      writebuffer.OpUpdateWeight,
+				ProjectID: "", // best-effort — project ID not available here
+				Payload: writebuffer.WeightUpdate{
+					EdgeID:      e.EntityID,
+					SourceClass: string(core.SourceAssociative),
+					UpdatedAt:   time.Now().UnixMilli(),
+				},
+			}); err != nil {
+				return err
+			}
+		}
+	case "created", "updated":
+		// Structural changes are handled by the Reviewer writing nodes/edges directly.
+	}
+
+	// Always record the enrichment provenance.
+	return w.recordEnrichment(ctx, e)
+}
+
+// recordEnrichment queues an enrichment record (never deduplicated).
+func (w *Writer) recordEnrichment(_ context.Context, e core.Enrichment) error {
 	afterJSON, err := json.Marshal(e.AfterState)
 	if err != nil {
 		return fmt.Errorf("marshal enrichment after state: %w", err)
@@ -146,6 +195,12 @@ func (w *Writer) RecordEnrichment(_ context.Context, e core.Enrichment) error {
 	})
 }
 
+// Flush forces all pending writes to be committed to the database.
+// Called by the indexer after a run is complete.
+func (w *Writer) Flush(ctx context.Context) error {
+	return w.buffer.Flush(ctx)
+}
+
 // ============================================================
 // ReadWriter — combines Reader and Writer
 // ============================================================
@@ -162,36 +217,8 @@ type ReadWriter struct {
 func NewReadWriter(dbProvider writebuffer.DBProvider, buf writebuffer.Buffer) *ReadWriter {
 	return &ReadWriter{
 		Reader: NewReader(dbProvider),
-		Writer: NewWriter(buf),
+		Writer: NewWriter(buf, dbProvider),
 	}
-}
-
-// ApplyEnrichment applies an approved enrichment to the substrate.
-// Records the enrichment AND applies the structural change (if action requires it).
-func (rw *ReadWriter) ApplyEnrichment(ctx context.Context, e core.Enrichment) error {
-	switch e.Action {
-	case "promoted":
-		// Promoted means source_class upgraded (speculative → associative).
-		// Apply via weight update with the new source class.
-		if e.EntityType == "edge" {
-			if err := rw.buffer.Send(writebuffer.WriteOp{
-				Type:      writebuffer.OpUpdateWeight,
-				ProjectID: "", // must be set by caller context — TODO: pass projectID
-				Payload: writebuffer.WeightUpdate{
-					EdgeID:      e.EntityID,
-					SourceClass: string(core.SourceAssociative),
-					UpdatedAt:   time.Now().UnixMilli(),
-				},
-			}); err != nil {
-				return err
-			}
-		}
-	case "created", "updated":
-		// Structural changes are handled by the Reviewer writing nodes/edges directly.
-	}
-
-	// Always record the enrichment provenance.
-	return rw.RecordEnrichment(ctx, e)
 }
 
 // ============================================================

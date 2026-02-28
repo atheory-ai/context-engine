@@ -119,70 +119,48 @@ func (s *Node) runPartial(rc *core.RunContext) error {
 
 // buildSystemPrompt returns the Synthesizer's system prompt.
 func (s *Node) buildSystemPrompt(rc *core.RunContext, partial bool) string {
-	base := `You are the Synthesizer for a codebase intelligence engine.
-Your job is to produce the final answer to the developer's query
-based on the evidence gathered by the cognitive loop.
-
-Rules:
-- Answer the original query directly and completely.
-- Ground every claim in specific substrate evidence from the emissions.
-- Reference specific functions, files, packages, and types by name.
-- Format as clean Markdown with code references where appropriate.
-- Be concise but thorough. The developer needs to understand, not just know.`
-
 	if partial {
-		base += fmt.Sprintf(`
-
-This is a PARTIAL answer because the investigation was cut short: %s
-
-Clearly state:
-1. What was found in the investigation so far.
-2. What specific questions remain unanswered.
-3. What the developer can do to get a more complete answer (e.g., re-run with a more focused query).`,
-			rc.ForcedExitReason)
+		return synthesizerPartialPrompt
 	}
-
-	return base
+	return synthesizerFullPrompt
 }
 
 // buildMessages assembles the prompt messages for the Synthesizer.
 func (s *Node) buildMessages(rc *core.RunContext, partial bool) []core.Message {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("## Original Query\n\n%s\n\n", rc.Query))
+	sb.WriteString("## Original Query\n\n")
+	sb.WriteString(rc.Query)
+	sb.WriteString("\n\n")
 
-	if rc.IR != nil && len(rc.IR.OpenQueries) > 0 {
-		sb.WriteString("## Investigation Objectives\n\n")
-		for i, q := range rc.IR.OpenQueries {
-			sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, q))
-		}
-		sb.WriteString("\n")
+	if rc.IR != nil {
+		sb.WriteString(fmt.Sprintf("## Investigation Plan\n\nMode: %s | Loops completed: %d\n\n",
+			rc.IR.Mode, rc.CurrentLoop()))
 	}
 
-	sb.WriteString(fmt.Sprintf("## Evidence Gathered (%d emissions across %d loop(s))\n\n",
-		len(rc.Emissions), rc.CurrentLoop()))
-
-	// Include action and message emissions as evidence.
-	evidenceCount := 0
-	for _, e := range rc.Emissions {
-		if e.Channel == core.ChanAction || e.Channel == core.ChanMessage {
-			sb.WriteString(fmt.Sprintf("**[%s]** %s\n\n", e.Source, e.Content))
-			evidenceCount++
-		}
-	}
-	if evidenceCount == 0 {
-		sb.WriteString("(No tool evidence collected — answer based on query alone.)\n\n")
-	}
-
-	if partial && len(rc.IR.OpenQueries) > 0 {
+	if partial && rc.IR != nil && len(rc.IR.OpenQueries) > 0 {
 		sb.WriteString("## Unresolved Questions\n\n")
 		for _, q := range rc.IR.OpenQueries {
 			sb.WriteString(fmt.Sprintf("- %s\n", q))
 		}
+		if rc.ForcedExitReason != "" {
+			sb.WriteString(fmt.Sprintf("\nExit reason: %s\n", rc.ForcedExitReason))
+		}
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString("## Your Task\n\nSynthesize the above evidence into a clear, grounded answer.")
+	sb.WriteString("## Tool Findings\n\n")
+	thinkingCount := 0
+	for _, e := range rc.Emissions {
+		if e.Channel == core.ChanThinking {
+			sb.WriteString(e.Content)
+			sb.WriteString("\n\n")
+			thinkingCount++
+		}
+	}
+	if thinkingCount == 0 {
+		sb.WriteString("(No tool evidence collected — answer based on query alone.)\n\n")
+	}
 
 	return []core.Message{
 		{Role: "user", Content: sb.String()},

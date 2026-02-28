@@ -93,6 +93,46 @@ func makeHostEmit(deps HostDeps) extism.HostFunction {
 	)
 }
 
+// substrateQuery dispatches a SubstrateQuery to the appropriate SubstrateReader method.
+// The Query method no longer exists on SubstrateReader; this helper bridges plugin
+// JSON queries to the typed Get* methods.
+func substrateQuery(ctx context.Context, sub core.SubstrateReader, q core.SubstrateQuery) ([]core.Node, error) {
+	limit := q.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+
+	// Properties-based lookup: canonical_id → GetNodeByCanonicalID.
+	if canonicalID, ok := q.Properties["canonical_id"]; ok {
+		node, err := sub.GetNodeByCanonicalID(ctx, q.ProjectID, canonicalID)
+		if err != nil || node == nil {
+			return nil, err
+		}
+		return []core.Node{*node}, nil
+	}
+
+	// NodeType-based dispatch.
+	for _, nt := range q.NodeTypes {
+		switch nt {
+		case core.NodeTypeConcept:
+			return sub.GetConceptNodes(ctx, q.ProjectID, "")
+		case core.NodeTypeNamespace:
+			return sub.GetNodesByNamespacePrefix(ctx, q.ProjectID, "", limit)
+		}
+	}
+
+	// Fallback: return top-K activated nodes.
+	topK, err := sub.GetTopKActivated(ctx, q.ProjectID, limit)
+	if err != nil {
+		return nil, err
+	}
+	nodes := make([]core.Node, len(topK))
+	for i, nwa := range topK {
+		nodes[i] = nwa.Node
+	}
+	return nodes, nil
+}
+
 // makeHostSubstrateQuery creates ce.substrate_query(query_json_ptr) → result_json_ptr.
 // Plugins query the substrate read-only. Returns "[]" if substrate unavailable.
 func makeHostSubstrateQuery(deps HostDeps) extism.HostFunction {
@@ -111,7 +151,7 @@ func makeHostSubstrateQuery(deps HostDeps) extism.HostFunction {
 				stack[0] = offset
 				return
 			}
-			nodes, err := deps.Substrate.Query(ctx, q)
+			nodes, err := substrateQuery(ctx, deps.Substrate, q)
 			if err != nil {
 				offset, _ := p.WriteString("[]")
 				stack[0] = offset

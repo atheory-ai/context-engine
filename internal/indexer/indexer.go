@@ -1,42 +1,34 @@
-// Package indexer orchestrates the full and incremental index of a project.
-// It walks the project directory, routes files to language handlers via loaded
-// plugins, extracts nodes and edges, and writes them to the substrate.
+// Package indexer orchestrates full and incremental indexing of a project.
+// It walks the directory tree, routes files to language plugins, parses
+// them with tree-sitter, calls plugin extract(), and writes results to
+// the substrate write buffer.
 //
-// Dependency rules (from spec):
-//   - imports internal/core
-//   - imports internal/graph/substrate (writer)
+// Dependency rules:
+//   - imports internal/core, internal/config
+//   - imports internal/indexer/parser, internal/indexer/walker
 //   - imports internal/plugins (registry)
+//   - imports internal/storage/queries (IndexQueries)
 //   - NO dependency on internal/agent or internal/runner
 package indexer
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/atheory/context-engine/internal/config"
 	"github.com/atheory/context-engine/internal/core"
 	"github.com/atheory/context-engine/internal/indexer/parser"
 	"github.com/atheory/context-engine/internal/indexer/walker"
+	"github.com/atheory/context-engine/internal/plugins"
+	"github.com/atheory/context-engine/internal/storage/queries"
 )
-
-// Config holds the parameters for a single index run.
-type Config struct {
-	// RootDir is the absolute path to the directory to index.
-	RootDir string
-
-	// ProjectID is the project whose graph DB receives the writes.
-	// Phase 1: always "local".
-	ProjectID core.ProjectID
-
-	// IndexerCfg is the include/exclude/size configuration from ce.yaml.
-	IndexerCfg config.IndexerConfig
-
-	// Full requests a complete reindex regardless of previous index state.
-	// Phase 1: always treated as full (incremental not yet implemented).
-	Full bool
-}
 
 // Stats summarises the results of an index run.
 type Stats struct {
@@ -49,134 +41,167 @@ type Stats struct {
 	Duration     time.Duration
 }
 
-// Indexer orchestrates file extraction and substrate writes for a single project.
+// Indexer orchestrates full and incremental indexing for a project.
 type Indexer struct {
-	cfg      Config
-	plugins  []core.Plugin
-	writer   core.SubstrateWriter
+	cfg      *config.Config
+	plugins  *plugins.Registry
+	parser   *parser.Parser
+	grammars *parser.GrammarRegistry
+	substrate core.SubstrateWriter
+	queries  *queries.IndexQueries
 	channels *core.AppChannels
 }
 
-// New creates a ready-to-run Indexer.
-//
-// plugins is the list of loaded plugins (from plugins.Registry.Loaded()).
-// writer must route writes to the project graph DB identified by cfg.ProjectID —
-// the caller is responsible for mounting that DB before calling Run.
-func New(cfg Config, plugins []core.Plugin, writer core.SubstrateWriter, channels *core.AppChannels) *Indexer {
+// New creates an Indexer backed by the given plugin registry.
+// Plugin grammars are registered into the grammar registry here;
+// failures are emitted as warnings and fall back to built-in grammars.
+func New(
+	cfg         *config.Config,
+	pluginReg   *plugins.Registry,
+	substrate   core.SubstrateWriter,
+	indexQueries *queries.IndexQueries,
+	channels    *core.AppChannels,
+) *Indexer {
+	grammars := parser.NewGrammarRegistry()
+
+	// Register grammars declared by loaded plugins.
+	for _, p := range pluginReg.Loaded() {
+		h := p.Language()
+		if h == nil {
+			continue
+		}
+		grammarPath := h.GrammarPath()
+		if grammarPath == "" {
+			continue
+		}
+		if err := grammars.RegisterPluginGrammar(grammarPath, h.Extensions(), string(p.ID())); err != nil {
+			channels.Emit(core.Emission{
+				Source:  "indexer",
+				Channel: core.ChanWarning,
+				Content: fmt.Sprintf("plugin %s grammar: %v", p.ID(), err),
+			})
+		}
+	}
+
 	return &Indexer{
 		cfg:      cfg,
-		plugins:  plugins,
-		writer:   writer,
+		plugins:  pluginReg,
+		parser:   parser.NewParser(grammars),
+		grammars: grammars,
+		substrate: substrate,
+		queries:  indexQueries,
 		channels: channels,
 	}
 }
 
-// Run performs the index and returns statistics.
+// Run performs a full or incremental index of rootDir.
+// projectID identifies the substrate graph to write to.
+// full=true forces reindex of all files regardless of cached hashes.
 // Blocks until complete or ctx is cancelled.
-// A cancelled context returns ctx.Err() as the error; partial results are valid.
-func (idx *Indexer) Run(ctx context.Context) (Stats, error) {
+func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.ProjectID, full bool) (Stats, error) {
 	start := time.Now()
-	var stats Stats
 
-	// Build the parser from loaded plugins' language handlers.
-	psr := parser.New(idx.plugins)
-	if psr.HandlerCount() == 0 {
-		idx.emitWarning("no language handlers found in loaded plugins — nothing to index")
-		return stats, nil
+	idx.emitProgress(fmt.Sprintf("indexing %s (mode: %s)",
+		projectID, map[bool]string{true: "full", false: "incremental"}[full]))
+
+	// Load existing file hashes for incremental mode.
+	var existingHashes map[string]string
+	if !full && idx.queries != nil {
+		var err error
+		existingHashes, err = idx.queries.GetFileHashes(ctx, string(projectID))
+		if err != nil {
+			return Stats{}, fmt.Errorf("load file hashes: %w", err)
+		}
 	}
 
-	// Walk the directory tree.
-	idx.emitProgress(fmt.Sprintf("Walking %s...", idx.cfg.RootDir))
-	files, walkErr := walker.Walk(ctx, idx.cfg.RootDir, idx.cfg.IndexerCfg)
-	stats.FilesWalked = len(files)
-
-	if walkErr != nil && ctx.Err() == nil {
-		return stats, fmt.Errorf("walk %s: %w", idx.cfg.RootDir, walkErr)
+	// For a full reindex, clear the stored hashes so removed files are cleaned up.
+	if full && idx.queries != nil {
+		if err := idx.queries.ClearFileHashes(ctx, string(projectID)); err != nil {
+			idx.emitWarning(fmt.Sprintf("clear file hashes: %v", err))
+		}
 	}
 
-	idx.emitProgress(fmt.Sprintf("Found %d files, extracting...", len(files)))
+	// Set up the directory walker.
+	w, err := walker.New(rootDir, walker.WalkerConfig{
+		ExcludePatterns:  idx.cfg.Indexer.Exclude,
+		MaxFileSizeBytes: idx.cfg.Indexer.MaxFileSizeBytes,
+	})
+	if err != nil {
+		return Stats{}, fmt.Errorf("create walker: %w", err)
+	}
+
+	fileResults := make(chan walker.WalkResult, 64)
+	walkErrCh := make(chan error, 1)
+	go func() {
+		walkErrCh <- w.Walk(ctx, fileResults)
+	}()
+
+	// Process files concurrently — cap at 8 workers.
+	workerCount := runtime.NumCPU()
+	if workerCount > 8 {
+		workerCount = 8
+	}
+
+	var (
+		wg           sync.WaitGroup
+		filesWalked  int64
+		filesIndexed int64
+		filesSkipped int64
+		filesErrored int64
+		nodesWritten int64
+		edgesWritten int64
+	)
 
 	now := time.Now().UnixMilli()
 
-	// Process each file.
-	for _, f := range files {
-		if ctx.Err() != nil {
-			break
-		}
-
-		handler, pluginID, ok := psr.Route(f.Path)
-		if !ok {
-			stats.FilesSkipped++
-			continue
-		}
-
-		content, err := os.ReadFile(f.Path)
-		if err != nil {
-			stats.FilesErrored++
-			idx.emitWarning(fmt.Sprintf("read %s: %v", f.RelPath, err))
-			continue
-		}
-
-		result, err := handler.Extract(f.RelPath, content)
-		if err != nil {
-			stats.FilesErrored++
-			idx.emitWarning(fmt.Sprintf("extract %s: %v", f.RelPath, err))
-			continue
-		}
-
-		if len(result.Nodes) == 0 && len(result.Edges) == 0 {
-			stats.FilesSkipped++
-			continue
-		}
-
-		// Remap IDs from the plugin's empty projectID to the real projectID.
-		remapped := remapIDs(result, idx.cfg.ProjectID, pluginID, now)
-
-		// Write nodes to the substrate via the write buffer.
-		for _, node := range remapped.Nodes {
-			if err := idx.writer.UpsertNode(ctx, node); err != nil {
-				idx.emitWarning(fmt.Sprintf("write node %s: %v", node.CanonicalID, err))
-				continue
-			}
-			stats.NodesWritten++
-		}
-
-		// Write edges.
-		for _, edge := range remapped.Edges {
-			if err := idx.writer.UpsertEdge(ctx, edge); err != nil {
-				idx.emitWarning(fmt.Sprintf("write edge %s: %v", string(edge.ID), err))
-				continue
-			}
-			stats.EdgesWritten++
-		}
-
-		// Run analyzer passes — each produces additional edges from extracted nodes.
-		for _, p := range idx.plugins {
-			for _, analyzer := range p.Analyzers() {
-				extraEdges, err := analyzer.Analyze(remapped.Nodes)
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for result := range fileResults {
+				atomic.AddInt64(&filesWalked, 1)
+				n, e, err := idx.processFile(ctx, projectID, result, existingHashes, now)
 				if err != nil {
-					idx.emitWarning(fmt.Sprintf("analyzer %s on %s: %v",
-						analyzer.Name(), f.RelPath, err))
+					atomic.AddInt64(&filesErrored, 1)
+					idx.emitWarning(fmt.Sprintf("index %s: %v", result.RelPath, err))
 					continue
 				}
-				for _, edge := range extraEdges {
-					if err := idx.writer.UpsertEdge(ctx, edge); err != nil {
-						idx.emitWarning(fmt.Sprintf("write analyzer edge: %v", err))
-						continue
-					}
-					stats.EdgesWritten++
+				if n < 0 {
+					// Skipped: unchanged hash or no matching plugin.
+					atomic.AddInt64(&filesSkipped, 1)
+					continue
 				}
+				atomic.AddInt64(&filesIndexed, 1)
+				atomic.AddInt64(&nodesWritten, int64(n))
+				atomic.AddInt64(&edgesWritten, int64(e))
 			}
-		}
-
-		stats.FilesIndexed++
+		}()
 	}
 
-	stats.Duration = time.Since(start)
+	wg.Wait()
+
+	if walkErr := <-walkErrCh; walkErr != nil && ctx.Err() == nil {
+		return Stats{}, fmt.Errorf("walk: %w", walkErr)
+	}
+
+	// Flush the write buffer so all writes are committed before returning.
+	if err := idx.substrate.Flush(ctx); err != nil {
+		idx.emitWarning(fmt.Sprintf("flush write buffer: %v", err))
+	}
+
+	stats := Stats{
+		FilesWalked:  int(filesWalked),
+		FilesIndexed: int(filesIndexed),
+		FilesSkipped: int(filesSkipped),
+		FilesErrored: int(filesErrored),
+		NodesWritten: int(nodesWritten),
+		EdgesWritten: int(edgesWritten),
+		Duration:     time.Since(start),
+	}
+
 	idx.emitProgress(fmt.Sprintf(
-		"Indexed %d/%d files — %d nodes, %d edges (%s)",
-		stats.FilesIndexed, stats.FilesWalked,
-		stats.NodesWritten, stats.EdgesWritten,
+		"index complete: %d files, %d nodes, %d edges (%s)",
+		stats.FilesIndexed, stats.NodesWritten, stats.EdgesWritten,
 		stats.Duration.Round(time.Millisecond),
 	))
 
@@ -186,9 +211,108 @@ func (idx *Indexer) Run(ctx context.Context) (Stats, error) {
 	return stats, nil
 }
 
+// processFile processes a single file and writes nodes/edges to the substrate.
+// Returns (nodesWritten, edgesWritten, nil) on success.
+// Returns (-1, 0, nil) if the file should be skipped (unchanged or no plugin).
+// Returns (0, 0, err) on a processing error.
+func (idx *Indexer) processFile(
+	ctx context.Context,
+	projectID core.ProjectID,
+	result walker.WalkResult,
+	existingHashes map[string]string,
+	now int64,
+) (int, int, error) {
+	content, err := os.ReadFile(result.Path)
+	if err != nil {
+		return 0, 0, fmt.Errorf("read: %w", err)
+	}
+
+	hash := fileHash(content)
+
+	// Incremental check — skip if content unchanged.
+	if existingHashes != nil {
+		if existingHash, ok := existingHashes[result.RelPath]; ok && existingHash == hash {
+			return -1, 0, nil
+		}
+	}
+
+	// Find the plugin that handles this file.
+	p := idx.plugins.PluginForFile(result.RelPath)
+	if p == nil {
+		return -1, 0, nil // no plugin handles this extension
+	}
+
+	langHandler := p.Language()
+	if langHandler == nil {
+		return -1, 0, nil
+	}
+
+	// Parse the file with tree-sitter; treeJSON is nil if no grammar available.
+	treeJSON, err := idx.parser.Parse(ctx, result.RelPath, content)
+	if err != nil {
+		return 0, 0, fmt.Errorf("parse: %w", err)
+	}
+
+	// Call the plugin's extract() function.
+	extraction, err := langHandler.Extract(result.RelPath, content, treeJSON)
+	if err != nil {
+		return 0, 0, fmt.Errorf("extract: %w", err)
+	}
+
+	// Remap node/edge IDs from the plugin's empty project context to the real projectID.
+	remapped := remapIDs(extraction, projectID, p.ID(), now)
+
+	nodesOut := 0
+	for _, node := range remapped.Nodes {
+		if err := idx.substrate.UpsertNode(ctx, node); err != nil {
+			idx.emitWarning(fmt.Sprintf("write node %s: %v", node.CanonicalID, err))
+			continue
+		}
+		nodesOut++
+	}
+
+	edgesOut := 0
+	for _, edge := range remapped.Edges {
+		if err := idx.substrate.UpsertEdge(ctx, edge); err != nil {
+			idx.emitWarning(fmt.Sprintf("write edge: %v", err))
+			continue
+		}
+		edgesOut++
+	}
+
+	// Run analyzer passes — each produces additional edges from extracted nodes.
+	for _, analyzer := range p.Analyzers() {
+		extraEdges, err := analyzer.Analyze(remapped.Nodes)
+		if err != nil {
+			idx.emitWarning(fmt.Sprintf("analyzer %s on %s: %v", analyzer.Name(), result.RelPath, err))
+			continue
+		}
+		for _, edge := range extraEdges {
+			edge.ProjectID = projectID
+			if err := idx.substrate.UpsertEdge(ctx, edge); err != nil {
+				idx.emitWarning(fmt.Sprintf("write analyzer edge: %v", err))
+				continue
+			}
+			edgesOut++
+		}
+	}
+
+	// Persist the file hash for future incremental runs.
+	if idx.queries != nil {
+		_ = idx.queries.UpsertFileHash(ctx, string(projectID), result.RelPath, hash)
+	}
+
+	return nodesOut, edgesOut, nil
+}
+
+// fileHash returns the SHA-256 hash of content as a lowercase hex string.
+func fileHash(content []byte) string {
+	h := sha256.Sum256(content)
+	return hex.EncodeToString(h[:])
+}
+
 // remapIDs re-generates node and edge IDs using the real projectID.
-// Plugins generate IDs with an empty projectID (""); the engine uses the real one.
-// The remapping ensures the substrate's deterministic ID contract is maintained.
+// Plugins produce IDs with an empty projectID; the engine uses the real one.
 func remapIDs(
 	result core.ExtractionResult,
 	projectID core.ProjectID,
@@ -197,7 +321,6 @@ func remapIDs(
 ) core.ExtractionResult {
 	pidStr := string(projectID)
 
-	// Remap nodes and build an oldID → newID translation table for edges.
 	oldToNew := make(map[core.NodeID]core.NodeID, len(result.Nodes))
 	nodes := make([]core.Node, len(result.Nodes))
 
@@ -227,7 +350,6 @@ func remapIDs(
 		}
 	}
 
-	// Remap edges, translating source/target IDs through the translation table.
 	edges := make([]core.Edge, len(result.Edges))
 	for i, e := range result.Edges {
 		sourceID, ok := oldToNew[e.SourceID]

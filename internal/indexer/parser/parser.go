@@ -1,50 +1,73 @@
-// Package parser routes files to the appropriate language handler.
-// The first loaded plugin whose Match() returns true handles a given file.
+// Package parser routes files to tree-sitter grammars and produces serialized
+// syntax trees for plugin extract() calls.
 package parser
 
 import (
-	"github.com/atheory/context-engine/internal/core"
+	"context"
+	"encoding/json"
+	"path/filepath"
+	"runtime"
+	"strings"
+
+	sitter "github.com/smacker/go-tree-sitter"
 )
 
-// Parser routes files to the correct language handler from loaded plugins.
+// Parser routes files to grammars and produces serialized SyntaxTree JSON.
+// The tree is passed to plugin extract() across the WASM boundary.
 type Parser struct {
-	entries []entry
+	grammars *GrammarRegistry
+	pool     *parserPool
 }
 
-type entry struct {
-	handler  core.LanguageHandler
-	pluginID core.PluginID
+// NewParser creates a Parser backed by the given GrammarRegistry.
+func NewParser(grammars *GrammarRegistry) *Parser {
+	return &Parser{
+		grammars: grammars,
+		pool:     newParserPool(runtime.NumCPU()),
+	}
 }
 
-// New creates a Parser from the language handlers of the given plugins.
-// Plugins are tried in order; the first matching handler wins.
-func New(plugins []core.Plugin) *Parser {
-	p := &Parser{}
-	for _, plugin := range plugins {
-		lang := plugin.Language()
-		if lang == nil {
-			continue
-		}
-		p.entries = append(p.entries, entry{
-			handler:  lang,
-			pluginID: plugin.ID(),
-		})
+// Parse parses a file and returns the serialized SyntaxTree as JSON bytes.
+// Returns nil if no grammar is registered for this file extension —
+// the plugin will receive tree: null in that case.
+func (p *Parser) Parse(ctx context.Context, filePath string, content []byte) ([]byte, error) {
+	ext := strings.ToLower(filepath.Ext(filePath))
+	grammar := p.grammars.ForExtension(ext)
+	if grammar == nil {
+		return nil, nil // no grammar — plugin receives tree: null
+	}
+
+	parser := p.pool.Get()
+	defer p.pool.Put(parser)
+
+	parser.SetLanguage(grammar.Language)
+
+	tree, err := parser.ParseCtx(ctx, nil, content)
+	if err != nil {
+		return nil, err
+	}
+	defer tree.Close()
+
+	syntaxTree := serializeTree(tree, content, grammar.Name)
+	return json.Marshal(syntaxTree)
+}
+
+// parserPool manages a pool of tree-sitter parsers.
+// sitter.Parser is not goroutine-safe — pool one per goroutine.
+type parserPool struct {
+	ch chan *sitter.Parser
+}
+
+func newParserPool(size int) *parserPool {
+	if size <= 0 {
+		size = 1
+	}
+	p := &parserPool{ch: make(chan *sitter.Parser, size)}
+	for i := 0; i < size; i++ {
+		p.ch <- sitter.NewParser()
 	}
 	return p
 }
 
-// Route returns the language handler that matches filePath.
-// Returns (nil, "", false) if no handler matches.
-func (p *Parser) Route(filePath string) (core.LanguageHandler, core.PluginID, bool) {
-	for _, e := range p.entries {
-		if e.handler.Match(filePath) {
-			return e.handler, e.pluginID, true
-		}
-	}
-	return nil, "", false
-}
-
-// HandlerCount returns the number of language handlers registered.
-func (p *Parser) HandlerCount() int {
-	return len(p.entries)
-}
+func (p *parserPool) Get() *sitter.Parser  { return <-p.ch }
+func (p *parserPool) Put(parser *sitter.Parser) { p.ch <- parser }

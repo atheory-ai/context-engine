@@ -6,6 +6,8 @@ package plugins
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/atheory/context-engine/internal/core"
 	"github.com/atheory/context-engine/internal/plugins/runtime"
@@ -21,13 +23,16 @@ type PluginEntry struct {
 // Registry manages loaded plugins for the engine lifetime.
 // Thread-safe — the runner reads from it concurrently during fan-out.
 type Registry struct {
-	plugins []core.Plugin
-	rt      *runtime.Runtime // nil until Initialize() is called
+	plugins   map[core.PluginID]core.Plugin
+	loadOrder []core.PluginID // registration order, for last-registered-wins semantics
+	rt        *runtime.Runtime // nil until Initialize() is called
 }
 
 // NewRegistry creates an empty Registry.
 func NewRegistry() *Registry {
-	return &Registry{}
+	return &Registry{
+		plugins: make(map[core.PluginID]core.Plugin),
+	}
 }
 
 // Initialize wires the plugin runtime to this registry.
@@ -42,32 +47,87 @@ func (r *Registry) Initialize(ceDataDir string, ch *core.AppChannels) error {
 	return nil
 }
 
+// Load loads a single plugin from the given path.
+// If Initialize has not been called, returns nil (no-op).
+// Duplicate plugin IDs are silently replaced (last-registered wins).
+func (r *Registry) Load(ctx context.Context, path string, config map[string]any) error {
+	if r.rt == nil {
+		return nil
+	}
+	p, err := r.rt.Load(ctx, path, config)
+	if err != nil {
+		return fmt.Errorf("load plugin %s: %w", path, err)
+	}
+	// If this plugin ID was already registered, close the old one.
+	if old, exists := r.plugins[p.ID()]; exists {
+		_ = old.Close()
+	} else {
+		r.loadOrder = append(r.loadOrder, p.ID())
+	}
+	r.plugins[p.ID()] = p
+	return nil
+}
+
 // LoadAll discovers and loads all plugins from the given entries.
 // If Initialize has not been called, returns nil (Phase 1 no-op).
-// Plugins are loaded in order; duplicate plugin IDs are rejected.
+// Plugins are loaded in order; last-registered plugin for an extension wins.
 func (r *Registry) LoadAll(ctx context.Context, entries []PluginEntry) error {
-	if r.rt == nil {
-		return nil // runtime not initialized — no-op
-	}
 	for _, e := range entries {
-		p, err := r.rt.Load(ctx, e.Path, e.Config)
-		if err != nil {
-			return fmt.Errorf("load plugin %s: %w", e.Path, err)
+		if err := r.Load(ctx, e.Path, e.Config); err != nil {
+			return err
 		}
-		r.plugins = append(r.plugins, p)
 	}
 	return nil
 }
 
-// Loaded returns the currently loaded plugins.
+// Loaded returns the currently loaded plugins in registration order.
 func (r *Registry) Loaded() []core.Plugin {
-	return r.plugins
+	out := make([]core.Plugin, 0, len(r.loadOrder))
+	for _, id := range r.loadOrder {
+		if p, ok := r.plugins[id]; ok {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// PluginForFile returns the plugin that handles the given file path.
+// Returns nil if no plugin matches.
+// Last-registered plugin for an extension wins (user plugins override defaults).
+func (r *Registry) PluginForFile(filePath string) core.Plugin {
+	ext := strings.ToLower(filepath.Ext(filePath))
+
+	// Iterate in reverse registration order — last registered wins.
+	var match core.Plugin
+	for _, id := range r.loadOrder {
+		p, ok := r.plugins[id]
+		if !ok {
+			continue
+		}
+		h := p.Language()
+		if h == nil {
+			continue
+		}
+		// Check extensions first (fast path).
+		for _, handledExt := range h.Extensions() {
+			if strings.ToLower(handledExt) == ext {
+				match = p
+				break
+			}
+		}
+		// Check custom match if declared (slow path).
+		if h.HasCustomMatch() && h.Match(filePath) {
+			match = p
+		}
+	}
+
+	return match
 }
 
 // ConceptSeeds aggregates all concept seeds contributed by loaded plugins.
 func (r *Registry) ConceptSeeds() []core.ConceptSeed {
 	var seeds []core.ConceptSeed
-	for _, p := range r.plugins {
+	for _, p := range r.Loaded() {
 		if lang := p.Language(); lang != nil {
 			seeds = append(seeds, lang.Concepts()...)
 		}
@@ -80,7 +140,8 @@ func (r *Registry) UnloadAll() {
 	for _, p := range r.plugins {
 		_ = p.Close()
 	}
-	r.plugins = nil
+	r.plugins = make(map[core.PluginID]core.Plugin)
+	r.loadOrder = nil
 	if r.rt != nil {
 		_ = r.rt.Close()
 		r.rt = nil

@@ -1,0 +1,10 @@
+# Default plugin build artifacts
+
+These .wasm files are built from the plugin SDK repo as part of the release pipeline.
+They are not checked in — they are embedded into the engine binary at build time.
+
+To build locally:
+  cd /path/to/ce-plugin-sdk
+  pnpm build:plugins
+
+This directory exists so that `//go:embed defaults` compiles in development builds.

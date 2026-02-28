@@ -1,6 +1,5 @@
 // Package crossproject implements the crossproject tool.
-// It queries the org graph to find cross-project relationships for
-// the anchored symbols by matching on canonical IDs.
+// It searches the org graph to find cross-project relationships for anchored symbols.
 package crossproject
 
 import (
@@ -9,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory/context-engine/internal/tools/shared"
 )
 
 // Tool implements the crossproject built-in tool.
@@ -26,114 +26,69 @@ func (t *Tool) Description() string { return "Finds cross-project relationships 
 
 // ActivationHint satisfies the strategizer.ToolWithHint interface.
 func (t *Tool) ActivationHint() string {
-	return "query explicitly asks about relationships between multiple projects or repos"
+	return "predicate.crossproject=true, or 2+ concept anchors (suggests cross-cutting concern)"
 }
 
-// Activate returns true when the IR has the crossproject predicate set.
+// Activate returns true when the IR has the crossproject predicate OR has 2+ concept anchors.
 func (t *Tool) Activate(ir core.IR) bool {
-	return ir.Predicates["crossproject"] == "true"
+	if ir.Predicates["crossproject"] == "true" {
+		return true
+	}
+	conceptCount := 0
+	for _, anchor := range ir.Anchors {
+		if anchor.Type == "concept" {
+			conceptCount++
+		}
+	}
+	return conceptCount >= 2
 }
 
-// Execute queries the org graph for nodes sharing canonical IDs with the anchors,
-// then follows cross-project edges from those nodes.
+// Execute searches the org graph for nodes sharing canonical IDs with the anchors.
 func (t *Tool) Execute(ctx context.Context, req core.ToolRequest) (core.ToolResult, error) {
-	if len(req.Anchors) == 0 {
-		return core.ToolResult{
-			Emissions: []core.Emission{{
-				RunID:     req.RunID,
-				TurnID:    req.TurnID,
-				LoopIndex: req.LoopIndex,
-				Source:    "tool:crossproject",
-				Channel:   core.ChanAction,
-				Content:   "crossproject: no anchors to search",
-			}},
-		}, nil
-	}
-
-	kLimit := req.IR.KLimit
-	if kLimit <= 0 {
-		kLimit = core.DefaultKLimit
-	}
-
-	type crossEntry struct {
-		localLabel   string
-		orgLabel     string
-		orgProjectID string
-		edgeType     string
-	}
-	var crosses []crossEntry
+	var emissions []core.Emission
 
 	for _, anchor := range req.Anchors {
 		if anchor.Node == nil {
 			continue
 		}
-		if len(crosses) >= kLimit {
-			break
+
+		matches, err := t.sub.FindInOrgGraph(ctx, anchor.Node.CanonicalID, anchor.Node.Type)
+		if err != nil {
+			return core.ToolResult{}, fmt.Errorf("org graph search for %s: %w", anchor.Node.CanonicalID, err)
 		}
 
-		// Search org graph for nodes with the same canonical_id.
-		orgNodes, err := t.sub.Query(ctx, core.SubstrateQuery{
-			ProjectID: "org",
-			Properties: map[string]string{
-				"canonical_id": anchor.Node.CanonicalID,
-			},
-			Limit: 20,
-		})
-		if err != nil {
+		// Filter out matches from the same project.
+		var filtered []core.OrgMatch
+		for _, m := range matches {
+			if m.ProjectID != req.ProjectID {
+				filtered = append(filtered, m)
+			}
+		}
+		if len(filtered) == 0 {
 			continue
 		}
 
-		for _, orgNode := range orgNodes {
-			if orgNode.ProjectID == req.ProjectID {
-				continue // skip same project
-			}
-			// Get cross-project edges from org node.
-			orgEdges, err := t.sub.Edges(ctx, orgNode.ID, "")
-			if err == nil {
-				for _, e := range orgEdges {
-					crosses = append(crosses, crossEntry{
-						localLabel:   anchor.Node.Label,
-						orgLabel:     orgNode.Label,
-						orgProjectID: string(orgNode.ProjectID),
-						edgeType:     e.Type,
-					})
-				}
-			}
-			// Even without edges, surface the matching org node.
-			if len(orgEdges) == 0 {
-				crosses = append(crosses, crossEntry{
-					localLabel:   anchor.Node.Label,
-					orgLabel:     orgNode.Label,
-					orgProjectID: string(orgNode.ProjectID),
-					edgeType:     "shared_canonical_id",
-				})
-			}
-			if len(crosses) >= kLimit {
-				break
-			}
-		}
+		display, _ := shared.Truncate(filtered, 20)
+		content := shared.TruncateContent(formatCrossProject(anchor.Node, display), 1500)
+		emissions = append(emissions, shared.Thinking(req, "crossproject", content, map[string]any{
+			"tool":        "crossproject",
+			"symbol":      anchor.Node.CanonicalID,
+			"org_matches": len(filtered),
+		}))
 	}
 
-	// Format output.
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Cross-project relationships for %d anchor(s) — %d match(es) found:\n\n",
-		len(req.Anchors), len(crosses)))
-	for _, c := range crosses {
-		sb.WriteString(fmt.Sprintf("  [local] %s ↔ [%s] %s (via %s)\n",
-			c.localLabel, c.orgProjectID, c.orgLabel, c.edgeType))
-	}
-	if len(crosses) == 0 {
-		sb.WriteString("  (no cross-project relationships found in org graph)\n")
+	return core.ToolResult{Emissions: emissions}, nil
+}
+
+func formatCrossProject(node *core.Node, matches []core.OrgMatch) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("## Cross-project: %s\n\n", node.Label))
+	b.WriteString(fmt.Sprintf("Found in %d other project(s):\n\n", len(matches)))
+
+	for _, m := range matches {
+		b.WriteString(fmt.Sprintf("**%s** (`%s`)\n", m.ProjectName, m.Node.CanonicalID))
+		b.WriteString(fmt.Sprintf("  type: %s | similarity: %.0f%%\n\n", m.Node.Type, m.Similarity*100))
 	}
 
-	return core.ToolResult{
-		Emissions: []core.Emission{{
-			RunID:     req.RunID,
-			TurnID:    req.TurnID,
-			LoopIndex: req.LoopIndex,
-			Source:    "tool:crossproject",
-			Channel:   core.ChanAction,
-			Content:   sb.String(),
-		}},
-	}, nil
+	return b.String()
 }

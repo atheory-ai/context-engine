@@ -1,6 +1,6 @@
 // Package walker discovers files to index.
-// It walks a root directory respecting include/exclude glob patterns,
-// maximum file size, and common directories to skip (.git, vendor, etc.).
+// It walks a root directory respecting include/exclude patterns,
+// .gitignore rules, maximum file size, and common directories to skip.
 package walker
 
 import (
@@ -8,182 +8,103 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
-
-	"github.com/atheory/context-engine/internal/config"
 )
 
-// File is a file discovered by the walker.
-type File struct {
-	Path    string // absolute path
-	RelPath string // path relative to root
-	Size    int64
+// WalkerConfig configures a Walker.
+type WalkerConfig struct {
+	// ExcludePatterns are glob patterns (from ce.yaml) to exclude.
+	ExcludePatterns []string
+	// MaxFileSizeBytes is the maximum file size to index (0 = use default 10MB).
+	MaxFileSizeBytes int
 }
 
-// Walk walks rootDir and returns all files that pass the filters.
-// Returns early if ctx is cancelled.
-func Walk(ctx context.Context, rootDir string, cfg config.IndexerConfig) ([]File, error) {
+// WalkResult describes a file discovered by the walker.
+type WalkResult struct {
+	Path    string      // absolute path
+	RelPath string      // path relative to project root
+	Info    fs.FileInfo // file metadata
+}
+
+// Walker walks a directory tree respecting ignore patterns.
+type Walker struct {
+	root    string
+	ignore  *IgnoreMatcher
+	maxSize int64
+}
+
+// New creates a Walker for the given root directory.
+func New(root string, cfg WalkerConfig) (*Walker, error) {
 	maxSize := int64(cfg.MaxFileSizeBytes)
 	if maxSize <= 0 {
 		maxSize = 10 * 1024 * 1024 // 10 MB default
 	}
 
-	var files []File
-	err := filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
+	ignore, err := newIgnoreMatcher(root, cfg.ExcludePatterns)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Walker{
+		root:    root,
+		ignore:  ignore,
+		maxSize: maxSize,
+	}, nil
+}
+
+// Walk sends all non-ignored files to the results channel.
+// The results channel is closed when Walk returns (whether by completion or error).
+// Walk should be called in a goroutine; the caller reads from results concurrently.
+func (w *Walker) Walk(ctx context.Context, results chan<- WalkResult) error {
+	defer close(results)
+
+	return filepath.WalkDir(w.root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil // skip unreadable entries
 		}
-		if ctx.Err() != nil {
+
+		select {
+		case <-ctx.Done():
 			return ctx.Err()
+		default:
 		}
 
-		relPath, _ := filepath.Rel(rootDir, path)
+		relPath, _ := filepath.Rel(w.root, path)
 
-		// Skip hidden and common generated/vendor directories.
+		// Skip directories — pruning or continuing.
 		if d.IsDir() {
-			name := d.Name()
-			if name == ".git" || name == ".hg" || name == ".svn" ||
-				name == "vendor" || name == "node_modules" ||
-				name == ".cache" || name == "__pycache__" {
-				return filepath.SkipDir
-			}
-			if shouldExclude(relPath, cfg.Exclude) {
+			if w.ignore.MatchDir(relPath) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
-		// Skip non-regular files (symlinks, devices, etc.).
+		// Skip non-regular files.
 		if !d.Type().IsRegular() {
 			return nil
 		}
 
-		// Apply exclude patterns.
-		if shouldExclude(relPath, cfg.Exclude) {
+		// Skip ignored files.
+		if w.ignore.MatchFile(relPath) {
 			return nil
 		}
 
-		// Apply include filter — if non-empty, file must match at least one pattern.
-		if len(cfg.Include) > 0 && !matchesAny(relPath, cfg.Include) {
-			return nil
-		}
-
-		// Skip test files if configured.
-		if !cfg.IncludeTestFiles && isTestFile(relPath) {
-			return nil
-		}
-
-		// Check file size.
+		// Skip files over the size limit.
 		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		if info.Size() > maxSize {
+		if err != nil || info.Size() > w.maxSize {
 			return nil
 		}
 
-		files = append(files, File{
+		results <- WalkResult{
 			Path:    path,
 			RelPath: relPath,
-			Size:    info.Size(),
-		})
+			Info:    info,
+		}
+
 		return nil
 	})
-
-	if err != nil && ctx.Err() != nil {
-		return files, ctx.Err()
-	}
-	return files, err
 }
 
-// shouldExclude reports whether relPath matches any exclude pattern.
-func shouldExclude(relPath string, patterns []string) bool {
-	for _, pattern := range patterns {
-		if matchPattern(pattern, relPath) {
-			return true
-		}
-	}
-	return false
-}
-
-// matchesAny reports whether relPath matches at least one of the given patterns.
-func matchesAny(relPath string, patterns []string) bool {
-	for _, pattern := range patterns {
-		if matchPattern(pattern, relPath) {
-			return true
-		}
-	}
-	return false
-}
-
-// matchPattern reports whether relPath matches a glob pattern.
-// Supports filepath.Match patterns and simple ** path globs.
-func matchPattern(pattern, relPath string) bool {
-	// Normalize to forward slashes.
-	relSlash := filepath.ToSlash(relPath)
-	patSlash := filepath.ToSlash(pattern)
-
-	// Direct match against full relative path.
-	if m, _ := filepath.Match(patSlash, relSlash); m {
-		return true
-	}
-
-	// Match against base name only (e.g., "*.go" matches "src/main.go").
-	base := filepath.Base(relPath)
-	if m, _ := filepath.Match(patSlash, base); m {
-		return true
-	}
-
-	if strings.Contains(patSlash, "**") {
-		// Pattern like "vendor/**" — matches anything under vendor/.
-		if strings.HasSuffix(patSlash, "/**") {
-			prefix := strings.TrimSuffix(patSlash, "/**")
-			if relSlash == prefix || strings.HasPrefix(relSlash, prefix+"/") {
-				return true
-			}
-		}
-		// Pattern like "**/*.go" — matches any file with the given suffix/name.
-		if strings.HasPrefix(patSlash, "**/") {
-			suffix := strings.TrimPrefix(patSlash, "**/")
-			if m, _ := filepath.Match(suffix, base); m {
-				return true
-			}
-		}
-	}
-
-	// Check if any single path segment matches the pattern (e.g., pattern "vendor"
-	// applied to "a/vendor/b.go" for directory exclusion).
-	parts := strings.Split(relSlash, "/")
-	for _, part := range parts {
-		if m, _ := filepath.Match(patSlash, part); m {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isTestFile reports whether relPath looks like a test file.
-// Covers Go (*_test.go), JS/TS (*.test.*, *.spec.*), and test directories.
-func isTestFile(relPath string) bool {
-	base := filepath.Base(relPath)
-	if strings.HasSuffix(base, "_test.go") {
-		return true
-	}
-	if strings.Contains(base, ".test.") || strings.Contains(base, ".spec.") {
-		return true
-	}
-	// Common test directory names.
-	for _, part := range strings.Split(filepath.ToSlash(relPath), "/") {
-		if part == "test" || part == "tests" || part == "__tests__" || part == "spec" {
-			return true
-		}
-	}
-	return false
-}
-
-// StatDir returns the size of a directory entry — reads the FileInfo if needed.
-// Used by tests.
+// StatDir returns the size reported by os.Stat for a path. Used by tests.
 func StatDir(path string) (int64, error) {
 	info, err := os.Stat(path)
 	if err != nil {

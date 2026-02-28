@@ -14,7 +14,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 )
 
-//go:embed meta/* audit/* execution/* graph/*
+//go:embed meta/* audit/* execution/* graph/* org/*
 var migrationFiles embed.FS
 
 // RunMeta applies pending migrations to meta.db.
@@ -35,6 +35,12 @@ func RunExecution(db *sql.DB) error {
 // RunGraph applies pending migrations to a graph database (org.db or <hash>.db).
 func RunGraph(db *sql.DB) error {
 	return runMigrations(db, "graph")
+}
+
+// RunOrg applies org-specific pending migrations to org.db.
+// Must be called after RunGraph(db) since it adds tables to the same database.
+func RunOrg(db *sql.DB) error {
+	return runMigrations(db, "org")
 }
 
 func runMigrations(db *sql.DB, name string) error {

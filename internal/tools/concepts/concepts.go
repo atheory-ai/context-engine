@@ -1,6 +1,5 @@
 // Package concepts implements the concepts tool.
-// It expands domain concepts laterally through the substrate,
-// finding nodes related to the anchored concept terms.
+// It expands concept anchors into related nodes and surfaces domain vocabulary.
 package concepts
 
 import (
@@ -9,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory/context-engine/internal/tools/shared"
 )
 
 // Tool implements the concepts built-in tool.
@@ -26,121 +26,78 @@ func (t *Tool) Description() string { return "Expands domain concept vocabulary 
 
 // ActivationHint satisfies the strategizer.ToolWithHint interface.
 func (t *Tool) ActivationHint() string {
-	return "query involves understanding a domain concept rather than a specific symbol"
+	return "predicate.concepts=true, or any concept-type anchors in IR"
 }
 
-// Activate returns true when the IR has the concepts predicate set.
+// Activate returns true when the IR has the concepts predicate OR has concept-type anchors.
 func (t *Tool) Activate(ir core.IR) bool {
-	return ir.Predicates["concepts"] == "true"
+	if ir.Predicates["concepts"] == "true" {
+		return true
+	}
+	for _, anchor := range ir.Anchors {
+		if anchor.Type == "concept" {
+			return true
+		}
+	}
+	return false
 }
 
 // Execute expands concept anchors through the substrate.
-// For concept-type anchors: follows synonym_of and co_activates edges.
-// For symbol/namespace anchors: finds concept nodes referencing them.
 func (t *Tool) Execute(ctx context.Context, req core.ToolRequest) (core.ToolResult, error) {
-	if len(req.Anchors) == 0 {
-		return core.ToolResult{
-			Emissions: []core.Emission{{
-				RunID:     req.RunID,
-				TurnID:    req.TurnID,
-				LoopIndex: req.LoopIndex,
-				Source:    "tool:concepts",
-				Channel:   core.ChanAction,
-				Content:   "concepts: no anchors to expand",
-			}},
-		}, nil
-	}
-
-	kLimit := req.IR.KLimit
-	if kLimit <= 0 {
-		kLimit = core.DefaultKLimit
-	}
-
-	type conceptEntry struct {
-		anchorLabel   string
-		relatedLabel  string
-		relationType  string
-	}
-	var entries []conceptEntry
+	var emissions []core.Emission
 
 	for _, anchor := range req.Anchors {
-		if anchor.Node == nil {
+		if anchor.Node == nil || anchor.Node.Type != core.NodeTypeConcept {
 			continue
 		}
-		if len(entries) >= kLimit {
-			break
+
+		implementors, err := t.sub.GetConceptImplementors(ctx, req.ProjectID, anchor.Node.ID)
+		if err != nil {
+			return core.ToolResult{}, fmt.Errorf("get concept implementors: %w", err)
 		}
 
-		// Follow synonym_of and co_activates edges from concept nodes.
-		for _, edgeType := range []string{core.EdgeTypeSynonymOf, core.EdgeTypeCoActivates, core.EdgeTypeAnnotates} {
-			edges, err := t.sub.Edges(ctx, anchor.Node.ID, edgeType)
-			if err != nil {
-				continue
-			}
-			for _, e := range edges {
-				if len(entries) >= kLimit {
-					break
-				}
-				relNode, err := t.sub.Node(ctx, e.TargetID)
-				if err != nil || relNode == nil {
-					continue
-				}
-				entries = append(entries, conceptEntry{
-					anchorLabel:  anchor.Node.Label,
-					relatedLabel: relNode.Label,
-					relationType: edgeType,
-				})
-			}
+		seed, err := t.sub.GetConceptSeed(ctx, req.ProjectID, anchor.Node.CanonicalID)
+		if err != nil {
+			return core.ToolResult{}, fmt.Errorf("get concept seed: %w", err)
 		}
 
-		// Also search the project for concept nodes related to this anchor's label.
-		if anchor.Ref.Type == "concept" || anchor.Node.Type == core.NodeTypeConcept {
-			relatedNodes, err := t.sub.Query(ctx, core.SubstrateQuery{
-				ProjectID: req.ProjectID,
-				NodeTypes: []string{core.NodeTypeConcept},
-				Limit:     20,
-			})
-			if err == nil {
-				for _, n := range relatedNodes {
-					if n.ID == anchor.Node.ID {
-						continue
-					}
-					if len(entries) >= kLimit {
-						break
-					}
-					// Check if related via label similarity (contains anchor term).
-					if strings.Contains(strings.ToLower(n.Label), strings.ToLower(anchor.Node.Label)) ||
-						strings.Contains(strings.ToLower(anchor.Node.Label), strings.ToLower(n.Label)) {
-						entries = append(entries, conceptEntry{
-							anchorLabel:  anchor.Node.Label,
-							relatedLabel: n.Label,
-							relationType: "related_concept",
-						})
-					}
-				}
-			}
+		content := shared.TruncateContent(formatConcepts(anchor.Node, seed, implementors), 1500)
+		emissions = append(emissions, shared.Thinking(req, "concepts", content, map[string]any{
+			"tool":         "concepts",
+			"concept":      anchor.Node.CanonicalID,
+			"implementors": len(implementors),
+		}))
+	}
+
+	return core.ToolResult{Emissions: emissions}, nil
+}
+
+func formatConcepts(concept *core.Node, seed *core.ConceptSeed, implementors []core.NodeWithActivation) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("## Concept: %s\n\n", concept.Label))
+
+	if seed != nil {
+		if seed.Definition != "" {
+			b.WriteString(fmt.Sprintf("**Definition:** %s\n\n", seed.Definition))
+		}
+		if len(seed.Related) > 0 {
+			b.WriteString(fmt.Sprintf("**Related:** %s\n\n", strings.Join(seed.Related, ", ")))
+		}
+		if len(seed.Synonyms) > 0 {
+			b.WriteString(fmt.Sprintf("**Synonyms:** %s\n\n", strings.Join(seed.Synonyms, ", ")))
 		}
 	}
 
-	// Format output.
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Concept expansion for %d anchor(s) — %d related concept(s) found:\n\n",
-		len(req.Anchors), len(entries)))
-	for _, c := range entries {
-		sb.WriteString(fmt.Sprintf("  %s → %s (%s)\n", c.anchorLabel, c.relatedLabel, c.relationType))
-	}
-	if len(entries) == 0 {
-		sb.WriteString("  (no related concepts found in substrate)\n")
+	if len(implementors) > 0 {
+		display, note := shared.Truncate(implementors, 15)
+		b.WriteString(fmt.Sprintf("**Implemented by** (%d nodes):\n", len(implementors)))
+		if note != "" {
+			b.WriteString("  " + note)
+		}
+		for _, impl := range display {
+			b.WriteString(fmt.Sprintf("  - `%s` (%s)\n", impl.CanonicalID, impl.Type))
+		}
 	}
 
-	return core.ToolResult{
-		Emissions: []core.Emission{{
-			RunID:     req.RunID,
-			TurnID:    req.TurnID,
-			LoopIndex: req.LoopIndex,
-			Source:    "tool:concepts",
-			Channel:   core.ChanAction,
-			Content:   sb.String(),
-		}},
-	}, nil
+	return b.String()
 }

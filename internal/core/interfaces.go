@@ -94,11 +94,24 @@ type Plugin interface {
 
 // LanguageHandler teaches the indexer about a language or framework.
 type LanguageHandler interface {
+	// Extensions returns the file extensions this handler processes.
+	// Example: []string{".go"} or []string{".ts", ".tsx", ".js", ".jsx"}
+	Extensions() []string
+
+	// GrammarPath returns the path to a tree-sitter grammar WASM file.
+	// Returns empty string if using the built-in grammar or no grammar is needed.
+	GrammarPath() string
+
 	// Match returns true if this handler should process the given file path.
+	// Default: check Extensions(). Override for custom matching logic.
 	Match(filePath string) bool
 
+	// HasCustomMatch returns true if Match() has been overridden beyond extension matching.
+	HasCustomMatch() bool
+
 	// Extract parses a file and returns the nodes and edges to add to the graph.
-	Extract(filePath string, content []byte) (ExtractionResult, error)
+	// treeJSON is the serialized SyntaxTree (JSON), or nil if no grammar is available.
+	Extract(filePath string, content []byte, treeJSON []byte) (ExtractionResult, error)
 
 	// Concepts returns the concept seeds this language contributes.
 	Concepts() []ConceptSeed
@@ -176,18 +189,57 @@ type ToolResult struct {
 // Substrate
 // ============================================================
 
-// SubstrateReader is the read-only substrate view tools receive.
-// Tools cannot write to the substrate directly — changes go through
-// the Reviewer's approval, then the write buffer.
+// SubstrateReader is the read-only substrate view used by tools and the activation layer.
+// All methods are scoped to a specific project.
 type SubstrateReader interface {
-	Node(ctx context.Context, id NodeID) (*Node, error)
-	Edges(ctx context.Context, nodeID NodeID, edgeType string) ([]Edge, error)
-	EdgesTo(ctx context.Context, nodeID NodeID, edgeType string) ([]Edge, error)
-	TopK(ctx context.Context, projectID ProjectID, k int) ([]Anchor, error)
-	Query(ctx context.Context, q SubstrateQuery) ([]Node, error)
+	// Node retrieval
+	GetNode(ctx context.Context, projectID ProjectID, nodeID NodeID) (*Node, error)
+	GetNodeByCanonicalID(ctx context.Context, projectID ProjectID, canonicalID string) (*Node, error)
+	GetNodesByNamespacePrefix(ctx context.Context, projectID ProjectID, prefix string, limit int) ([]Node, error)
+	GetConceptNodes(ctx context.Context, projectID ProjectID, term string) ([]Node, error)
+	GetNodesForFile(ctx context.Context, projectID ProjectID, filePath string) ([]Node, error)
+	GetNodesBySuffix(ctx context.Context, projectID ProjectID, suffix string, limit int) ([]Node, error)
+
+	// Top-K activation query (hot path — must use index)
+	GetTopKActivated(ctx context.Context, projectID ProjectID, k int) ([]NodeWithActivation, error)
+
+	// Edge retrieval
+	GetEdgesFrom(ctx context.Context, projectID ProjectID, nodeID NodeID) ([]EdgeWithWeight, error)
+	GetEdgesTo(ctx context.Context, projectID ProjectID, nodeID NodeID) ([]EdgeWithWeight, error)
+	GetEdgesBetween(ctx context.Context, projectID ProjectID, sourceID, targetID NodeID) ([]EdgeWithWeight, error)
+
+	// Concept seeds
+	GetConceptSeeds(ctx context.Context, projectID ProjectID) ([]ConceptSeed, error)
+	GetOrgConceptSeeds(ctx context.Context) ([]ConceptSeed, error)
+
+	// ── Tool-specific queries ─────────────────────────────────────────────
+
+	// For callgraph tool — multi-hop BFS via recursive CTE
+	GetCallers(ctx context.Context, projectID ProjectID, nodeID NodeID, maxDepth int) ([]NodeWithActivation, error)
+	GetCallees(ctx context.Context, projectID ProjectID, nodeID NodeID, maxDepth int) ([]NodeWithActivation, error)
+
+	// For references tool — all incoming references with edge metadata
+	GetReferences(ctx context.Context, projectID ProjectID, nodeID NodeID) ([]ReferenceResult, error)
+
+	// For crossproject tool — searches the org graph across all projects
+	FindInOrgGraph(ctx context.Context, canonicalID string, nodeType string) ([]OrgMatch, error)
+
+	// For concepts tool
+	GetConceptImplementors(ctx context.Context, projectID ProjectID, conceptNodeID NodeID) ([]NodeWithActivation, error)
+	GetConceptSeed(ctx context.Context, projectID ProjectID, term string) (*ConceptSeed, error)
+
+	// For filecontext tool
+	GetFileNode(ctx context.Context, projectID ProjectID, filePath string) (*Node, error)
+	GetFileImports(ctx context.Context, projectID ProjectID, fileNodeID NodeID) ([]Node, error)
+
+	// For summary tool
+	GetNamespaceMembers(ctx context.Context, projectID ProjectID, namespaceNodeID NodeID) ([]Node, error)
+	GetNamespaceDependencies(ctx context.Context, projectID ProjectID, namespaceNodeID NodeID) ([]Node, error)
+	GetNamespaceDependents(ctx context.Context, projectID ProjectID, namespaceNodeID NodeID) ([]Node, error)
 }
 
 // SubstrateQuery is a flexible read query against the substrate.
+// Kept for internal use in substrate/reader.go.
 type SubstrateQuery struct {
 	ProjectID     ProjectID
 	NodeTypes     []string
@@ -201,11 +253,27 @@ type SubstrateQuery struct {
 // All writes go through the write buffer — this interface wraps
 // the buffer's Send method with typed operations.
 type SubstrateWriter interface {
+	// Node and edge upserts (go through write buffer)
 	UpsertNode(ctx context.Context, node Node) error
 	UpsertEdge(ctx context.Context, edge Edge) error
+
+	// Activation updates (high frequency — write buffer deduplicates)
 	UpdateActivation(ctx context.Context, nodeID NodeID, activation float64) error
-	UpdateWeight(ctx context.Context, edgeID EdgeID, delta WeightDelta) error
-	RecordEnrichment(ctx context.Context, e Enrichment) error
+
+	// Edge weight updates (from Hebbian learning)
+	UpdateEdgeWeight(ctx context.Context, update WeightUpdate) error
+
+	// Decay all edges for a project (single SQL UPDATE — bypasses write buffer)
+	DecayEdgeWeights(ctx context.Context, projectID ProjectID, decayRate float64) error
+
+	// Enrichment proposals from Reviewer (Reviewer-approved substrate changes)
+	ApplyEnrichment(ctx context.Context, enrichment Enrichment) error
+
+	// ResetActivation zeroes all activation values for a project.
+	ResetActivation(ctx context.Context, projectID ProjectID) error
+
+	// Flush blocks until write buffer is empty.
+	Flush(ctx context.Context) error
 }
 
 // SubstrateAccessor combines read and write substrate access.
@@ -214,13 +282,6 @@ type SubstrateWriter interface {
 type SubstrateAccessor interface {
 	SubstrateReader
 	SubstrateWriter
-}
-
-// WeightDelta is the change to apply to an edge's weight record.
-type WeightDelta struct {
-	NewWeight         float64
-	NewSourceClass    SourceClass
-	CoActivationDelta int
 }
 
 // Enrichment is a substrate change made by the Reviewer during cognitive loops.

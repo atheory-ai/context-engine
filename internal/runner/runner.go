@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/atheory/context-engine/internal/config"
@@ -18,6 +20,7 @@ import (
 	"github.com/atheory/context-engine/internal/indexer"
 	"github.com/atheory/context-engine/internal/llm"
 	"github.com/atheory/context-engine/internal/llm/anthropic"
+	"github.com/atheory/context-engine/internal/orggraph"
 	"github.com/atheory/context-engine/internal/plugins"
 	"github.com/atheory/context-engine/internal/storage/db"
 	"github.com/atheory/context-engine/internal/storage/migrations"
@@ -35,6 +38,7 @@ type Engine struct {
 	substrate  *substrate.ReadWriter
 	plugins    *plugins.Registry
 	llmRouter  *llm.Router
+	orgGraph   *orggraph.OrgGraph
 }
 
 // New constructs a fully wired Engine from config.
@@ -95,6 +99,10 @@ func New(ctx context.Context, cfg *config.Config) (*Engine, error) {
 	if err := migrations.RunGraph(orgDB); err != nil {
 		return nil, fmt.Errorf("migrate org.db: %w", err)
 	}
+	if err := migrations.RunOrg(orgDB); err != nil {
+		return nil, fmt.Errorf("migrate org.db (org): %w", err)
+	}
+	e.orgGraph = orggraph.OpenFromDB(orgDB)
 
 	// ── Start write buffer goroutine ─────────────────────────────────────────
 	e.buffer = writebuffer.New(ctx, e.dbRegistry,
@@ -105,13 +113,38 @@ func New(ctx context.Context, cfg *config.Config) (*Engine, error) {
 	// ── Build substrate read/write layer ─────────────────────────────────────
 	e.substrate = substrate.NewReadWriter(e.dbRegistry, e.buffer)
 
+	// ── Extract embedded default plugins ─────────────────────────────────────
+	if err := indexer.ExtractDefaults(cfg.DataDir); err != nil {
+		return nil, fmt.Errorf("extract default plugins: %w", err)
+	}
+
 	// ── Load plugins ─────────────────────────────────────────────────────────
 	e.plugins = plugins.NewRegistry()
 	if err := e.plugins.Initialize(cfg.DataDir, e.channels); err != nil {
 		return nil, fmt.Errorf("initialize plugin runtime: %w", err)
 	}
-	if err := e.plugins.LoadAll(ctx, toPluginEntries(cfg.Plugins)); err != nil {
-		return nil, fmt.Errorf("load plugins: %w", err)
+
+	// Load default plugins first (lowest priority — user plugins can override).
+	defaultsDir := filepath.Join(cfg.DataDir, "plugins", "defaults")
+	for _, name := range []string{"go-language.wasm", "typescript.wasm", "python.wasm"} {
+		path := filepath.Join(defaultsDir, name)
+		if _, err := os.Stat(path); err != nil {
+			continue // not yet built (development) — skip
+		}
+		if err := e.plugins.Load(ctx, path, nil); err != nil {
+			e.channels.Emit(core.Emission{
+				Source:  "runner",
+				Channel: core.ChanWarning,
+				Content: fmt.Sprintf("default plugin %s: %v", name, err),
+			})
+		}
+	}
+
+	// Load user-installed plugins (higher priority — override defaults).
+	for _, entry := range cfg.Plugins {
+		if err := e.plugins.Load(ctx, entry.Path, entry.Config); err != nil {
+			return nil, fmt.Errorf("load plugin %s: %w", entry.Path, err)
+		}
 	}
 
 	// ── Build LLM router ─────────────────────────────────────────────────────
@@ -151,13 +184,22 @@ func buildLLMRouter(cfg *config.Config) *llm.Router {
 	})
 }
 
-// toPluginEntries converts config plugin entries to plugins.PluginEntry.
-func toPluginEntries(cfgEntries []config.PluginEntry) []plugins.PluginEntry {
-	entries := make([]plugins.PluginEntry, len(cfgEntries))
-	for i, e := range cfgEntries {
-		entries[i] = plugins.PluginEntry{Path: e.Path, Config: e.Config}
-	}
-	return entries
+// QueryOptions carries the query and optional overrides for a query run.
+type QueryOptions struct {
+	Query    string
+	MaxLoops int // 0 = use project/config default
+}
+
+// QueryResult is the outcome of a synchronous query run.
+type QueryResult struct {
+	RunID      string
+	Answer     string
+	TokensIn   int
+	TokensOut  int
+	CostUSD    float64
+	LoopsUsed  int
+	DurationMS int64
+	Partial    bool
 }
 
 // Query executes the cognitive loop for a user query.
@@ -166,6 +208,187 @@ func toPluginEntries(cfgEntries []config.PluginEntry) []plugins.PluginEntry {
 func (e *Engine) Query(ctx context.Context, query string) error {
 	dag := e.buildDAG()
 	return dag.Run(ctx, query)
+}
+
+// NewChannels creates a fresh AppChannels set for a dedicated query run.
+// Used by WebSocket handler and QuerySync so each connection gets its own channels.
+func (e *Engine) NewChannels() *core.AppChannels {
+	ch := core.NewAppChannels()
+	return &ch
+}
+
+// CloseChannels is a no-op for now — channels are garbage collected.
+// Provided for symmetry with NewChannels and future cleanup hooks.
+func (e *Engine) CloseChannels(_ *core.AppChannels) {}
+
+// QueryWithChannels runs a query emitting to caller-supplied channels.
+// The WebSocket handler calls this so it can stream to its own client.
+func (e *Engine) QueryWithChannels(
+	ctx context.Context,
+	query string,
+	ch *core.AppChannels,
+	opts QueryOptions,
+) error {
+	dag := e.buildDAG()
+	_ = opts // MaxLoops applied by resolveMaxLoops via IR; future: inject into runContext
+	return dag.RunWithChannels(ctx, query, ch)
+}
+
+// QuerySync runs a query synchronously and returns the complete result.
+// Used by MCP tools and REST API POST /api/v1/query.
+func (e *Engine) QuerySync(ctx context.Context, opts QueryOptions) (*QueryResult, error) {
+	ch := e.NewChannels()
+	defer e.CloseChannels(ch)
+
+	start := time.Now()
+
+	// Accumulate answer text from the message channel in a goroutine.
+	var (
+		answer string
+		mu     sync.Mutex
+		wg     sync.WaitGroup
+	)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case msg, ok := <-ch.Message:
+				if !ok {
+					return
+				}
+				mu.Lock()
+				answer = msg.Content // last message wins (synthesizer emits once)
+				mu.Unlock()
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	err := e.QueryWithChannels(ctx, opts.Query, ch, opts)
+
+	// Signal the drainer to stop, then wait.
+	close(ch.Message)
+	wg.Wait()
+
+	if err != nil {
+		return nil, err
+	}
+
+	mu.Lock()
+	ans := answer
+	mu.Unlock()
+
+	return &QueryResult{
+		Answer:     ans,
+		DurationMS: time.Since(start).Milliseconds(),
+	}, nil
+}
+
+// ProjectStatusResult holds a summary of the active project's index state.
+type ProjectStatusResult struct {
+	GitURL       string
+	IndexState   string
+	NodeCount    int
+	EdgeCount    int
+	FilesIndexed int
+	LastIndexed  time.Time
+}
+
+// ProjectStatus returns the index status of the active project.
+func (e *Engine) ProjectStatus(ctx context.Context) (*ProjectStatusResult, error) {
+	project, err := queries.GetProject(ctx, e.dbRegistry.Meta(), "local")
+	if err != nil {
+		return nil, fmt.Errorf("project status: %w", err)
+	}
+	if project == nil {
+		return nil, fmt.Errorf("no active project — run 'ce project init' first")
+	}
+
+	result := &ProjectStatusResult{
+		GitURL:     project.GitURL,
+		IndexState: project.Status,
+	}
+
+	// Best-effort: count nodes and edges from the project graph.
+	if graphDB, err := e.dbRegistry.GraphDB("local"); err == nil {
+		var n int
+		_ = graphDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM nodes WHERE project_id = 'local'`).Scan(&n)
+		result.NodeCount = n
+		var eg int
+		_ = graphDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM edges WHERE project_id = 'local'`).Scan(&eg)
+		result.EdgeCount = eg
+	}
+
+	if project.LastIndexedAt.Valid {
+		result.LastIndexed = time.UnixMilli(project.LastIndexedAt.Int64)
+	}
+
+	return result, nil
+}
+
+// SearchOptions carries parameters for a lightweight substrate search.
+type SearchOptions struct {
+	Query string
+	Type  string // optional node type filter
+	Limit int
+}
+
+// SearchNode is a minimal node result for the search response.
+type SearchNode struct {
+	ID          string
+	Type        string
+	Label       string
+	CanonicalID string
+	SourceClass string
+}
+
+// SearchSubstrate performs a lightweight node search without running the cognitive loop.
+// Matches against node labels and canonical IDs using substring matching.
+func (e *Engine) SearchSubstrate(ctx context.Context, opts SearchOptions) ([]SearchNode, error) {
+	graphDB, err := e.dbRegistry.GraphDB("local")
+	if err != nil {
+		return nil, fmt.Errorf("search substrate: graph not available — run 'ce index' first")
+	}
+
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+
+	var args []any
+	var conds []string
+
+	conds = append(conds, "project_id = 'local'")
+	conds = append(conds, "(canonical_id LIKE ? OR label LIKE ?)")
+	term := "%" + opts.Query + "%"
+	args = append(args, term, term)
+
+	if opts.Type != "" {
+		conds = append(conds, "type = ?")
+		args = append(args, opts.Type)
+	}
+	args = append(args, limit)
+
+	q := `SELECT id, type, label, canonical_id, source_class FROM nodes WHERE ` +
+		strings.Join(conds, " AND ") + ` ORDER BY length(canonical_id) LIMIT ?`
+
+	rows, err := graphDB.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search substrate: %w", err)
+	}
+	defer rows.Close()
+
+	var nodes []SearchNode
+	for rows.Next() {
+		var n SearchNode
+		if err := rows.Scan(&n.ID, &n.Type, &n.Label, &n.CanonicalID, &n.SourceClass); err != nil {
+			return nil, fmt.Errorf("search substrate scan: %w", err)
+		}
+		nodes = append(nodes, n)
+	}
+	return nodes, rows.Err()
 }
 
 // Index walks rootDir, extracts nodes and edges via language plugins,
@@ -188,26 +411,15 @@ func (e *Engine) Index(ctx context.Context, rootDir string, full bool) (indexer.
 		return indexer.Stats{}, fmt.Errorf("migrate project graph: %w", err)
 	}
 
-	// Merge CLI-level include/exclude overrides with the config defaults.
-	idxCfg := e.cfg.Indexer
+	// Create IndexQueries for file hash tracking (incremental reindex).
+	iqr := queries.NewIndexQueries(localDB)
 
 	// Build and run the indexer.
-	idx := indexer.New(
-		indexer.Config{
-			RootDir:    rootDir,
-			ProjectID:  projectID,
-			IndexerCfg: idxCfg,
-			Full:       full,
-		},
-		e.plugins.Loaded(),
-		e.substrate,
-		e.channels,
-	)
+	idx := indexer.New(e.cfg, e.plugins, e.substrate, iqr, e.channels)
+	stats, runErr := idx.Run(ctx, rootDir, projectID, full)
 
-	stats, runErr := idx.Run(ctx)
-
-	// Flush the write buffer so all writes are committed before we return.
-	if flushErr := e.buffer.Flush(ctx); flushErr != nil {
+	// Flush the write buffer (indexer.Run also flushes, but be safe).
+	if flushErr := e.buffer.Flush(ctx); flushErr != nil && runErr == nil {
 		return stats, fmt.Errorf("flush write buffer: %w", flushErr)
 	}
 
@@ -225,6 +437,23 @@ func (e *Engine) Index(ctx context.Context, rootDir string, full bool) (indexer.
 		})
 		_ = queries.UpsertProjectPath(ctx, e.dbRegistry.Meta(), string(projectID), rootDir, now)
 		_ = queries.UpdateLastIndexedAt(ctx, e.dbRegistry.Meta(), string(projectID), now)
+
+		// Lift indexed nodes/edges into the org graph, then detect cross-project edges.
+		if liftErr := e.orgGraph.Lift(ctx, projectID, localDB); liftErr != nil {
+			e.channels.Emit(core.Emission{
+				Source:  "runner",
+				Channel: core.ChanWarning,
+				Content: fmt.Sprintf("org lift: %v", liftErr),
+			})
+		} else {
+			if crossErr := e.orgGraph.DetectCrossProjectEdges(ctx, projectID); crossErr != nil {
+				e.channels.Emit(core.Emission{
+					Source:  "runner",
+					Channel: core.ChanWarning,
+					Content: fmt.Sprintf("cross-project detection: %v", crossErr),
+				})
+			}
+		}
 	}
 
 	return stats, runErr
@@ -236,11 +465,39 @@ func (e *Engine) Channels() *core.AppChannels {
 	return e.channels
 }
 
+// ActiveProjectPath returns the file system path of the active project.
+// Returns empty string if no project path is recorded in meta.db.
+func (e *Engine) ActiveProjectPath() string {
+	paths, err := queries.ListProjectPaths(context.Background(), e.dbRegistry.Meta(), "local")
+	if err != nil || len(paths) == 0 {
+		return ""
+	}
+	return paths[0].Path
+}
+
+// InsertToken creates a new API token in audit.db.
+func (e *Engine) InsertToken(ctx context.Context, t queries.Token) error {
+	return queries.InsertToken(ctx, e.dbRegistry.Audit(), t)
+}
+
+// ListTokens returns all API tokens from audit.db.
+func (e *Engine) ListTokens(ctx context.Context) ([]queries.Token, error) {
+	return queries.ListTokens(ctx, e.dbRegistry.Audit())
+}
+
+// RevokeToken marks a token as revoked in audit.db.
+func (e *Engine) RevokeToken(ctx context.Context, id string) error {
+	return queries.RevokeToken(ctx, e.dbRegistry.Audit(), id, time.Now().UnixMilli())
+}
+
 // Close flushes the write buffer, closes all databases, unloads plugins.
 func (e *Engine) Close(ctx context.Context) error {
 	if err := e.buffer.Close(ctx); err != nil {
 		return fmt.Errorf("close write buffer: %w", err)
 	}
 	e.plugins.UnloadAll()
+	// orgGraph is OpenFromDB — Close() is a no-op (dbRegistry owns the connection).
+	// Called here for explicitness and to allow future owned-DB mode.
+	_ = e.orgGraph.Close()
 	return e.dbRegistry.CloseAll()
 }

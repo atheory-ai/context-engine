@@ -1,14 +1,15 @@
 // Package references implements the references tool.
-// It finds all substrate nodes that reference (point to) the anchored symbols
-// by traversing incoming edges.
+// It finds all nodes that reference the anchored symbols by traversing incoming edges.
 package references
 
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory/context-engine/internal/tools/shared"
 )
 
 // Tool implements the references built-in tool.
@@ -26,106 +27,102 @@ func (t *Tool) Description() string { return "Finds all references to anchored s
 
 // ActivationHint satisfies the strategizer.ToolWithHint interface.
 func (t *Tool) ActivationHint() string {
-	return "query asks where a symbol is used, imported, or referenced"
+	return "predicate.references=true, or thinking mode with symbol/namespace anchors"
 }
 
-// Activate returns true when the IR has the references predicate set.
+// Activate returns true when the IR has the references predicate OR is in thinking
+// mode with symbol or namespace anchors.
 func (t *Tool) Activate(ir core.IR) bool {
-	return ir.Predicates["references"] == "true"
+	if ir.Predicates["references"] == "true" {
+		return true
+	}
+	if ir.Mode == core.IRModeThinking {
+		for _, anchor := range ir.Anchors {
+			if anchor.Type == "symbol" || anchor.Type == "namespace" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
-// Execute finds all nodes that reference the anchored symbols by traversing
-// incoming edges (edges where the anchor's node is the target).
+// Execute finds all nodes that reference the anchored symbols.
 func (t *Tool) Execute(ctx context.Context, req core.ToolRequest) (core.ToolResult, error) {
-	if len(req.Anchors) == 0 {
-		return core.ToolResult{
-			Emissions: []core.Emission{{
-				RunID:     req.RunID,
-				TurnID:    req.TurnID,
-				LoopIndex: req.LoopIndex,
-				Source:    "tool:references",
-				Channel:   core.ChanAction,
-				Content:   "references: no anchors to search",
-			}},
-		}, nil
-	}
-
-	kLimit := req.IR.KLimit
-	if kLimit <= 0 {
-		kLimit = core.DefaultKLimit
-	}
-
-	type refEntry struct {
-		sourceLabel string
-		edgeType    string
-		targetLabel string
-		weight      float64
-	}
-	var refs []refEntry
+	var emissions []core.Emission
 
 	for _, anchor := range req.Anchors {
 		if anchor.Node == nil {
 			continue
 		}
-		if len(refs) >= kLimit {
-			break
-		}
-
-		// Get all incoming edges (edges where this node is the target).
-		inEdges, err := t.sub.EdgesTo(ctx, anchor.Node.ID, "")
-		if err != nil {
+		if anchor.Node.Type != core.NodeTypeSymbol && anchor.Node.Type != core.NodeTypeNamespace {
 			continue
 		}
 
-		targetLabel := anchor.Node.Label
+		refs, err := t.sub.GetReferences(ctx, req.ProjectID, anchor.Node.ID)
+		if err != nil {
+			return core.ToolResult{}, fmt.Errorf("get references for %s: %w", anchor.Node.ID, err)
+		}
+		if len(refs) == 0 {
+			continue
+		}
 
-		for _, e := range inEdges {
-			if len(refs) >= kLimit {
-				break
-			}
+		grouped := groupReferencesByType(refs)
+		content := shared.TruncateContent(formatReferences(anchor.Node, grouped), 2000)
+		emissions = append(emissions, shared.Thinking(req, "references", content, map[string]any{
+			"tool":      "references",
+			"symbol":    anchor.Node.CanonicalID,
+			"ref_count": len(refs),
+		}))
+	}
 
-			// Resolve source node label.
-			sourceLabel := ""
-			sourceNode, err := t.sub.Node(ctx, e.SourceID)
-			if err == nil && sourceNode != nil {
-				sourceLabel = sourceNode.Label
-			}
-			if sourceLabel == "" {
-				sourceLabel = string(e.SourceID)[:8] + "..."
-			}
+	return core.ToolResult{Emissions: emissions}, nil
+}
 
-			refs = append(refs, refEntry{
-				sourceLabel: sourceLabel,
-				edgeType:    e.Type,
-				targetLabel: targetLabel,
-				weight:      e.Weight,
-			})
+// referenceGroup groups references by edge type.
+type referenceGroup struct {
+	EdgeType   string
+	References []core.NodeWithActivation
+}
+
+func groupReferencesByType(refs []core.ReferenceResult) []referenceGroup {
+	groups := make(map[string][]core.NodeWithActivation)
+	for _, ref := range refs {
+		groups[ref.EdgeType] = append(groups[ref.EdgeType], ref.Node)
+	}
+
+	// Standard ordering for common edge types.
+	order := []string{core.EdgeTypeImplements, core.EdgeTypeExtends, core.EdgeTypeImports,
+		core.EdgeTypeReferences, core.EdgeTypeCalls}
+	var result []referenceGroup
+	for _, t := range order {
+		if nodes, ok := groups[t]; ok {
+			result = append(result, referenceGroup{EdgeType: t, References: nodes})
 		}
 	}
-
-	// Format output.
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("References to %d anchor(s) — %d reference(s) found:\n\n",
-		len(req.Anchors), len(refs)))
-	for _, r := range refs {
-		sb.WriteString(fmt.Sprintf("  %s -[%s]→ %s", r.sourceLabel, r.edgeType, r.targetLabel))
-		if r.weight != 1.0 {
-			sb.WriteString(fmt.Sprintf(" (weight: %.2f)", r.weight))
+	// Append any remaining edge types not in the standard order.
+	for t, nodes := range groups {
+		if !slices.Contains(order, t) {
+			result = append(result, referenceGroup{EdgeType: t, References: nodes})
 		}
-		sb.WriteString("\n")
 	}
-	if len(refs) == 0 {
-		sb.WriteString("  (no incoming reference edges found for anchored nodes)\n")
+	return result
+}
+
+func formatReferences(symbol *core.Node, groups []referenceGroup) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("## References to: %s\n\n", symbol.Label))
+
+	for _, g := range groups {
+		display, note := shared.Truncate(g.References, 10)
+		b.WriteString(fmt.Sprintf("**%s** (%d):\n", g.EdgeType, len(g.References)))
+		if note != "" {
+			b.WriteString("  " + note)
+		}
+		for _, ref := range display {
+			b.WriteString(fmt.Sprintf("  - `%s`\n", ref.CanonicalID))
+		}
+		b.WriteString("\n")
 	}
 
-	return core.ToolResult{
-		Emissions: []core.Emission{{
-			RunID:     req.RunID,
-			TurnID:    req.TurnID,
-			LoopIndex: req.LoopIndex,
-			Source:    "tool:references",
-			Channel:   core.ChanAction,
-			Content:   sb.String(),
-		}},
-	}, nil
+	return b.String()
 }
