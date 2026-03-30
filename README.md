@@ -14,7 +14,7 @@ Context Engine (`ce`) is an AI-powered coding assistant that builds a persistent
 
 ## Architecture
 
-```
+```text
 ~/.ce/
   meta.db        — project registry, paths, settings
   audit.db       — API tokens, access log
@@ -27,7 +27,7 @@ ce.yaml          — project-level config (in your repo root)
 
 The cognitive loop:
 
-```
+```text
 query → Strategizer → Activation → Fan-out (6 tools) → Reviewer → Synthesizer → answer
 ```
 
@@ -36,7 +36,7 @@ query → Strategizer → Activation → Fan-out (6 tools) → Reviewer → Synt
 ## Prerequisites
 
 | Tool | Version | Notes |
-|------|---------|-------|
+| ---- | ------- | ----- |
 | Go | 1.23+ | `brew install go` |
 | C compiler | Any | For tree-sitter CGO — already present on macOS (Xcode CLT) |
 | Language plugins | `.wasm` files | See [ce-plugin-sdk](https://github.com/ladyhunterbear/ce-plugin-sdk) |
@@ -124,11 +124,13 @@ ce server status           # Show server address and PID
 ```
 
 Server exposes:
+
 - `http://localhost:4040/mcp/sse` — MCP SSE endpoint (for IDE integrations)
 - `http://localhost:4040/api/v1` — REST API
 - `http://localhost:4040/ws/query` — WebSocket streaming (used by CE Studio)
 
 For IDE integration (Claude Desktop, Cursor, Claude Code), use the hidden stdio transport:
+
 ```json
 {
   "mcpServers": {
@@ -182,6 +184,7 @@ ce cache clear             # Clear wazero plugin compilation cache
 ## Configuration
 
 CE merges config from three sources (highest to lowest priority):
+
 1. CLI flags
 2. `./ce.yaml` (project-level, in your repo)
 3. `~/.ce/config.yaml` (global)
@@ -235,7 +238,7 @@ plugins:
 **Environment variables** (all prefixed `CE_`):
 
 | Variable | Purpose |
-|----------|---------|
+| -------- | ------- |
 | `ANTHROPIC_API_KEY` | Anthropic API key |
 | `CE_LLM_API_KEY` | Override any LLM API key |
 | `CE_DATA_DIR` | Override data directory |
@@ -263,7 +266,7 @@ golangci-lint run
 ### Key packages
 
 | Package | Purpose |
-|---------|---------|
+| ------- | ------- |
 | `internal/core/` | Types, interfaces, constants — imports nothing internal |
 | `internal/runner/` | Engine, cognitive loop wiring |
 | `internal/agent/` | Strategizer, reviewer, synthesizer |
@@ -297,6 +300,15 @@ golangci-lint run
 
 - [ce-plugin-sdk](https://github.com/ladyhunterbear/ce-plugin-sdk) — plugin development kit, default language plugins
 - [atheory-ce-studio](https://github.com/ladyhunterbear/atheory-ce-studio) — web UI
+
+## Project docs
+
+- [LICENSE](./LICENSE) — license terms
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — contributor workflow and verification steps
+- [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) — community expectations
+- [SECURITY.md](./SECURITY.md) — private vulnerability reporting
+- [CHANGELOG.md](./CHANGELOG.md) — notable project changes
+- [RELEASING.md](./RELEASING.md) — maintainer release process
 
 ---
 
