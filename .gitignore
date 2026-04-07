@@ -11,6 +11,7 @@ dist/
 # Local environment
 .env
 .env.*
+ce.yaml
 
 # Editor state
 .idea/
