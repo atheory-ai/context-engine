@@ -5,9 +5,9 @@ import "github.com/atheory/context-engine/internal/core"
 
 // Model IDs
 const (
-	ModelOpus4     = "claude-opus-4-6"
-	ModelSonnet4   = "claude-sonnet-4-6"
-	ModelHaiku45   = "claude-haiku-4-5-20251001"
+	ModelOpus4   = "claude-opus-4-6"
+	ModelSonnet4 = "claude-sonnet-4-6"
+	ModelHaiku45 = "claude-haiku-4-5-20251001"
 )
 
 // defaultTierModels maps CE model tiers to Anthropic model IDs.

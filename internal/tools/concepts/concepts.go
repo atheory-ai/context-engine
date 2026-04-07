@@ -21,8 +21,10 @@ func New(sub core.SubstrateReader) *Tool {
 	return &Tool{sub: sub}
 }
 
-func (t *Tool) Name() string        { return "concepts" }
-func (t *Tool) Description() string { return "Expands domain concept vocabulary through the substrate." }
+func (t *Tool) Name() string { return "concepts" }
+func (t *Tool) Description() string {
+	return "Expands domain concept vocabulary through the substrate."
+}
 
 // ActivationHint satisfies the strategizer.ToolWithHint interface.
 func (t *Tool) ActivationHint() string {

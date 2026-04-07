@@ -7,13 +7,13 @@ import "github.com/atheory/context-engine/internal/core"
 // Prices are per million tokens; divide by 1,000,000 to get per-token cost.
 var CostTable = map[string]ModelCost{
 	// Claude 4 family
-	"claude-opus-4-6":                      {InputPerMToken: 15.00, OutputPerMToken: 75.00},
-	"claude-sonnet-4-6":                    {InputPerMToken: 3.00, OutputPerMToken: 15.00},
-	"claude-haiku-4-5-20251001":            {InputPerMToken: 0.80, OutputPerMToken: 4.00},
+	"claude-opus-4-6":           {InputPerMToken: 15.00, OutputPerMToken: 75.00},
+	"claude-sonnet-4-6":         {InputPerMToken: 3.00, OutputPerMToken: 15.00},
+	"claude-haiku-4-5-20251001": {InputPerMToken: 0.80, OutputPerMToken: 4.00},
 	// Legacy aliases (keep for backward compatibility)
-	"claude-3-5-sonnet-20241022":           {InputPerMToken: 3.00, OutputPerMToken: 15.00},
-	"claude-3-5-haiku-20241022":            {InputPerMToken: 0.80, OutputPerMToken: 4.00},
-	"claude-3-opus-20240229":               {InputPerMToken: 15.00, OutputPerMToken: 75.00},
+	"claude-3-5-sonnet-20241022": {InputPerMToken: 3.00, OutputPerMToken: 15.00},
+	"claude-3-5-haiku-20241022":  {InputPerMToken: 0.80, OutputPerMToken: 4.00},
+	"claude-3-opus-20240229":     {InputPerMToken: 15.00, OutputPerMToken: 75.00},
 }
 
 // ModelCost holds the pricing for a single model.

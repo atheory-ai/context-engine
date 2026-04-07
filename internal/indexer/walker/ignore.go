@@ -10,14 +10,14 @@ import (
 
 // hardSkipDirs are directory names that are always skipped, regardless of patterns.
 var hardSkipDirs = map[string]bool{
-	".git":        true,
-	".hg":         true,
-	".svn":        true,
-	"vendor":      true,
+	".git":         true,
+	".hg":          true,
+	".svn":         true,
+	"vendor":       true,
 	"node_modules": true,
-	".cache":      true,
-	"__pycache__": true,
-	".DS_Store":   true,
+	".cache":       true,
+	"__pycache__":  true,
+	".DS_Store":    true,
 }
 
 // IgnoreMatcher combines ce.yaml exclude patterns with .gitignore rules.

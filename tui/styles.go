@@ -4,15 +4,15 @@ import "github.com/charmbracelet/lipgloss"
 
 // Color palette — dark theme.
 var (
-	colorPrimary  = lipgloss.Color("#7C3AED") // violet
-	colorMuted    = lipgloss.Color("#6B7280")
-	colorActive   = lipgloss.Color("#10B981") // emerald
-	colorWarning  = lipgloss.Color("#F59E0B")
-	colorError    = lipgloss.Color("#EF4444")
-	colorDim      = lipgloss.Color("#4B5563")
-	colorText     = lipgloss.Color("#F9FAFB")
-	colorBgAlt    = lipgloss.Color("#1F2937")
-	colorBorder   = lipgloss.Color("#374151")
+	colorPrimary = lipgloss.Color("#7C3AED") // violet
+	colorMuted   = lipgloss.Color("#6B7280")
+	colorActive  = lipgloss.Color("#10B981") // emerald
+	colorWarning = lipgloss.Color("#F59E0B")
+	colorError   = lipgloss.Color("#EF4444")
+	colorDim     = lipgloss.Color("#4B5563")
+	colorText    = lipgloss.Color("#F9FAFB")
+	colorBgAlt   = lipgloss.Color("#1F2937")
+	colorBorder  = lipgloss.Color("#374151")
 )
 
 // Inline text styles.
@@ -55,20 +55,20 @@ var (
 		BorderForeground(colorBorder)
 
 	StatusBar = lipgloss.NewStyle().
-		Background(colorBgAlt).
-		Padding(0, 1).
-		BorderTop(true).
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(colorBorder)
+			Background(colorBgAlt).
+			Padding(0, 1).
+			BorderTop(true).
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(colorBorder)
 
 	Viewport = lipgloss.NewStyle().Padding(0, 1)
 
 	TraceHeader = lipgloss.NewStyle().
-		Foreground(colorMuted).
-		Padding(0, 1)
+			Foreground(colorMuted).
+			Padding(0, 1)
 
 	AnswerHeader = lipgloss.NewStyle().
-		Foreground(colorPrimary).
-		Bold(true).
-		Padding(0, 1)
+			Foreground(colorPrimary).
+			Bold(true).
+			Padding(0, 1)
 )

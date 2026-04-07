@@ -280,8 +280,8 @@ func (g *OrgGraph) queryNodes(ctx context.Context, cond, nodeType, arg string, l
 	for rows.Next() {
 		var (
 			id, pid, ntype, label, canonicalID, sourceClass, pluginID string
-			createdAt, updatedAt                                       int64
-			propsJSON                                                  string
+			createdAt, updatedAt                                      int64
+			propsJSON                                                 string
 		)
 		if err := rows.Scan(&id, &pid, &ntype, &label, &canonicalID,
 			&sourceClass, &pluginID, &createdAt, &updatedAt, &propsJSON); err != nil {
@@ -376,4 +376,3 @@ func parseJSONArray(s string) []string {
 	}
 	return out
 }
-

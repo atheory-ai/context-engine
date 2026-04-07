@@ -4,16 +4,16 @@ package core
 type ChannelType string
 
 const (
-	ChanThinking ChannelType = "thinking"  // internal reasoning, dim in UI
-	ChanAction   ChannelType = "action"    // tool activations, status
-	ChanMessage  ChannelType = "message"   // final LLM speech, always markdown
-	ChanDebug    ChannelType = "debug"     // --debug flag only
-	ChanError    ChannelType = "error"     // errors
-	ChanWarning  ChannelType = "warning"   // warnings
-	ChanProgress ChannelType = "progress"  // progress bars, spinners
-	ChanCoverage ChannelType = "coverage"  // structured coverage summary
-	ChanCost     ChannelType = "cost"      // --show-cost flag only
-	ChanSystem   ChannelType = "system"    // lifecycle events
+	ChanThinking ChannelType = "thinking" // internal reasoning, dim in UI
+	ChanAction   ChannelType = "action"   // tool activations, status
+	ChanMessage  ChannelType = "message"  // final LLM speech, always markdown
+	ChanDebug    ChannelType = "debug"    // --debug flag only
+	ChanError    ChannelType = "error"    // errors
+	ChanWarning  ChannelType = "warning"  // warnings
+	ChanProgress ChannelType = "progress" // progress bars, spinners
+	ChanCoverage ChannelType = "coverage" // structured coverage summary
+	ChanCost     ChannelType = "cost"     // --show-cost flag only
+	ChanSystem   ChannelType = "system"   // lifecycle events
 )
 
 // AppChannels is the centralized set of channels that flows through the

@@ -41,10 +41,10 @@ type Model struct {
 	width  int
 	height int
 
-	queryInput  textinput.Model
-	traceView   viewport.Model
-	answerView  viewport.Model
-	spin        spinner.Model
+	queryInput textinput.Model
+	traceView  viewport.Model
+	answerView viewport.Model
+	spin       spinner.Model
 
 	// Top bar data
 	loopIndex int
@@ -378,16 +378,16 @@ func (m Model) View() string {
 }
 
 func (m Model) recalculateSizes() Model {
-	topBarHeight    := 3
+	topBarHeight := 3
 	statusBarHeight := 1
-	mainHeight      := m.height - topBarHeight - statusBarHeight - 2
+	mainHeight := m.height - topBarHeight - statusBarHeight - 2
 	if mainHeight < 1 {
 		mainHeight = 1
 	}
 
-	m.traceView  = viewport.New(m.width, mainHeight)
+	m.traceView = viewport.New(m.width, mainHeight)
 	m.answerView = viewport.New(m.width, mainHeight)
-	m.traceView.Style  = Viewport
+	m.traceView.Style = Viewport
 	m.answerView.Style = Viewport
 	return m
 }
@@ -396,7 +396,7 @@ func (m Model) recalculateSizes() Model {
 
 func (m Model) renderTopBar() string {
 	queryLabel := Label.Render("query: ")
-	queryText  := QueryText.Render(truncateLine(m.query, m.width-10))
+	queryText := QueryText.Render(truncateLine(m.query, m.width-10))
 
 	loopStr := renderLoopProgress(m.loopIndex, m.maxLoops)
 	costStr := renderCost(m.costUSD)
@@ -473,7 +473,7 @@ func (m Model) renderMainArea() string {
 
 	case ViewStateAnswer:
 		header := AnswerHeader.Render("Answer")
-		hint   := Dim.Render("[T] view trace  [N] new query  [↑↓] scroll")
+		hint := Dim.Render("[T] view trace  [N] new query  [↑↓] scroll")
 		return lipgloss.JoinVertical(lipgloss.Left,
 			lipgloss.JoinHorizontal(lipgloss.Left, header, "  ", hint),
 			m.answerView.View(),
@@ -481,7 +481,7 @@ func (m Model) renderMainArea() string {
 
 	case ViewStateTrace:
 		header := TraceHeader.Render("Investigation trace")
-		hint   := Dim.Render("[T] back to answer  [↑↓] scroll")
+		hint := Dim.Render("[T] back to answer  [↑↓] scroll")
 		return lipgloss.JoinVertical(lipgloss.Left,
 			lipgloss.JoinHorizontal(lipgloss.Left, header, "  ", hint),
 			m.traceView.View(),
@@ -492,7 +492,7 @@ func (m Model) renderMainArea() string {
 }
 
 func (m Model) renderInputPrompt() string {
-	title    := Title.Render("Context Engine")
+	title := Title.Render("Context Engine")
 	subtitle := Dim.Render("Ask anything about your codebase")
 
 	prompt := lipgloss.JoinVertical(lipgloss.Left,
@@ -544,7 +544,7 @@ func (m Model) renderStatusBar() string {
 	}
 
 	middle := strings.Join(filterEmpty([]string{nodeStr, errorStr}), "  |  ")
-	right  := shortcuts
+	right := shortcuts
 
 	middleWidth := m.width - lipgloss.Width(left) - lipgloss.Width(right) - 4
 	if middleWidth < 0 {
@@ -651,7 +651,7 @@ func parseLoopProgress(content string) (int, int) {
 		return 0, 0
 	}
 	current, _ := strconv.Atoi(strings.TrimSpace(parts[0]))
-	max, _     := strconv.Atoi(strings.TrimSpace(parts[1]))
+	max, _ := strconv.Atoi(strings.TrimSpace(parts[1]))
 	return current, max
 }
 

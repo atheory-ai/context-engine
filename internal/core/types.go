@@ -50,7 +50,7 @@ type Edge struct {
 // The activation layer resolves them to Anchors (concrete nodes + edges).
 type Anchor struct {
 	Ref        AnchorRef
-	Node       *Node           // nil if not resolved to a node
+	Node       *Node            // nil if not resolved to a node
 	Edges      []EdgeWithWeight // outbound + inbound edges from this node
 	Activation float64
 }

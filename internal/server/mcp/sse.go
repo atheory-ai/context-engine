@@ -16,7 +16,7 @@ type sseSession struct {
 	id      string
 	writer  http.ResponseWriter
 	flusher http.Flusher
-	sendCh  chan string  // JSON-encoded responses to push to client
+	sendCh  chan string   // JSON-encoded responses to push to client
 	done    chan struct{} // closed when the session ends
 }
 
@@ -24,8 +24,8 @@ var sessions sync.Map // sessionID → *sseSession
 
 // StartSSE starts the MCP SSE transport on the given address.
 //
-//   /mcp/sse      — client connects here to receive server-sent events
-//   /mcp/messages — client POSTs JSON-RPC requests here
+//	/mcp/sse      — client connects here to receive server-sent events
+//	/mcp/messages — client POSTs JSON-RPC requests here
 func (s *Server) StartSSE(ctx context.Context, addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mcp/sse", s.handleSSEConnect)

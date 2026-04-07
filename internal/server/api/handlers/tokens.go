@@ -12,9 +12,9 @@ import (
 
 // CreateTokenRequest is the body of POST /api/v1/tokens.
 type CreateTokenRequest struct {
-	Name      string  `json:"name"`
-	Scope     string  `json:"scope"` // "read" | "read-write" | "admin"
-	ExpiresIn *int64  `json:"expires_in_seconds,omitempty"`
+	Name      string `json:"name"`
+	Scope     string `json:"scope"` // "read" | "read-write" | "admin"
+	ExpiresIn *int64 `json:"expires_in_seconds,omitempty"`
 }
 
 // CreateToken handles POST /api/v1/tokens.
@@ -46,11 +46,11 @@ func CreateToken(engine *runner.Engine) http.HandlerFunc {
 		}
 
 		t := queries.Token{
-			ID:        tokenID,
-			Name:      req.Name,
-			Scope:     scope,
-			CreatedAt: now,
-			Revoked:   0,
+			ID:         tokenID,
+			Name:       req.Name,
+			Scope:      scope,
+			CreatedAt:  now,
+			Revoked:    0,
 			Properties: "{}",
 		}
 		if expiresAt != nil {
@@ -84,12 +84,12 @@ func ListTokens(engine *runner.Engine) http.HandlerFunc {
 		}
 
 		type tokenItem struct {
-			ID        string  `json:"id"`
-			Name      string  `json:"name"`
-			Scope     string  `json:"scope"`
-			CreatedAt int64   `json:"created_at"`
-			ExpiresAt *int64  `json:"expires_at,omitempty"`
-			Revoked   bool    `json:"revoked"`
+			ID        string `json:"id"`
+			Name      string `json:"name"`
+			Scope     string `json:"scope"`
+			CreatedAt int64  `json:"created_at"`
+			ExpiresAt *int64 `json:"expires_at,omitempty"`
+			Revoked   bool   `json:"revoked"`
 		}
 
 		items := make([]tokenItem, 0, len(tokens))

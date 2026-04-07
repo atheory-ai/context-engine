@@ -69,5 +69,5 @@ func newParserPool(size int) *parserPool {
 	return p
 }
 
-func (p *parserPool) Get() *sitter.Parser  { return <-p.ch }
+func (p *parserPool) Get() *sitter.Parser       { return <-p.ch }
 func (p *parserPool) Put(parser *sitter.Parser) { p.ch <- parser }

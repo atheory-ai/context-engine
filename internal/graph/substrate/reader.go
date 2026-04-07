@@ -338,8 +338,8 @@ func (r *Reader) execQueryDB(ctx context.Context, db *sql.DB, q core.SubstrateQu
 	for rows.Next() {
 		var (
 			id, projectID, nodeType, label, canonicalID, sourceClass, pluginID string
-			createdAt, updatedAt                                                int64
-			propertiesJSON                                                      string
+			createdAt, updatedAt                                               int64
+			propertiesJSON                                                     string
 		)
 		if err := rows.Scan(&id, &projectID, &nodeType, &label, &canonicalID,
 			&sourceClass, &pluginID, &createdAt, &updatedAt, &propertiesJSON); err != nil {

@@ -259,4 +259,3 @@ func extractEnrichments(s string, rc *core.RunContext) []core.Enrichment {
 	}
 	return enrichments
 }
-

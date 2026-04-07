@@ -143,8 +143,8 @@ type testWriter struct {
 	decayCalled   bool
 }
 
-func (w *testWriter) UpsertNode(_ context.Context, _ core.Node) error       { return nil }
-func (w *testWriter) UpsertEdge(_ context.Context, _ core.Edge) error       { return nil }
+func (w *testWriter) UpsertNode(_ context.Context, _ core.Node) error { return nil }
+func (w *testWriter) UpsertEdge(_ context.Context, _ core.Edge) error { return nil }
 func (w *testWriter) UpdateActivation(_ context.Context, _ core.NodeID, _ float64) error {
 	return nil
 }
@@ -158,7 +158,7 @@ func (w *testWriter) DecayEdgeWeights(_ context.Context, _ core.ProjectID, _ flo
 }
 func (w *testWriter) ApplyEnrichment(_ context.Context, _ core.Enrichment) error { return nil }
 func (w *testWriter) ResetActivation(_ context.Context, _ core.ProjectID) error  { return nil }
-func (w *testWriter) Flush(_ context.Context) error                               { return nil }
+func (w *testWriter) Flush(_ context.Context) error                              { return nil }
 
 // Test 1 — Spreading activation stops at threshold
 func TestSpreadActivationThreshold(t *testing.T) {

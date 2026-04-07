@@ -72,9 +72,9 @@ func GetTopKActivated(ctx context.Context, db *sql.DB, projectID string, k int) 
 	for rows.Next() {
 		var (
 			id, pid, nodeType, label, canonicalID, sourceClass, pluginID string
-			createdAt, updatedAt                                          int64
-			propertiesJSON                                                string
-			activation                                                    float64
+			createdAt, updatedAt                                         int64
+			propertiesJSON                                               string
+			activation                                                   float64
 		)
 		if err := rows.Scan(&id, &pid, &nodeType, &label, &canonicalID, &sourceClass,
 			&pluginID, &createdAt, &updatedAt, &propertiesJSON, &activation); err != nil {
@@ -209,9 +209,9 @@ func TopKAnchors(ctx context.Context, db *sql.DB, projectID string, k int) ([]co
 	for rows.Next() {
 		var (
 			id, pid, nodeType, label, canonicalID, sourceClass, pluginID string
-			createdAt, updatedAt                                          int64
-			propertiesJSON                                                string
-			activation                                                    float64
+			createdAt, updatedAt                                         int64
+			propertiesJSON                                               string
+			activation                                                   float64
 		)
 		if err := rows.Scan(&id, &pid, &nodeType, &label, &canonicalID, &sourceClass,
 			&pluginID, &createdAt, &updatedAt, &propertiesJSON, &activation); err != nil {

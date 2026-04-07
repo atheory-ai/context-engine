@@ -82,8 +82,8 @@ func (l *Lifter) liftNodes(ctx context.Context, tx *sql.Tx) error {
 	for rows.Next() {
 		var (
 			id, ntype, label, canonicalID, sourceClass, pluginID string
-			propsJSON                                             string
-			createdAt, updatedAt                                  int64
+			propsJSON                                            string
+			createdAt, updatedAt                                 int64
 		)
 		if err := rows.Scan(&id, &ntype, &label, &canonicalID,
 			&sourceClass, &pluginID, &propsJSON, &createdAt, &updatedAt); err != nil {
@@ -140,8 +140,8 @@ func (l *Lifter) liftEdges(ctx context.Context, tx *sql.Tx) error {
 	for rows.Next() {
 		var (
 			id, sourceID, targetID, edgeType, sourceClass, pluginID string
-			propsJSON                                                string
-			createdAt                                                int64
+			propsJSON                                               string
+			createdAt                                               int64
 		)
 		if err := rows.Scan(&id, &sourceID, &targetID, &edgeType,
 			&sourceClass, &pluginID, &propsJSON, &createdAt); err != nil {

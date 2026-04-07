@@ -172,8 +172,8 @@ func ListNodes(ctx context.Context, db *sql.DB, projectID string) ([]core.Node, 
 func scanNodeRow(row *sql.Row) (*core.Node, error) {
 	var (
 		id, projectID, nodeType, label, canonicalID, sourceClass, pluginID string
-		createdAt, updatedAt                                                int64
-		propertiesJSON                                                      string
+		createdAt, updatedAt                                               int64
+		propertiesJSON                                                     string
 	)
 	err := row.Scan(&id, &projectID, &nodeType, &label, &canonicalID, &sourceClass,
 		&pluginID, &createdAt, &updatedAt, &propertiesJSON)
@@ -196,8 +196,8 @@ func scanNodes(rows *sql.Rows) ([]core.Node, error) {
 	for rows.Next() {
 		var (
 			id, projectID, nodeType, label, canonicalID, sourceClass, pluginID string
-			createdAt, updatedAt                                                int64
-			propertiesJSON                                                      string
+			createdAt, updatedAt                                               int64
+			propertiesJSON                                                     string
 		)
 		if err := rows.Scan(&id, &projectID, &nodeType, &label, &canonicalID, &sourceClass,
 			&pluginID, &createdAt, &updatedAt, &propertiesJSON); err != nil {

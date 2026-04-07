@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	DefaultBufferSize    = 1024              // unique ops before forced flush
+	DefaultBufferSize    = 1024 // unique ops before forced flush
 	DefaultFlushInterval = 50 * time.Millisecond
 )
 

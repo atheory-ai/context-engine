@@ -21,8 +21,10 @@ func New(sub core.SubstrateReader) *Tool {
 	return &Tool{sub: sub}
 }
 
-func (t *Tool) Name() string        { return "filecontext" }
-func (t *Tool) Description() string { return "Retrieves file-level nodes and their substrate neighbors." }
+func (t *Tool) Name() string { return "filecontext" }
+func (t *Tool) Description() string {
+	return "Retrieves file-level nodes and their substrate neighbors."
+}
 
 // ActivationHint satisfies the strategizer.ToolWithHint interface.
 func (t *Tool) ActivationHint() string {
