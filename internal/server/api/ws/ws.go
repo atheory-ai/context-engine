@@ -10,7 +10,7 @@ import (
 
 // WSEvent is a single event frame sent over the WebSocket connection.
 type WSEvent struct {
-	Type     string         `json:"type"`               // "thinking"|"action"|"message"|"warning"|"error"|"cost"|"done"
+	Type     string         `json:"type"` // "thinking"|"action"|"message"|"warning"|"error"|"cost"|"done"
 	Content  string         `json:"content"`
 	Metadata map[string]any `json:"metadata,omitempty"`
 }

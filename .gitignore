@@ -1,0 +1,34 @@
+# Go build output
+/ce
+/ce.exe
+*.test
+*.out
+coverage.txt
+
+# Release artifacts
+dist/
+
+# Local environment
+.env
+.env.*
+ce.yaml
+
+# Editor state
+.idea/
+.vscode/
+.claude/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+__MACOSX/
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log

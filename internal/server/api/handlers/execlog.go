@@ -8,18 +8,18 @@ import (
 
 // LLMCallLog is a single LLM call record for the execution log API.
 type LLMCallLog struct {
-	CallID       string  `json:"call_id"`
-	NodeType     string  `json:"node_type"`
-	LoopIndex    int     `json:"loop_index"`
-	Model        string  `json:"model"`
-	SystemPrompt string  `json:"system_prompt"`
-	UserMessage  string  `json:"user_message"`
-	Response     string  `json:"response"`
-	ThinkingText string  `json:"thinking_text,omitempty"`
-	TokensIn     int     `json:"tokens_in"`
-	TokensOut    int     `json:"tokens_out"`
-	LatencyMS    int64   `json:"latency_ms"`
-	CalledAt     int64   `json:"called_at"`
+	CallID       string `json:"call_id"`
+	NodeType     string `json:"node_type"`
+	LoopIndex    int    `json:"loop_index"`
+	Model        string `json:"model"`
+	SystemPrompt string `json:"system_prompt"`
+	UserMessage  string `json:"user_message"`
+	Response     string `json:"response"`
+	ThinkingText string `json:"thinking_text,omitempty"`
+	TokensIn     int    `json:"tokens_in"`
+	TokensOut    int    `json:"tokens_out"`
+	LatencyMS    int64  `json:"latency_ms"`
+	CalledAt     int64  `json:"called_at"`
 }
 
 // ExecRunDetail is the full execution trace for a single run.

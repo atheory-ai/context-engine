@@ -43,24 +43,24 @@ type Stats struct {
 
 // Indexer orchestrates full and incremental indexing for a project.
 type Indexer struct {
-	cfg      *config.Config
-	plugins  *plugins.Registry
-	parser   *parser.Parser
-	grammars *parser.GrammarRegistry
+	cfg       *config.Config
+	plugins   *plugins.Registry
+	parser    *parser.Parser
+	grammars  *parser.GrammarRegistry
 	substrate core.SubstrateWriter
-	queries  *queries.IndexQueries
-	channels *core.AppChannels
+	queries   *queries.IndexQueries
+	channels  *core.AppChannels
 }
 
 // New creates an Indexer backed by the given plugin registry.
 // Plugin grammars are registered into the grammar registry here;
 // failures are emitted as warnings and fall back to built-in grammars.
 func New(
-	cfg         *config.Config,
-	pluginReg   *plugins.Registry,
-	substrate   core.SubstrateWriter,
+	cfg *config.Config,
+	pluginReg *plugins.Registry,
+	substrate core.SubstrateWriter,
 	indexQueries *queries.IndexQueries,
-	channels    *core.AppChannels,
+	channels *core.AppChannels,
 ) *Indexer {
 	grammars := parser.NewGrammarRegistry()
 
@@ -84,13 +84,13 @@ func New(
 	}
 
 	return &Indexer{
-		cfg:      cfg,
-		plugins:  pluginReg,
-		parser:   parser.NewParser(grammars),
-		grammars: grammars,
+		cfg:       cfg,
+		plugins:   pluginReg,
+		parser:    parser.NewParser(grammars),
+		grammars:  grammars,
 		substrate: substrate,
-		queries:  indexQueries,
-		channels: channels,
+		queries:   indexQueries,
+		channels:  channels,
 	}
 }
 

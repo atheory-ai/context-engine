@@ -194,9 +194,9 @@ func GetActivatedEdgesAbove(ctx context.Context, db *sql.DB, projectID string, t
 func scanEdgeRow(row *sql.Row) (*core.Edge, error) {
 	var (
 		id, projectID, sourceID, targetID, edgeType, sourceClass, pluginID string
-		createdAt                                                            int64
-		propertiesJSON                                                       string
-		weight                                                               float64
+		createdAt                                                          int64
+		propertiesJSON                                                     string
+		weight                                                             float64
 	)
 	err := row.Scan(&id, &projectID, &sourceID, &targetID, &edgeType, &sourceClass,
 		&pluginID, &createdAt, &propertiesJSON, &weight)
@@ -218,9 +218,9 @@ func scanEdges(rows *sql.Rows) ([]core.Edge, error) {
 	for rows.Next() {
 		var (
 			id, projectID, sourceID, targetID, edgeType, sourceClass, pluginID string
-			createdAt                                                            int64
-			propertiesJSON                                                       string
-			weight                                                               float64
+			createdAt                                                          int64
+			propertiesJSON                                                     string
+			weight                                                             float64
 		)
 		if err := rows.Scan(&id, &projectID, &sourceID, &targetID, &edgeType, &sourceClass,
 			&pluginID, &createdAt, &propertiesJSON, &weight); err != nil {
@@ -240,11 +240,11 @@ func scanEdgesWithWeight(rows *sql.Rows) ([]core.EdgeWithWeight, error) {
 	for rows.Next() {
 		var (
 			id, projectID, sourceID, targetID, edgeType, sourceClass, pluginID string
-			createdAt                                                            int64
-			propertiesJSON                                                       string
-			weight                                                               float64
-			weightSourceClass                                                    string
-			coActivationCount                                                    int
+			createdAt                                                          int64
+			propertiesJSON                                                     string
+			weight                                                             float64
+			weightSourceClass                                                  string
+			coActivationCount                                                  int
 		)
 		if err := rows.Scan(&id, &projectID, &sourceID, &targetID, &edgeType, &sourceClass,
 			&pluginID, &createdAt, &propertiesJSON, &weight, &weightSourceClass, &coActivationCount); err != nil {

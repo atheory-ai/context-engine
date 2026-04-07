@@ -18,8 +18,8 @@ type pluginInstance struct {
 	version  string
 	wasm     *extism.Plugin
 	manifest PluginManifest
-	wasmDir  string            // directory containing the plugin .wasm file
-	exports  map[string]bool   // set of exported function names
+	wasmDir  string          // directory containing the plugin .wasm file
+	exports  map[string]bool // set of exported function names
 	mu       sync.Mutex
 }
 

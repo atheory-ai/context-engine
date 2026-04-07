@@ -96,11 +96,11 @@ func GetReferences(ctx context.Context, db *sql.DB, projectID, nodeID string) ([
 	for rows.Next() {
 		var (
 			id, pid, nodeType, label, canonicalID, sourceClass, pluginID string
-			createdAt, updatedAt                                          int64
-			propertiesJSON                                                string
-			activation                                                    float64
-			edgeType                                                      string
-			weight                                                        float64
+			createdAt, updatedAt                                         int64
+			propertiesJSON                                               string
+			activation                                                   float64
+			edgeType                                                     string
+			weight                                                       float64
 		)
 		if err := rows.Scan(&id, &pid, &nodeType, &label, &canonicalID, &sourceClass,
 			&pluginID, &createdAt, &updatedAt, &propertiesJSON,
@@ -352,9 +352,9 @@ func scanNodesWithActivation(rows *sql.Rows) ([]core.NodeWithActivation, error) 
 	for rows.Next() {
 		var (
 			id, pid, nodeType, label, canonicalID, sourceClass, pluginID string
-			createdAt, updatedAt                                          int64
-			propertiesJSON                                                string
-			activation                                                    float64
+			createdAt, updatedAt                                         int64
+			propertiesJSON                                               string
+			activation                                                   float64
 		)
 		if err := rows.Scan(&id, &pid, &nodeType, &label, &canonicalID, &sourceClass,
 			&pluginID, &createdAt, &updatedAt, &propertiesJSON, &activation); err != nil {

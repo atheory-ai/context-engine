@@ -91,11 +91,11 @@ func (n *Node) Run(ac *core.AgentContext) (*core.IR, error) {
 		// Emit the compiled IR to the thinking channel for CE Studio
 		irJSON, _ := json.Marshal(ir)
 		ac.Ch.Emit(core.Emission{
-			RunID:   ac.RunID,
-			TurnID:  ac.TurnID,
-			Channel: core.ChanThinking,
-			Source:  "strategizer",
-			Content: fmt.Sprintf("IR compiled: %s", string(irJSON)),
+			RunID:    ac.RunID,
+			TurnID:   ac.TurnID,
+			Channel:  core.ChanThinking,
+			Source:   "strategizer",
+			Content:  fmt.Sprintf("IR compiled: %s", string(irJSON)),
 			Metadata: map[string]any{"ir": ir},
 		})
 

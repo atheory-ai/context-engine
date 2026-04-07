@@ -24,7 +24,7 @@ type PluginEntry struct {
 // Thread-safe — the runner reads from it concurrently during fan-out.
 type Registry struct {
 	plugins   map[core.PluginID]core.Plugin
-	loadOrder []core.PluginID // registration order, for last-registered-wins semantics
+	loadOrder []core.PluginID  // registration order, for last-registered-wins semantics
 	rt        *runtime.Runtime // nil until Initialize() is called
 }
 

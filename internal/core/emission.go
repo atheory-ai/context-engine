@@ -6,7 +6,7 @@ type Emission struct {
 	RunID     RunID
 	TurnID    TurnID
 	LoopIndex int
-	Source    string      // which node produced this (strategizer, tool:name, etc.)
+	Source    string // which node produced this (strategizer, tool:name, etc.)
 	Channel   ChannelType
 	Content   string
 	Markdown  bool

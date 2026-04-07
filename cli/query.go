@@ -91,5 +91,3 @@ func runCLIQuery(_ *cobra.Command, cfg *config.Config, engine *runner.Engine, qu
 
 	return queryErr
 }
-
-

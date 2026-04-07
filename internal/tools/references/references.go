@@ -22,8 +22,10 @@ func New(sub core.SubstrateReader) *Tool {
 	return &Tool{sub: sub}
 }
 
-func (t *Tool) Name() string        { return "references" }
-func (t *Tool) Description() string { return "Finds all references to anchored symbols in the substrate." }
+func (t *Tool) Name() string { return "references" }
+func (t *Tool) Description() string {
+	return "Finds all references to anchored symbols in the substrate."
+}
 
 // ActivationHint satisfies the strategizer.ToolWithHint interface.
 func (t *Tool) ActivationHint() string {
