@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/atheory/context-engine/internal/runner"
+	"github.com/atheory-ai/context-engine/internal/runner"
 )
 
 // LLMCallLog is a single LLM call record for the execution log API.

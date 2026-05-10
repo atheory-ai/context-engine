@@ -3,7 +3,7 @@ package runtime
 import (
 	"fmt"
 
-	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/core"
 )
 
 // Runtime manages the wazero + Extism environment for loading WASM plugins.

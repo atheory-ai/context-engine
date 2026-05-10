@@ -92,8 +92,8 @@ import (
     "sync"
     "sync/atomic"
 
-    "github.com/atheory/context-engine/internal/core"
-    "github.com/atheory/context-engine/internal/llm"
+    "github.com/atheory-ai/context-engine/internal/core"
+    "github.com/atheory-ai/context-engine/internal/llm"
 )
 
 // RunContext carries all state for a single query execution.
@@ -190,7 +190,7 @@ package runner
 
 import (
     "sync/atomic"
-    "github.com/atheory/context-engine/internal/core"
+    "github.com/atheory-ai/context-engine/internal/core"
 )
 
 // Budget tracks token usage for a single query run.
@@ -266,18 +266,18 @@ import (
     "context"
     "fmt"
 
-    "github.com/atheory/context-engine/internal/agent/preflight"
-    "github.com/atheory/context-engine/internal/agent/strategizer"
-    "github.com/atheory/context-engine/internal/agent/reviewer"
-    "github.com/atheory/context-engine/internal/agent/synthesizer"
-    "github.com/atheory/context-engine/internal/core"
-    "github.com/atheory/context-engine/internal/graph/activation"
-    "github.com/atheory/context-engine/internal/graph/substrate"
-    "github.com/atheory/context-engine/internal/llm"
-    "github.com/atheory/context-engine/internal/plugins"
-    "github.com/atheory/context-engine/internal/storage/db"
-    "github.com/atheory/context-engine/internal/storage/writebuffer"
-    "github.com/atheory/context-engine/internal/config"
+    "github.com/atheory-ai/context-engine/internal/agent/preflight"
+    "github.com/atheory-ai/context-engine/internal/agent/strategizer"
+    "github.com/atheory-ai/context-engine/internal/agent/reviewer"
+    "github.com/atheory-ai/context-engine/internal/agent/synthesizer"
+    "github.com/atheory-ai/context-engine/internal/core"
+    "github.com/atheory-ai/context-engine/internal/graph/activation"
+    "github.com/atheory-ai/context-engine/internal/graph/substrate"
+    "github.com/atheory-ai/context-engine/internal/llm"
+    "github.com/atheory-ai/context-engine/internal/plugins"
+    "github.com/atheory-ai/context-engine/internal/storage/db"
+    "github.com/atheory-ai/context-engine/internal/storage/writebuffer"
+    "github.com/atheory-ai/context-engine/internal/config"
 )
 
 // Engine is the assembled, ready-to-use context engine.
@@ -371,11 +371,11 @@ Each `dag.Run()` call creates a new RunContext and executes the full topology.
 package runner
 
 import (
-    "github.com/atheory/context-engine/internal/agent/preflight"
-    "github.com/atheory/context-engine/internal/agent/strategizer"
-    "github.com/atheory/context-engine/internal/agent/reviewer"
-    "github.com/atheory/context-engine/internal/agent/synthesizer"
-    "github.com/atheory/context-engine/internal/graph/activation"
+    "github.com/atheory-ai/context-engine/internal/agent/preflight"
+    "github.com/atheory-ai/context-engine/internal/agent/strategizer"
+    "github.com/atheory-ai/context-engine/internal/agent/reviewer"
+    "github.com/atheory-ai/context-engine/internal/agent/synthesizer"
+    "github.com/atheory-ai/context-engine/internal/graph/activation"
 )
 
 // dag holds references to all constructed nodes.
@@ -586,7 +586,7 @@ import (
     "fmt"
     "sync"
 
-    "github.com/atheory/context-engine/internal/core"
+    "github.com/atheory-ai/context-engine/internal/core"
 )
 
 type fanoutNode struct {

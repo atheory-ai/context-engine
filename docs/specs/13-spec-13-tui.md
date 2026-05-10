@@ -456,7 +456,7 @@ func (r *ChannelReader) poll() tea.Msg {
 
 package update
 
-import "github.com/atheory/context-engine/internal/core"
+import "github.com/atheory-ai/context-engine/internal/core"
 
 type ThinkingMsg  struct { Emission core.Emission }
 type ActionMsg    struct { Emission core.Emission }

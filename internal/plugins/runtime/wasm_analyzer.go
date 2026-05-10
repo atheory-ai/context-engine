@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/core"
 )
 
 // wasmAnalyzer implements core.Analyzer via WASM function calls.

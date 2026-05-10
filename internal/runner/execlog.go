@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/atheory/context-engine/internal/core"
-	"github.com/atheory/context-engine/internal/llm"
-	"github.com/atheory/context-engine/internal/storage/queries"
+	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/llm"
+	"github.com/atheory-ai/context-engine/internal/storage/queries"
 )
 
 // logLLMCall writes an execution log entry after every LLM completion.

@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/atheory/context-engine/internal/core"
-	"github.com/atheory/context-engine/internal/storage/queries"
-	"github.com/atheory/context-engine/internal/storage/writebuffer"
+	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/storage/queries"
+	"github.com/atheory-ai/context-engine/internal/storage/writebuffer"
 )
 
 // Writer implements core.SubstrateWriter by forwarding all writes to the buffer.

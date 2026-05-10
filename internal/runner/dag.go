@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/atheory/context-engine/internal/agent/preflight"
-	"github.com/atheory/context-engine/internal/agent/reviewer"
-	"github.com/atheory/context-engine/internal/agent/strategizer"
-	"github.com/atheory/context-engine/internal/agent/synthesizer"
-	"github.com/atheory/context-engine/internal/config"
-	"github.com/atheory/context-engine/internal/core"
-	"github.com/atheory/context-engine/internal/graph/activation"
-	"github.com/atheory/context-engine/internal/storage/queries"
+	"github.com/atheory-ai/context-engine/internal/agent/preflight"
+	"github.com/atheory-ai/context-engine/internal/agent/reviewer"
+	"github.com/atheory-ai/context-engine/internal/agent/strategizer"
+	"github.com/atheory-ai/context-engine/internal/agent/synthesizer"
+	"github.com/atheory-ai/context-engine/internal/config"
+	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/graph/activation"
+	"github.com/atheory-ai/context-engine/internal/storage/queries"
 )
 
 // dag holds references to all constructed cognitive loop nodes.

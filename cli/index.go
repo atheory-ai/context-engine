@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"path/filepath"
 
-	"github.com/atheory/context-engine/internal/config"
-	"github.com/atheory/context-engine/internal/runner"
+	"github.com/atheory-ai/context-engine/internal/config"
+	"github.com/atheory-ai/context-engine/internal/runner"
 	"github.com/spf13/cobra"
 )
 

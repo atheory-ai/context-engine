@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/core"
 )
 
 // fanoutNode selects which tools activate on the current IR and executes

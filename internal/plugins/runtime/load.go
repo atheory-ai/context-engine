@@ -10,7 +10,7 @@ import (
 
 	extism "github.com/extism/go-sdk"
 
-	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/core"
 )
 
 // Load reads a .wasm file, validates its exports, compiles it (using the

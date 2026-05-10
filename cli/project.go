@@ -14,9 +14,9 @@ import (
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 
-	"github.com/atheory/context-engine/internal/storage/db"
-	"github.com/atheory/context-engine/internal/storage/migrations"
-	"github.com/atheory/context-engine/internal/storage/queries"
+	"github.com/atheory-ai/context-engine/internal/storage/db"
+	"github.com/atheory-ai/context-engine/internal/storage/migrations"
+	"github.com/atheory-ai/context-engine/internal/storage/queries"
 )
 
 func newProjectCmd() *cobra.Command {

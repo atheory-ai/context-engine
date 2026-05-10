@@ -1,7 +1,7 @@
 # Context Engine — Claude Code Guide
 
 ## Module
-github.com/atheory/context-engine
+github.com/atheory-ai/context-engine
 
 ## Specs (read before touching any component)
 All specs are in docs/specs/.

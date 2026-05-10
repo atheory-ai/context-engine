@@ -9,8 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/atheory/context-engine/internal/core"
-	"github.com/atheory/context-engine/internal/llm"
+	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/llm"
 )
 
 // Node is the Strategizer cognitive loop node.

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/atheory/context-engine/internal/runner"
-	"github.com/atheory/context-engine/internal/server/mcp/protocol"
+	"github.com/atheory-ai/context-engine/internal/runner"
+	"github.com/atheory-ai/context-engine/internal/server/mcp/protocol"
 )
 
 var searchTool = protocol.Tool{

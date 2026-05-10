@@ -7,7 +7,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/core"
 )
 
 // ANSI color codes — used when noColor is false.

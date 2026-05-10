@@ -1,4 +1,4 @@
-module github.com/atheory/context-engine
+module github.com/atheory-ai/context-engine
 
 go 1.24.3
 

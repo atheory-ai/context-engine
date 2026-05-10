@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/atheory/context-engine/cli"
+	"github.com/atheory-ai/context-engine/cli"
 )
 
 func main() {

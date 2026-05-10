@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/atheory/context-engine/internal/runner"
+	"github.com/atheory-ai/context-engine/internal/runner"
 )
 
 // QueryRequest is the body of POST /api/v1/query.

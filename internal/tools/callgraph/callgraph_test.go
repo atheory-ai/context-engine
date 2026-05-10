@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/atheory/context-engine/internal/core"
-	"github.com/atheory/context-engine/internal/tools/shared"
+	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/tools/shared"
 )
 
 // mockSubstrate overrides only the methods the callgraph tool uses.

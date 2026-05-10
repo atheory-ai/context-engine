@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/atheory/context-engine/internal/storage/db"
-	"github.com/atheory/context-engine/internal/storage/migrations"
-	"github.com/atheory/context-engine/internal/storage/writebuffer"
+	"github.com/atheory-ai/context-engine/internal/storage/db"
+	"github.com/atheory-ai/context-engine/internal/storage/migrations"
+	"github.com/atheory-ai/context-engine/internal/storage/writebuffer"
 )
 
 // testProvider implements DBProvider for tests using a single in-memory database.

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/core"
 )
 
 // LLMConfig is the configuration for the LLM layer.

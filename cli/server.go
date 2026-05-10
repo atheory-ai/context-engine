@@ -10,10 +10,10 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/atheory/context-engine/internal/config"
-	"github.com/atheory/context-engine/internal/runner"
-	"github.com/atheory/context-engine/internal/server"
-	"github.com/atheory/context-engine/internal/server/mcp"
+	"github.com/atheory-ai/context-engine/internal/config"
+	"github.com/atheory-ai/context-engine/internal/runner"
+	"github.com/atheory-ai/context-engine/internal/server"
+	"github.com/atheory-ai/context-engine/internal/server/mcp"
 	"github.com/spf13/cobra"
 )
 

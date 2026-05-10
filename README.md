@@ -2,6 +2,8 @@
 
 Context Engine (`ce`) is an AI-powered coding assistant that builds a persistent knowledge graph of your codebase and reasons over it. Instead of re-reading files on every query, it indexes your code once — extracting symbols, namespaces, dependencies, and concepts — then uses that graph to answer questions with precise, grounded context.
 
+Upstream repository: [atheory-ai/context-engine](https://github.com/atheory-ai/context-engine). Author and maintainer: Jeremy Harper ([@ladyhunterbear](https://github.com/ladyhunterbear)).
+
 ---
 
 ## How it works
@@ -39,7 +41,7 @@ query → Strategizer → Activation → Fan-out (6 tools) → Reviewer → Synt
 | ---- | ------- | ----- |
 | Go | 1.23+ | `brew install go` |
 | C compiler | Any | For tree-sitter CGO — already present on macOS (Xcode CLT) |
-| Language plugins | `.wasm` files | See [ce-plugin-sdk](https://github.com/ladyhunterbear/ce-plugin-sdk) |
+| Language plugins | `.wasm` files | See [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) |
 
 ---
 
@@ -48,8 +50,8 @@ query → Strategizer → Activation → Fan-out (6 tools) → Reviewer → Synt
 ### Build from source
 
 ```bash
-git clone https://github.com/ladyhunterbear/atheory-ce.git
-cd atheory-ce
+git clone https://github.com/atheory-ai/context-engine.git
+cd context-engine
 go build -o ce ./cmd/ce
 
 # Or install to $GOPATH/bin:
@@ -58,7 +60,7 @@ go install ./cmd/ce
 
 ### Install default language plugins
 
-Default plugins (Go, TypeScript, Python) must be built from the plugin SDK and placed in `~/.ce/plugins/defaults/`. See [ce-plugin-sdk](https://github.com/ladyhunterbear/ce-plugin-sdk) for instructions.
+Default plugins (Go, TypeScript, Python) must be built from the plugin SDK and placed in `~/.ce/plugins/defaults/`. See [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) for instructions.
 
 In production releases, plugins are embedded into the binary automatically.
 
@@ -298,8 +300,8 @@ golangci-lint run
 
 ## Related repos
 
-- [ce-plugin-sdk](https://github.com/ladyhunterbear/ce-plugin-sdk) — plugin development kit, default language plugins
-- [atheory-ce-studio](https://github.com/ladyhunterbear/atheory-ce-studio) — web UI
+- [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) — plugin development kit, default language plugins
+- [atheory-ce-studio](https://github.com/atheory-ai/atheory-ce-studio) — web UI
 
 ## Project docs
 

@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/atheory/context-engine/internal/core"
-	"github.com/atheory/context-engine/internal/storage/db"
-	"github.com/atheory/context-engine/internal/storage/migrations"
+	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/storage/db"
+	"github.com/atheory-ai/context-engine/internal/storage/migrations"
 )
 
 // OrgGraph manages the org-level substrate.

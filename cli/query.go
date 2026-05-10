@@ -7,9 +7,9 @@ import (
 	"os/signal"
 	"strings"
 
-	"github.com/atheory/context-engine/internal/config"
-	"github.com/atheory/context-engine/internal/runner"
-	"github.com/atheory/context-engine/tui"
+	"github.com/atheory-ai/context-engine/internal/config"
+	"github.com/atheory-ai/context-engine/internal/runner"
+	"github.com/atheory-ai/context-engine/tui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

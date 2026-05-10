@@ -3,8 +3,8 @@ package runner
 import (
 	"fmt"
 
-	"github.com/atheory/context-engine/internal/core"
-	"github.com/atheory/context-engine/internal/graph/activation"
+	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/graph/activation"
 )
 
 // runLoop executes the activation → fan-out → reviewer cycle until convergence

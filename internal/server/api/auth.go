@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/atheory/context-engine/internal/config"
-	"github.com/atheory/context-engine/internal/storage/db"
-	"github.com/atheory/context-engine/internal/storage/queries"
+	"github.com/atheory-ai/context-engine/internal/config"
+	"github.com/atheory-ai/context-engine/internal/storage/db"
+	"github.com/atheory-ai/context-engine/internal/storage/queries"
 )
 
 type contextKey string

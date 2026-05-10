@@ -1,7 +1,7 @@
 // Package anthropic implements core.LLMProvider for the Anthropic Messages API.
 package anthropic
 
-import "github.com/atheory/context-engine/internal/core"
+import "github.com/atheory-ai/context-engine/internal/core"
 
 // Model IDs
 const (

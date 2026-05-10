@@ -1391,7 +1391,7 @@ archives:
 
 brews:
   - repository:
-      owner: atheory
+      owner: atheory-ai
       name: homebrew-tap
     homepage: https://atheory.ai
     description: "Context Engine — AI-powered codebase intelligence"
@@ -1403,7 +1403,7 @@ checksum:
 
 release:
   github:
-    owner: atheory
+    owner: atheory-ai
     name: context-engine
 ```
 

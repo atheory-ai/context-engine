@@ -1,15 +1,15 @@
 package runner
 
 import (
-	"github.com/atheory/context-engine/internal/core"
-	"github.com/atheory/context-engine/internal/graph/substrate"
-	"github.com/atheory/context-engine/internal/plugins"
-	"github.com/atheory/context-engine/internal/tools/callgraph"
-	"github.com/atheory/context-engine/internal/tools/concepts"
-	"github.com/atheory/context-engine/internal/tools/crossproject"
-	"github.com/atheory/context-engine/internal/tools/filecontext"
-	"github.com/atheory/context-engine/internal/tools/references"
-	"github.com/atheory/context-engine/internal/tools/summary"
+	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/graph/substrate"
+	"github.com/atheory-ai/context-engine/internal/plugins"
+	"github.com/atheory-ai/context-engine/internal/tools/callgraph"
+	"github.com/atheory-ai/context-engine/internal/tools/concepts"
+	"github.com/atheory-ai/context-engine/internal/tools/crossproject"
+	"github.com/atheory-ai/context-engine/internal/tools/filecontext"
+	"github.com/atheory-ai/context-engine/internal/tools/references"
+	"github.com/atheory-ai/context-engine/internal/tools/summary"
 )
 
 // buildToolList assembles all available tools: built-in + plugin-contributed.

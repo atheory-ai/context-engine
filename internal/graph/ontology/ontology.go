@@ -11,8 +11,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/atheory/context-engine/internal/core"
-	"github.com/atheory/context-engine/internal/storage/writebuffer"
+	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/storage/writebuffer"
 )
 
 // ConceptSeedRow is the raw concept seed as stored in the database.

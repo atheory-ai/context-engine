@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/atheory/context-engine/internal/core"
-	"github.com/atheory/context-engine/internal/tools/shared"
+	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/tools/shared"
 )
 
 const callgraphDepth = 3 // traverse up to 3 hops in each direction

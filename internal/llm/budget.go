@@ -1,7 +1,7 @@
 // Package llm provides the LLM provider abstraction and implementations.
 package llm
 
-import "github.com/atheory/context-engine/internal/core"
+import "github.com/atheory-ai/context-engine/internal/core"
 
 // CostTable maps model IDs to per-token costs in USD.
 // Prices are per million tokens; divide by 1,000,000 to get per-token cost.

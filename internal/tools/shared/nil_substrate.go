@@ -4,7 +4,7 @@ package shared
 import (
 	"context"
 
-	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/core"
 )
 
 // NilSubstrate implements core.SubstrateReader with no-op methods that return

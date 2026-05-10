@@ -7,7 +7,7 @@ import (
 
 	extism "github.com/extism/go-sdk"
 
-	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/core"
 )
 
 // pluginInstance wraps an Extism plugin and implements core.Plugin.

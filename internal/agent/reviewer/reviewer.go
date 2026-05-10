@@ -8,9 +8,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/atheory/context-engine/internal/core"
-	"github.com/atheory/context-engine/internal/graph/substrate"
-	"github.com/atheory/context-engine/internal/llm"
+	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/graph/substrate"
+	"github.com/atheory-ai/context-engine/internal/llm"
 )
 
 // ReviewResult is what the Reviewer returns to the cognitive loop.

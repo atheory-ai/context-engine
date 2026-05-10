@@ -13,10 +13,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/atheory/context-engine/internal/config"
-	"github.com/atheory/context-engine/internal/runner"
-	"github.com/atheory/context-engine/tui/render"
-	"github.com/atheory/context-engine/tui/update"
+	"github.com/atheory-ai/context-engine/internal/config"
+	"github.com/atheory-ai/context-engine/internal/runner"
+	"github.com/atheory-ai/context-engine/tui/render"
+	"github.com/atheory-ai/context-engine/tui/update"
 )
 
 // ViewState controls which view the main area shows.

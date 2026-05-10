@@ -6,10 +6,10 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/atheory/context-engine/internal/config"
-	"github.com/atheory/context-engine/internal/runner"
-	"github.com/atheory/context-engine/internal/server/mcp/protocol"
-	"github.com/atheory/context-engine/internal/server/mcp/tools"
+	"github.com/atheory-ai/context-engine/internal/config"
+	"github.com/atheory-ai/context-engine/internal/runner"
+	"github.com/atheory-ai/context-engine/internal/server/mcp/protocol"
+	"github.com/atheory-ai/context-engine/internal/server/mcp/tools"
 )
 
 // MCPProtocolVersion is the MCP spec version this server implements.

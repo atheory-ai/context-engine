@@ -7,9 +7,9 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/atheory/context-engine/internal/config"
-	"github.com/atheory/context-engine/internal/core"
-	"github.com/atheory/context-engine/internal/plugins/runtime"
+	"github.com/atheory-ai/context-engine/internal/config"
+	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/plugins/runtime"
 	"github.com/spf13/cobra"
 )
 
