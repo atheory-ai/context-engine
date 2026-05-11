@@ -18,8 +18,8 @@ Upstream repository: [atheory-ai/context-engine](https://github.com/atheory-ai/c
 
 ```text
 ~/.ce/
-  meta.db        — project registry, paths, settings
-  audit.db       — API tokens, access log
+  meta.db        — project registry, paths, settings, API tokens
+  audit.db       — sessions, turns, access log
   graphs/
     local.db     — current project's knowledge graph
     org.db       — org-wide graph (cross-project intelligence)

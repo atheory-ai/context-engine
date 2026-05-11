@@ -475,19 +475,19 @@ func (e *Engine) ActiveProjectPath() string {
 	return paths[0].Path
 }
 
-// InsertToken creates a new API token in audit.db.
+// InsertToken creates a new API token in meta.db.
 func (e *Engine) InsertToken(ctx context.Context, t queries.Token) error {
-	return queries.InsertToken(ctx, e.dbRegistry.Audit(), t)
+	return queries.InsertToken(ctx, e.dbRegistry.Meta(), t)
 }
 
-// ListTokens returns all API tokens from audit.db.
+// ListTokens returns all API tokens from meta.db.
 func (e *Engine) ListTokens(ctx context.Context) ([]queries.Token, error) {
-	return queries.ListTokens(ctx, e.dbRegistry.Audit())
+	return queries.ListTokens(ctx, e.dbRegistry.Meta())
 }
 
-// RevokeToken marks a token as revoked in audit.db.
+// RevokeToken marks a token as revoked in meta.db.
 func (e *Engine) RevokeToken(ctx context.Context, id string) error {
-	return queries.RevokeToken(ctx, e.dbRegistry.Audit(), id, time.Now().UnixMilli())
+	return queries.RevokeToken(ctx, e.dbRegistry.Meta(), id, time.Now().UnixMilli())
 }
 
 // Close flushes the write buffer, closes all databases, unloads plugins.

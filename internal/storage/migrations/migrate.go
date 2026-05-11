@@ -48,7 +48,9 @@ func runMigrations(db *sql.DB, name string) error {
 	if err != nil {
 		return fmt.Errorf("migration source %s: %w", name, err)
 	}
-	driver, err := sqlite.WithInstance(db, &sqlite.Config{})
+	driver, err := sqlite.WithInstance(db, &sqlite.Config{
+		MigrationsTable: "schema_migrations_" + name,
+	})
 	if err != nil {
 		return fmt.Errorf("migration driver %s: %w", name, err)
 	}

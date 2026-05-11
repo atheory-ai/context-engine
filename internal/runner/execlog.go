@@ -27,6 +27,9 @@ func (e *Engine) logLLMCall(
 	if !e.cfg.Tracing.Enabled {
 		return
 	}
+	if e.cfg.ReadOnly {
+		return
+	}
 	execDB := e.dbRegistry.Exec()
 	if execDB == nil {
 		return

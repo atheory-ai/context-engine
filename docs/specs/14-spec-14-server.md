@@ -1047,7 +1047,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 package auth
 
 // Middleware validates CE API tokens on all /api/ requests.
-// Tokens are created via `ce token create` and stored in audit.db.
+// Tokens are created via `ce token create` and stored in meta.db.
 func Middleware(cfg *config.Config) func(http.Handler) http.Handler {
     return func(next http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1066,7 +1066,7 @@ func Middleware(cfg *config.Config) func(http.Handler) http.Handler {
                 return
             }
 
-            // Validate token against audit.db
+            // Validate token against meta.db
             tokenRecord, err := validateToken(cfg.DataDir, token)
             if err != nil || tokenRecord == nil {
                 writeUnauthorized(w, "invalid token")

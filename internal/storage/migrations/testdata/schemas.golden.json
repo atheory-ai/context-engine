@@ -1,0 +1,165 @@
+{
+  "audit": {
+    "index": [
+      "idx_audit_action",
+      "idx_audit_actor",
+      "idx_audit_session",
+      "idx_audit_timestamp",
+      "idx_audit_turn",
+      "idx_sessions_actor",
+      "idx_sessions_started",
+      "idx_sessions_surface",
+      "idx_turns_session",
+      "idx_turns_started",
+      "idx_turns_status",
+      "version_unique"
+    ],
+    "table": [
+      "audit_entries",
+      "schema_migrations_audit",
+      "schema_version",
+      "sessions",
+      "turns"
+    ]
+  },
+  "execution": {
+    "index": [
+      "idx_exec_model",
+      "idx_exec_node_type",
+      "idx_exec_run_id",
+      "idx_exec_session",
+      "idx_exec_timestamp",
+      "idx_exec_turn_id",
+      "version_unique"
+    ],
+    "table": [
+      "execution_log",
+      "schema_migrations_execution",
+      "schema_version"
+    ]
+  },
+  "graph": {
+    "index": [
+      "idx_concept_seeds_source",
+      "idx_concept_seeds_term",
+      "idx_edge_weight_source_class",
+      "idx_edge_weight_weight",
+      "idx_edges_project",
+      "idx_edges_source",
+      "idx_edges_source_class",
+      "idx_edges_source_type",
+      "idx_edges_target",
+      "idx_edges_target_type",
+      "idx_edges_type",
+      "idx_enrichments_entity",
+      "idx_enrichments_run",
+      "idx_enrichments_turn",
+      "idx_file_hashes_project",
+      "idx_index_runs_project",
+      "idx_index_runs_started",
+      "idx_index_runs_status",
+      "idx_node_activation_level",
+      "idx_nodes_canonical",
+      "idx_nodes_label",
+      "idx_nodes_plugin",
+      "idx_nodes_project",
+      "idx_nodes_source_class",
+      "idx_nodes_type",
+      "version_unique"
+    ],
+    "table": [
+      "concept_seeds",
+      "edge_weight",
+      "edges",
+      "enrichments",
+      "file_hashes",
+      "index_runs",
+      "node_activation",
+      "nodes",
+      "schema_migrations_graph",
+      "schema_version"
+    ]
+  },
+  "isolation": {
+    "audit_has_audit_entries": true,
+    "audit_has_execution_log": false,
+    "audit_has_tokens": false,
+    "execution_has_audit_entries": false,
+    "execution_has_execution_log": true,
+    "execution_has_tokens": false,
+    "graph_has_audit_entries": false,
+    "graph_has_execution_log": false,
+    "graph_has_nodes": true,
+    "meta_has_audit_entries": false,
+    "meta_has_execution_log": false,
+    "meta_has_tokens": true,
+    "org_has_cross_project_edges": true,
+    "org_has_graph_nodes": true,
+    "org_has_org_concepts": true
+  },
+  "meta": {
+    "index": [
+      "idx_project_paths_path",
+      "idx_projects_git_url",
+      "idx_projects_status",
+      "idx_tokens_revoked",
+      "idx_tokens_scope",
+      "version_unique"
+    ],
+    "table": [
+      "project_paths",
+      "projects",
+      "schema_migrations_meta",
+      "schema_version",
+      "tokens"
+    ]
+  },
+  "org": {
+    "index": [
+      "idx_concept_seeds_source",
+      "idx_concept_seeds_term",
+      "idx_cross_edges_source",
+      "idx_cross_edges_target",
+      "idx_cross_edges_type",
+      "idx_edge_weight_source_class",
+      "idx_edge_weight_weight",
+      "idx_edges_project",
+      "idx_edges_source",
+      "idx_edges_source_class",
+      "idx_edges_source_type",
+      "idx_edges_target",
+      "idx_edges_target_type",
+      "idx_edges_type",
+      "idx_enrichments_entity",
+      "idx_enrichments_run",
+      "idx_enrichments_turn",
+      "idx_file_hashes_project",
+      "idx_index_runs_project",
+      "idx_index_runs_started",
+      "idx_index_runs_status",
+      "idx_node_activation_level",
+      "idx_nodes_canonical",
+      "idx_nodes_label",
+      "idx_nodes_plugin",
+      "idx_nodes_project",
+      "idx_nodes_source_class",
+      "idx_nodes_type",
+      "version_unique"
+    ],
+    "table": [
+      "concept_seeds",
+      "cross_project_edges",
+      "edge_weight",
+      "edges",
+      "enrichments",
+      "file_hashes",
+      "index_runs",
+      "node_activation",
+      "nodes",
+      "org_concept_seeds",
+      "schema_migrations_graph",
+      "schema_migrations_org",
+      "schema_version"
+    ]
+  }
+}
