@@ -1,0 +1,22 @@
+{
+  "edge": {
+    "edge_id": "d3c442902eb825a7b18b6d5063d54314",
+    "edge_type": "defines",
+    "source_id": "6cdf6954dd14b576f617639a5aaaa81e",
+    "target_id": "d8cf031c798c17754b1e3b3252d1e3e3"
+  },
+  "nodes": [
+    {
+      "canonical_id": "github.com/atheory-ai/context-engine/internal/core.IR.Validate",
+      "node_id": "6cdf6954dd14b576f617639a5aaaa81e",
+      "node_type": "symbol",
+      "project_id": "project-alpha"
+    },
+    {
+      "canonical_id": "internal/core/ir.go",
+      "node_id": "d8cf031c798c17754b1e3b3252d1e3e3",
+      "node_type": "file",
+      "project_id": "project-alpha"
+    }
+  ]
+}

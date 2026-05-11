@@ -1,0 +1,87 @@
+{
+  "agent_context": {
+    "has_budget": true,
+    "has_channels": true,
+    "has_context": true,
+    "loop_index": 2,
+    "project_id": "project-core",
+    "query": "How does core state flow?",
+    "run_id": "run-core",
+    "turn_id": "turn-core"
+  },
+  "anchors": {
+    "first_read_mutated": [
+      {
+        "Ref": {
+          "Type": "symbol",
+          "ID": "core.RunContext",
+          "Confidence": "high"
+        },
+        "Node": {
+          "ID": "node-run-context",
+          "ProjectID": "project-core",
+          "Type": "symbol",
+          "Label": "RunContext",
+          "CanonicalID": "",
+          "SourceClass": "",
+          "PluginID": "",
+          "Properties": null,
+          "CreatedAt": 0,
+          "UpdatedAt": 0
+        },
+        "Edges": null,
+        "Activation": 0.1
+      }
+    ],
+    "second_read": [
+      {
+        "Ref": {
+          "Type": "symbol",
+          "ID": "core.RunContext",
+          "Confidence": "high"
+        },
+        "Node": {
+          "ID": "node-run-context",
+          "ProjectID": "project-core",
+          "Type": "symbol",
+          "Label": "RunContext",
+          "CanonicalID": "",
+          "SourceClass": "",
+          "PluginID": "",
+          "Properties": null,
+          "CreatedAt": 0,
+          "UpdatedAt": 0
+        },
+        "Edges": null,
+        "Activation": 0.95
+      }
+    ]
+  },
+  "emissions": [
+    {
+      "RunID": "run-core",
+      "TurnID": "turn-core",
+      "LoopIndex": 1,
+      "Source": "strategizer",
+      "Channel": "thinking",
+      "Content": "compiled IR",
+      "Markdown": false,
+      "Metadata": null
+    },
+    {
+      "RunID": "run-core",
+      "TurnID": "turn-core",
+      "LoopIndex": 2,
+      "Source": "tool:summary",
+      "Channel": "action",
+      "Content": "summarized namespace",
+      "Markdown": false,
+      "Metadata": null
+    }
+  ],
+  "loop_values": [
+    1,
+    2,
+    2
+  ]
+}
