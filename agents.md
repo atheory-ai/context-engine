@@ -22,7 +22,3 @@ All specs are in docs/specs/.
 - CGO is permitted for tree-sitter only; all other packages stay pure Go, and release cross-compilation must be preserved with configured C cross-compilers
 - Read-scoped token sessions never write to execution.db or the substrate
 - wazero + Extism for all plugin loading — no other WASM runtime
-
-## When uncertain about a decision
-Check docs/specs/decisions-log.md — find the relevant section by subsystem.
-Do not invent solutions to architectural questions — ask first.
