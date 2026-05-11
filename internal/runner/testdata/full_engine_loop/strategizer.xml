@@ -1,0 +1,16 @@
+The query asks for a small call path, so inspect the billing symbol and its immediate callees.
+
+<mode>thinking</mode>
+<anchors>
+  <anchor type="symbol" id="internal/billing:ProcessPayment" confidence="high"/>
+</anchors>
+<predicates>
+  <predicate name="fixture-tool" value="true"/>
+</predicates>
+<open_queries>
+  <open_query>Which immediate call from ProcessPayment reaches InvoiceWriter?</open_query>
+</open_queries>
+<max_loops>1</max_loops>
+<k_limit>2</k_limit>
+<role_hint></role_hint>
+<model_tier></model_tier>
