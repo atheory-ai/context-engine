@@ -51,16 +51,7 @@ func (r *Runtime) Load(ctx context.Context, wasmPath string, pluginConfig map[st
 	hostFuncs := buildHostFunctions(deps)
 
 	// ── 5. Create Extism plugin (wazero cache handles compilation artifacts) ─
-	manifest := extism.Manifest{
-		Wasm: []extism.Wasm{
-			extism.WasmData{Data: wasmBytes},
-		},
-		// Sandbox: no filesystem, no network
-		AllowedHosts: []string{},
-		AllowedPaths: map[string]string{},
-	}
-
-	extismPlugin, err := extism.NewPlugin(ctx, manifest, extism.PluginConfig{
+	extismPlugin, err := extism.NewPlugin(ctx, newExtismManifest(wasmBytes), extism.PluginConfig{
 		RuntimeConfig: r.cache.RuntimeConfig(),
 		EnableWasi:    false,
 	}, hostFuncs)
@@ -102,4 +93,15 @@ func (r *Runtime) Load(ctx context.Context, wasmPath string, pluginConfig map[st
 		wasmDir:  filepath.Dir(wasmPath),
 		exports:  exports,
 	}, nil
+}
+
+func newExtismManifest(wasmBytes []byte) extism.Manifest {
+	return extism.Manifest{
+		Wasm: []extism.Wasm{
+			extism.WasmData{Data: wasmBytes},
+		},
+		// Sandbox: no filesystem, no network.
+		AllowedHosts: []string{},
+		AllowedPaths: map[string]string{},
+	}
 }
