@@ -56,28 +56,11 @@ jobs:
           install-only: true
           version: "~> v2"
 
-      - name: Check Go formatting
-        shell: bash
-        run: |
-          files=$(git ls-files '*.go')
-          if [ -z "$files" ]; then
-            exit 0
-          fi
-          unformatted=$(gofmt -l $files)
-          if [ -n "$unformatted" ]; then
-            echo "These files need gofmt:"
-            echo "$unformatted"
-            exit 1
-          fi
-
-      - name: Run go vet
-        run: go vet ./...
-
-      - name: Run tests
-        run: go test ./...
+      - name: Run verification
+        run: make verify
 
       - name: Build release artifacts
-        run: goreleaser build --snapshot --clean
+        run: make release-snapshot
 
       - name: Archive build output
         shell: bash

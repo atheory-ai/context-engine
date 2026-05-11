@@ -251,18 +251,24 @@ plugins:
 ## Development
 
 ```bash
-# Run all tests
-go test ./...
+# Build the CLI
+make build
+
+# Run the standard verification suite
+make verify
+
+# Run all Go tests
+make test
 
 # Run tests for a specific package
 go test ./internal/graph/activation/...
 go test ./internal/tools/...
 
-# Build with race detector
-go build -race ./cmd/ce
+# Run tests with the race detector
+make test-race
 
-# Lint
-golangci-lint run
+# Format Go files
+make fmt
 ```
 
 ### Key packages
@@ -319,7 +325,7 @@ golangci-lint run
 Releases use GoReleaser with CGO enabled for all platforms:
 
 ```bash
-goreleaser build --snapshot --clean
+make release-snapshot
 ```
 
 Binaries land in `dist/`. The release pipeline embeds compiled WASM plugins from `ce-plugin-sdk` into the binary.

@@ -20,7 +20,7 @@ This document is for maintainers.
 ```bash
 git checkout main
 git pull --ff-only
-goreleaser build --snapshot --clean
+make release-snapshot
 ```
 
 1. Create and push the release tag:

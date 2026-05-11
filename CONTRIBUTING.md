@@ -20,7 +20,7 @@ Requirements:
 Clone and build locally:
 
 ```bash
-go build -o ce ./cmd/ce
+make build
 ```
 
 ## Verification
@@ -28,17 +28,13 @@ go build -o ce ./cmd/ce
 Before opening a pull request, run:
 
 ```bash
-files=$(git ls-files '*.go')
-if [ -n "$files" ]; then gofmt -w $files; fi
-go vet ./...
-go test ./...
-go build ./cmd/ce
+make verify
 ```
 
 If you changed release packaging or `.goreleaser.yaml`, also run:
 
 ```bash
-goreleaser build --snapshot --clean
+make release-snapshot
 ```
 
 ## Pull Requests
