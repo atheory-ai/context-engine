@@ -2,9 +2,9 @@ GO ?= go
 GOFLAGS ?=
 GORELEASER ?= goreleaser
 BINARY ?= ce
-UNIT_PACKAGES := $(shell $(GO) list ./... | grep -v '/test/acceptance$$')
+UNIT_PACKAGES := $(shell $(GO) list ./... | grep -v '/test/acceptance$$' | grep -v '/test/coverage$$')
 
-.PHONY: build install test test-unit test-acceptance test-race vet fmt fmt-check verify verify-unit clean release-snapshot help
+.PHONY: build install test test-unit test-acceptance test-coverage test-race vet fmt fmt-check verify verify-unit clean release-snapshot help
 
 help:
 	@echo "Available targets:"
@@ -13,6 +13,7 @@ help:
 	@echo "  make test              Run all Go tests"
 	@echo "  make test-unit         Run Go tests except acceptance"
 	@echo "  make test-acceptance   Run CLI acceptance tests"
+	@echo "  make test-coverage     Run unit coverage with package minimums"
 	@echo "  make test-race         Run all Go tests with the race detector"
 	@echo "  make vet               Run go vet"
 	@echo "  make fmt               Format Go files"
@@ -36,6 +37,9 @@ test-unit:
 
 test-acceptance:
 	$(GO) test $(GOFLAGS) ./test/acceptance
+
+test-coverage:
+	$(GO) run ./test/coverage
 
 test-race:
 	$(GO) test $(GOFLAGS) -race ./...

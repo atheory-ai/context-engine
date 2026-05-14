@@ -4,6 +4,7 @@
 *.test
 *.out
 coverage.txt
+/coverage/
 
 # Release artifacts
 dist/

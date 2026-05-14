@@ -31,6 +31,19 @@ jobs:
       - name: Run unit verification
         run: make verify-unit
 
+      - name: Run coverage gate
+        run: make test-coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-coverage
+          path: |
+            coverage/unit.out
+            coverage/coverage.json
+            coverage/coverage.md
+          if-no-files-found: error
+
   acceptance:
     runs-on: ubuntu-latest
 
