@@ -328,4 +328,4 @@ Releases use GoReleaser with CGO enabled for all platforms:
 make release-snapshot
 ```
 
-Binaries land in `dist/`. The release pipeline embeds compiled WASM plugins from `ce-plugin-sdk` into the binary.
+Binaries land in `dist/`. CI validates release builds for darwin, linux, and windows on amd64 and arm64 with Zig-backed CGO cross-compilation. The release pipeline embeds compiled WASM plugins from `ce-plugin-sdk` into the binary.

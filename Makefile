@@ -4,7 +4,7 @@ GORELEASER ?= goreleaser
 BINARY ?= ce
 UNIT_PACKAGES = $(shell $(GO) list ./... | grep -v '/test/acceptance$$' | grep -v '/test/coverage$$')
 
-.PHONY: build install test test-unit test-acceptance test-coverage test-race vet fmt fmt-check verify verify-unit clean release-snapshot release-dry-run-plugins help
+.PHONY: build install test test-unit test-acceptance test-coverage test-race vet fmt fmt-check verify verify-unit clean build-cross release-snapshot release-dry-run-plugins help
 
 help:
 	@echo "Available targets:"
@@ -20,6 +20,7 @@ help:
 	@echo "  make fmt-check         Fail if Go files need formatting"
 	@echo "  make verify            Run fmt-check, vet, tests, and build"
 	@echo "  make verify-unit       Run fmt-check, vet, unit tests, and build"
+	@echo "  make build-cross       Build darwin/linux/windows for amd64/arm64"
 	@echo "  make release-snapshot  Build release artifacts with GoReleaser"
 	@echo "  make release-dry-run-plugins"
 	@echo "                         Validate release build embeds default plugins"
@@ -66,6 +67,10 @@ fmt-check:
 verify: fmt-check vet test-unit test-acceptance build
 
 verify-unit: fmt-check vet test-unit build
+
+build-cross:
+	zig version
+	$(GORELEASER) build --snapshot --clean
 
 release-snapshot:
 	$(GORELEASER) build --snapshot --clean

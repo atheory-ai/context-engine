@@ -45,10 +45,10 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Install cross-compilers
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-x86-64-linux-gnu gcc-aarch64-linux-gnu gcc-mingw-w64-x86-64
+      - name: Install Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.13.0
 
       - name: Install GoReleaser
         uses: goreleaser/goreleaser-action@v6
@@ -60,7 +60,7 @@ jobs:
         run: make verify
 
       - name: Build release artifacts
-        run: make release-snapshot
+        run: make build-cross
 
       - name: Archive build output
         shell: bash

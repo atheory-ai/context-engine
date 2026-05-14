@@ -1362,25 +1362,31 @@ builds:
     goarch:
       - amd64
       - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
     overrides:
       - goos: linux
         goarch: amd64
         env:
-          - CC=x86_64-linux-gnu-gcc
+          - CC=zig cc -target x86_64-linux-gnu
       - goos: linux
         goarch: arm64
         env:
-          - CC=aarch64-linux-gnu-gcc
+          - CC=zig cc -target aarch64-linux-gnu
       - goos: darwin
+        goarch: amd64
         env:
-          - CC=clang
+          - CC=zig cc -target x86_64-macos
+      - goos: darwin
+        goarch: arm64
+        env:
+          - CC=zig cc -target aarch64-macos
       - goos: windows
         goarch: amd64
         env:
-          - CC=x86_64-w64-mingw32-gcc
+          - CC=zig cc -target x86_64-windows-gnu
+      - goos: windows
+        goarch: arm64
+        env:
+          - CC=zig cc -target aarch64-windows-gnu
 
 archives:
   - format: tar.gz

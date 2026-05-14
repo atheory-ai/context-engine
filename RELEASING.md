@@ -34,5 +34,5 @@ git push origin vX.Y.Z
 
 ## Notes
 
-- The current GoReleaser configuration builds cross-platform archives and Homebrew metadata.
+- The current GoReleaser configuration builds darwin, linux, and windows archives for amd64 and arm64 with Zig-backed CGO cross-compilation, plus Homebrew metadata.
 - If you change packaging, Homebrew metadata, or binary naming, update both [`.goreleaser.yaml`](./.goreleaser.yaml) and [README.md](./README.md) as needed.
