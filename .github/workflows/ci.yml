@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
+  unit:
     runs-on: ubuntu-latest
 
     steps:
@@ -28,5 +28,21 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run verification
-        run: make verify
+      - name: Run unit verification
+        run: make verify-unit
+
+  acceptance:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run acceptance tests
+        run: make test-acceptance
