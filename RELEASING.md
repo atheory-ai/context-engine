@@ -8,7 +8,7 @@ This document is for maintainers.
 - Releases are created from a tagged commit on `main`.
 - Tags should follow `vX.Y.Z`.
 - Release artifacts are built with GoReleaser using [`.goreleaser.yaml`](./.goreleaser.yaml).
-- [`.github/workflows/release.yml`](./.github/workflows/release.yml) validates the tag, builds the release bundle, and publishes the GitHub release.
+- [`.github/workflows/release.yml`](./.github/workflows/release.yml) validates the tag, checks SDK and Studio compatibility, builds the release bundle, and publishes the GitHub release.
 
 ## Release Steps
 
@@ -35,4 +35,5 @@ git push origin vX.Y.Z
 ## Notes
 
 - The current GoReleaser configuration builds darwin, linux, and windows archives for amd64 and arm64 with Zig-backed CGO cross-compilation, plus Homebrew metadata.
+- The release workflow gates publishing on the current `atheory-ai/ce-plugin-sdk` and `atheory-ai/atheory-ce-studio` verification commands so CE does not ship against broken sibling repos.
 - If you change packaging, Homebrew metadata, or binary naming, update both [`.goreleaser.yaml`](./.goreleaser.yaml) and [README.md](./README.md) as needed.

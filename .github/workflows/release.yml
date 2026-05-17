@@ -76,9 +76,70 @@ jobs:
           path: ce-${{ steps.release_version.outputs.version }}-dist.tar.gz
           if-no-files-found: error
 
+  sdk_compatibility:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out SDK repository
+        uses: actions/checkout@v5
+        with:
+          repository: atheory-ai/ce-plugin-sdk
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run lint
+        run: pnpm lint
+
+      - name: Build workspace
+        run: pnpm build
+
+      - name: Run tests
+        run: pnpm test
+
+  studio_compatibility:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out Studio repository
+        uses: actions/checkout@v5
+        with:
+          repository: atheory-ai/atheory-ce-studio
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run lint
+        run: pnpm lint
+
+      - name: Run typecheck
+        run: pnpm typecheck
+
+      - name: Build application
+        run: pnpm build
+
   publish_release:
     runs-on: ubuntu-latest
-    needs: verify_release
+    needs:
+      - verify_release
+      - sdk_compatibility
+      - studio_compatibility
 
     steps:
       - name: Download release bundle
