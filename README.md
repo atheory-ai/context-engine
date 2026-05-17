@@ -6,6 +6,17 @@ Upstream repository: [atheory-ai/context-engine](https://github.com/atheory-ai/c
 
 ---
 
+## Repository role
+
+This repository owns the CE runtime: the `ce` binary, CLI, runner, storage layer, indexer, MCP server, REST/WebSocket API, and release artifacts. It does not own the TypeScript plugin authoring SDK or the Studio frontend; those live in sibling repositories and are checked during CE releases for compatibility.
+
+Sibling repositories:
+
+- [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) — TypeScript plugin SDK, plugin sandbox, templates, and default plugin source
+- [atheory-ce-studio](https://github.com/atheory-ai/atheory-ce-studio) — web UI for querying, graph exploration, history, and trace inspection
+
+---
+
 ## How it works
 
 1. **Index** — The engine walks your project, routes each file to a language plugin, and extracts a property graph (nodes = symbols/namespaces/concepts, edges = calls/imports/implements/etc.) into a local SQLite substrate.
