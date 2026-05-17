@@ -96,9 +96,14 @@ Please include:
 
 ## Architecture Notes
 
-- `internal/core` is the dependency floor and must not import other internal packages
-- All substrate writes go through the write buffer
-- Keep the project pure Go except for the existing tree-sitter CGO constraint
+Start with the contributor-facing [architecture guide](./docs/architecture.md), then read the relevant implementation spec in [docs/specs](./docs/specs/).
+
+The high-level constraints are:
+
+- `internal/core` is the dependency floor and must not import other internal packages.
+- All substrate writes go through the write buffer.
+- Keep the project pure Go except for the existing tree-sitter CGO constraint.
+- Plugin loading uses wazero and Extism only.
 
 ## Code of Conduct
 
