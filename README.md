@@ -140,7 +140,7 @@ Server exposes:
 
 - `http://localhost:4040/mcp/sse` — MCP SSE endpoint (for IDE integrations)
 - `http://localhost:4040/api/v1` — REST API
-- `http://localhost:4040/ws/query` — WebSocket streaming (used by CE Studio)
+- `ws://localhost:4040/api/v1/ws` — WebSocket streaming (used by CE Studio)
 
 For IDE integration (Claude Desktop, Cursor, Claude Code), use the hidden stdio transport:
 
@@ -324,6 +324,7 @@ make fmt
 
 - [Architecture guide](./docs/architecture.md) — contributor-facing codebase map
 - [Roadmap and stability](./docs/stability.md) — stable vs experimental API surfaces
+- [Troubleshooting](./docs/troubleshooting.md) — plugin loading, SQLite files, MCP, and Studio connection issues
 - [LICENSE](./LICENSE) — license terms
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — contributor workflow and verification steps
 - [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) — community expectations
