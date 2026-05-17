@@ -50,7 +50,7 @@ query → Strategizer → Activation → Fan-out (6 tools) → Reviewer → Synt
 
 | Tool | Version | Notes |
 | ---- | ------- | ----- |
-| Go | 1.23+ | `brew install go` |
+| Go | 1.24.3+ | `brew install go` |
 | C compiler | Any | For tree-sitter CGO — already present on macOS (Xcode CLT) |
 | Language plugins | `.wasm` files | See [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) |
 
