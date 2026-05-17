@@ -4,6 +4,8 @@
 
 Please do not open a public issue for a suspected security problem.
 
+For CE's local storage, LLM payload, token, and audit-log model, see [docs/security-model.md](./docs/security-model.md).
+
 Report vulnerabilities privately to:
 
 - `jeremy@atheory.ai`
