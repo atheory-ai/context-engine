@@ -323,6 +323,7 @@ make fmt
 ## Project docs
 
 - [Architecture guide](./docs/architecture.md) — contributor-facing codebase map
+- [Golden tests](./docs/golden-tests.md) — how to add and review golden fixtures
 - [Plugin authoring](./docs/plugin-authoring.md) — CE runtime expectations linked to SDK APIs
 - [Roadmap and stability](./docs/stability.md) — stable vs experimental API surfaces
 - [Troubleshooting](./docs/troubleshooting.md) — plugin loading, SQLite files, MCP, and Studio connection issues

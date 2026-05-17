@@ -105,6 +105,8 @@ The high-level constraints are:
 - Keep the project pure Go except for the existing tree-sitter CGO constraint.
 - Plugin loading uses wazero and Extism only.
 
+For snapshot-style fixtures, follow [How To Write A Golden Test](./docs/golden-tests.md).
+
 ## Code of Conduct
 
 By participating in this project, you agree to follow [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md).
