@@ -59,6 +59,9 @@ jobs:
       - name: Run verification
         run: make verify
 
+      - name: Validate bundled default plugins
+        run: make release-dry-run-plugins
+
       - name: Build release artifacts
         run: make build-cross
 
