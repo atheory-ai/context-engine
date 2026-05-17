@@ -323,6 +323,7 @@ make fmt
 ## Project docs
 
 - [Architecture guide](./docs/architecture.md) — contributor-facing codebase map
+- [Roadmap and stability](./docs/stability.md) — stable vs experimental API surfaces
 - [LICENSE](./LICENSE) — license terms
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — contributor workflow and verification steps
 - [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) — community expectations
