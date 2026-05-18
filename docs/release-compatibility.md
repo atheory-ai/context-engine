@@ -14,7 +14,7 @@ uses the same `vX.Y.Z` tag in each repository.
 
 | Repository | Version source | Published artifact |
 | --- | --- | --- |
-| `context-engine` | Git tag `vX.Y.Z` | `ce` binaries and archives |
+| `context-engine` | `VERSION` file and Git tag `vX.Y.Z` | `ce` binaries, archives, GitHub installer bundle, and `@atheory-ai/ce` npm packages |
 | `ce-plugin-sdk` | Package versions and Git tag `vX.Y.Z` | SDK packages, sandbox, scaffolder, default plugin WASM artifacts |
 | `atheory-ce-studio` | `package.json` and Git tag `vX.Y.Z` | `@atheory-ai/ce-studio` npm package and GitHub release bundle |
 

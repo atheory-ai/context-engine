@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -37,7 +38,16 @@ jobs:
       - name: Read release version
         id: release_version
         shell: bash
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+        run: |
+          file_version=$(cat VERSION)
+          tag_version="${GITHUB_REF#refs/tags/v}"
+          if [[ "$tag_version" != "$file_version" ]]; then
+            echo "Tag version does not match VERSION file."
+            echo "tag:  $tag_version"
+            echo "file: $file_version"
+            exit 1
+          fi
+          echo "version=$tag_version" >> "$GITHUB_OUTPUT"
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -65,6 +75,23 @@ jobs:
       - name: Build release artifacts
         run: make build-cross
 
+      - name: Sync npm package versions
+        run: node scripts/set-npm-version.mjs "${{ steps.release_version.outputs.version }}"
+
+      - name: Stage npm binaries
+        run: node scripts/stage-npm-binaries.mjs
+
+      - name: Build npm tarballs
+        shell: bash
+        run: |
+          cd npm/darwin-arm64 && npm pack --pack-destination ../../dist
+          cd ../darwin-x64 && npm pack --pack-destination ../../dist
+          cd ../linux-arm64 && npm pack --pack-destination ../../dist
+          cd ../linux-x64 && npm pack --pack-destination ../../dist
+          cd ../win32-arm64 && npm pack --pack-destination ../../dist
+          cd ../win32-x64 && npm pack --pack-destination ../../dist
+          cd ../ce && npm pack --pack-destination ../../dist
+
       - name: Archive build output
         shell: bash
         run: tar -czf "ce-${{ steps.release_version.outputs.version }}-dist.tar.gz" dist
@@ -74,6 +101,13 @@ jobs:
         with:
           name: ce-release-bundle
           path: ce-${{ steps.release_version.outputs.version }}-dist.tar.gz
+          if-no-files-found: error
+
+      - name: Upload npm tarballs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ce-npm-tarballs
+          path: dist/*.tgz
           if-no-files-found: error
 
   sdk_compatibility:
@@ -140,6 +174,7 @@ jobs:
       - verify_release
       - sdk_compatibility
       - studio_compatibility
+      - publish_npm
 
     steps:
       - name: Download release bundle
@@ -152,3 +187,61 @@ jobs:
         with:
           generate_release_notes: true
           files: ce-${{ needs.verify_release.outputs.version }}-dist.tar.gz
+
+  publish_npm:
+    runs-on: ubuntu-latest
+    needs:
+      - verify_release
+      - sdk_compatibility
+      - studio_compatibility
+    environment:
+      name: npm-release
+
+    steps:
+      - name: Download npm tarballs
+        id: download_tarballs
+        uses: actions/download-artifact@v4
+        with:
+          name: ce-npm-tarballs
+          path: dist
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish platform packages
+        env:
+          VERSION: ${{ needs.verify_release.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          tar_dir="$(realpath "${{ steps.download_tarballs.outputs.download-path }}")"
+          for tarball in \
+            "$tar_dir/atheory-ai-ce-darwin-arm64-${VERSION}.tgz" \
+            "$tar_dir/atheory-ai-ce-darwin-x64-${VERSION}.tgz" \
+            "$tar_dir/atheory-ai-ce-linux-arm64-${VERSION}.tgz" \
+            "$tar_dir/atheory-ai-ce-linux-x64-${VERSION}.tgz" \
+            "$tar_dir/atheory-ai-ce-win32-arm64-${VERSION}.tgz" \
+            "$tar_dir/atheory-ai-ce-win32-x64-${VERSION}.tgz"; do
+            if [ ! -f "$tarball" ]; then
+              echo "Missing tarball: $tarball"
+              exit 1
+            fi
+            npm publish "$tarball" --access public --provenance
+          done
+
+      - name: Publish wrapper package
+        env:
+          VERSION: ${{ needs.verify_release.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          tar_dir="$(realpath "${{ steps.download_tarballs.outputs.download-path }}")"
+          tarball="$tar_dir/atheory-ai-ce-${VERSION}.tgz"
+          if [ ! -f "$tarball" ]; then
+            echo "Missing tarball: $tarball"
+            exit 1
+          fi
+          npm publish "$tarball" --access public --provenance

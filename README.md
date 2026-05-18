@@ -58,6 +58,35 @@ query → Strategizer → Activation → Fan-out (6 tools) → Reviewer → Synt
 
 ## Installation
 
+### npm
+
+For Node-based development environments, install the published wrapper package:
+
+```bash
+npm install -g @atheory-ai/ce
+ce version
+```
+
+The wrapper installs the matching platform package and runs the native `ce`
+binary.
+
+### GitHub Releases
+
+For direct binary installation from GitHub Releases:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/atheory-ai/context-engine/main/install.sh | sh
+```
+
+Set `CE_INSTALL_DIR` to choose a different install directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/atheory-ai/context-engine/main/install.sh | CE_INSTALL_DIR=/usr/local/bin sh
+```
+
+The npm package and install script both use the same release binaries produced
+by this repository.
+
 ### Build from source
 
 ```bash
@@ -347,3 +376,13 @@ make release-snapshot
 ```
 
 Binaries land in `dist/`. The release workflow validates builds for darwin, linux, and windows on amd64 and arm64 with Zig-backed CGO cross-compilation. The release pipeline embeds compiled WASM plugins from `ce-plugin-sdk` into the binary.
+
+Release publishing also creates npm packages:
+
+- `@atheory-ai/ce`
+- `@atheory-ai/ce-darwin-arm64`
+- `@atheory-ai/ce-darwin-x64`
+- `@atheory-ai/ce-linux-arm64`
+- `@atheory-ai/ce-linux-x64`
+- `@atheory-ai/ce-win32-arm64`
+- `@atheory-ai/ce-win32-x64`

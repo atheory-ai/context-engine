@@ -2,9 +2,12 @@ GO ?= go
 GOFLAGS ?=
 GORELEASER ?= goreleaser
 BINARY ?= ce
+BASE_VERSION := $(shell cat VERSION)
+VERSION ?= $(BASE_VERSION)
+PACKAGE_VERSION ?= $(VERSION)
 UNIT_PACKAGES = $(shell $(GO) list ./... | grep -v '/test/acceptance$$' | grep -v '/test/coverage$$')
 
-.PHONY: build install test test-unit test-acceptance test-coverage test-race vet fmt fmt-check verify verify-unit clean build-cross release-snapshot release-dry-run-plugins help
+.PHONY: build install test test-unit test-acceptance test-coverage test-race vet fmt fmt-check verify verify-unit clean build-cross release-snapshot release-dry-run-plugins version-sync npm-stage npm-pack npm-publish help
 
 help:
 	@echo "Available targets:"
@@ -24,6 +27,7 @@ help:
 	@echo "  make release-snapshot  Build release artifacts with GoReleaser"
 	@echo "  make release-dry-run-plugins"
 	@echo "                         Validate release build embeds default plugins"
+	@echo "  make npm-pack          Build npm platform tarballs"
 	@echo "  make clean             Remove local build artifacts"
 
 build:
@@ -78,6 +82,33 @@ release-snapshot:
 release-dry-run-plugins:
 	$(GORELEASER) --version
 	GORELEASER=$(GORELEASER) ./scripts/validate-release-default-plugins.sh
+
+version-sync:
+	node scripts/set-npm-version.mjs $(PACKAGE_VERSION)
+
+npm-stage: version-sync build-cross
+	node scripts/stage-npm-binaries.mjs
+	@echo "Binaries staged. Run 'make npm-pack' to create tarballs."
+
+npm-pack: npm-stage
+	cd npm/darwin-arm64 && npm pack --pack-destination ../../dist
+	cd npm/darwin-x64 && npm pack --pack-destination ../../dist
+	cd npm/linux-arm64 && npm pack --pack-destination ../../dist
+	cd npm/linux-x64 && npm pack --pack-destination ../../dist
+	cd npm/win32-arm64 && npm pack --pack-destination ../../dist
+	cd npm/win32-x64 && npm pack --pack-destination ../../dist
+	cd npm/ce && npm pack --pack-destination ../../dist
+	@echo "Tarballs written to dist/. Inspect before publishing."
+
+npm-publish: npm-stage
+	cd npm/darwin-arm64 && npm publish --access public
+	cd npm/darwin-x64 && npm publish --access public
+	cd npm/linux-arm64 && npm publish --access public
+	cd npm/linux-x64 && npm publish --access public
+	cd npm/win32-arm64 && npm publish --access public
+	cd npm/win32-x64 && npm publish --access public
+	cd npm/ce && npm publish --access public
+	@echo "Published @atheory-ai/ce@$(PACKAGE_VERSION) and platform packages."
 
 clean:
 	rm -f $(BINARY)
