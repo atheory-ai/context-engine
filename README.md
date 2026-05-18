@@ -13,7 +13,7 @@ This repository owns the CE runtime: the `ce` binary, CLI, runner, storage layer
 Sibling repositories:
 
 - [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) — TypeScript plugin SDK, plugin sandbox, templates, and default plugin source
-- [atheory-ce-studio](https://github.com/atheory-ai/atheory-ce-studio) — web UI for querying, graph exploration, history, and trace inspection
+- [atheory-ce-studio](https://github.com/atheory-ai/atheory-ce-studio) — developer inspector UI for querying, graph exploration, history, and trace inspection
 
 ---
 
@@ -318,13 +318,14 @@ make fmt
 ## Related repos
 
 - [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) — plugin development kit, default language plugins
-- [atheory-ce-studio](https://github.com/atheory-ai/atheory-ce-studio) — web UI
+- [atheory-ce-studio](https://github.com/atheory-ai/atheory-ce-studio) — developer inspector UI
 
 ## Project docs
 
 - [Architecture guide](./docs/architecture.md) — contributor-facing codebase map
 - [Golden tests](./docs/golden-tests.md) — how to add and review golden fixtures
 - [Plugin authoring](./docs/plugin-authoring.md) — CE runtime expectations linked to SDK APIs
+- [Release compatibility](./docs/release-compatibility.md) — aligned versioning, compatibility matrix, release notes, and local dev linking
 - [Roadmap and stability](./docs/stability.md) — stable vs experimental API surfaces
 - [Data, privacy, and security model](./docs/security-model.md) — local storage, LLM payloads, tokens, and audit logs
 - [Troubleshooting](./docs/troubleshooting.md) — plugin loading, SQLite files, MCP, and Studio connection issues
