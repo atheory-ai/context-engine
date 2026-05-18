@@ -25,11 +25,11 @@ builds:
       - goos: darwin
         goarch: amd64
         env:
-          - CC=zig cc -target x86_64-macos
+          - CC=clang -arch x86_64
       - goos: darwin
         goarch: arm64
         env:
-          - CC=zig cc -target aarch64-macos
+          - CC=clang -arch arm64
       - goos: windows
         goarch: amd64
         env:
