@@ -68,6 +68,7 @@ func TestQueryAcceptancePreflight(t *testing.T) {
 func TestServerAcceptanceStartsAndStops(t *testing.T) {
 	project := newFixtureProject(t)
 	initProject(t, project)
+	enableAPIServerOnly(t, project)
 	port := freePort(t)
 
 	ctx, cancel := context.WithCancel(context.Background())

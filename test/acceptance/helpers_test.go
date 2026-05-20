@@ -139,6 +139,25 @@ func initProject(t *testing.T, p fixtureProject) {
 	}
 }
 
+func enableAPIServerOnly(t *testing.T, p fixtureProject) {
+	t.Helper()
+	configPath := filepath.Join(p.Dir, "ce.yaml")
+	f, err := os.OpenFile(configPath, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("open ce.yaml: %v", err)
+	}
+	defer f.Close()
+	_, err = f.WriteString(`
+server:
+  api_enabled: true
+  mcp_enabled: false
+  ws_enabled: false
+`)
+	if err != nil {
+		t.Fatalf("write server config: %v", err)
+	}
+}
+
 func writeLocalProviderConfig(t *testing.T, p fixtureProject) {
 	t.Helper()
 	writeFile(t, filepath.Join(p.Dir, "ce.yaml"), `project:
