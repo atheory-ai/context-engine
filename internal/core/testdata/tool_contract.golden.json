@@ -1,0 +1,55 @@
+{
+  "active": true,
+  "description": "Golden test tool contract",
+  "inactive": false,
+  "name": "golden",
+  "request_anchor_count": 1,
+  "request_identity": {
+    "loop_index": 2,
+    "project_id": "project-tool",
+    "run_id": "run-tool",
+    "turn_id": "turn-tool"
+  },
+  "result": {
+    "Emissions": [
+      {
+        "RunID": "run-tool",
+        "TurnID": "turn-tool",
+        "LoopIndex": 2,
+        "Source": "tool:golden",
+        "Channel": "action",
+        "Content": "processed 1 anchor",
+        "Markdown": false,
+        "Metadata": null
+      }
+    ],
+    "ProposedNodes": [
+      {
+        "ID": "node-proposed",
+        "ProjectID": "project-tool",
+        "Type": "concept",
+        "Label": "golden contract",
+        "CanonicalID": "concept:golden-contract",
+        "SourceClass": "derived",
+        "PluginID": "",
+        "Properties": null,
+        "CreatedAt": 0,
+        "UpdatedAt": 0
+      }
+    ],
+    "ProposedEdges": [
+      {
+        "ID": "edge-proposed",
+        "ProjectID": "project-tool",
+        "SourceID": "node-proposed",
+        "TargetID": "node-existing",
+        "Type": "annotates",
+        "SourceClass": "derived",
+        "Weight": 0.5,
+        "PluginID": "",
+        "Properties": null,
+        "CreatedAt": 0
+      }
+    ]
+  }
+}

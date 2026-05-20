@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/atheory/context-engine/internal/config"
-	"github.com/atheory/context-engine/internal/runner"
-	"github.com/atheory/context-engine/internal/server/api"
-	"github.com/atheory/context-engine/internal/server/mcp"
+	"github.com/atheory-ai/context-engine/internal/config"
+	"github.com/atheory-ai/context-engine/internal/runner"
+	"github.com/atheory-ai/context-engine/internal/server/api"
+	"github.com/atheory-ai/context-engine/internal/server/mcp"
 )
 
 // Server manages both the MCP server and API server.

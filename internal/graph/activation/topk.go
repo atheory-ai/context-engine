@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/core"
 )
 
 // activatedNode pairs a node ID with its activation value.

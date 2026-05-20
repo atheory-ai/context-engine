@@ -1,0 +1,14 @@
+[
+  {
+    "canonical_id": "internal/billing:ProcessPayment",
+    "id": "045c8dfbbdb57412c6fb50d532826786",
+    "type": "symbol",
+    "activation": 1
+  },
+  {
+    "canonical_id": "internal/billing:InvoiceWriter",
+    "id": "6428603304b8b8bedf15aa97fe5a79e8",
+    "type": "symbol",
+    "activation": 0.48
+  }
+]

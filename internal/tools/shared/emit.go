@@ -1,6 +1,6 @@
 package shared
 
-import "github.com/atheory/context-engine/internal/core"
+import "github.com/atheory-ai/context-engine/internal/core"
 
 // Thinking returns a ChanThinking emission for a tool.
 func Thinking(req core.ToolRequest, source, content string, metadata map[string]any) core.Emission {

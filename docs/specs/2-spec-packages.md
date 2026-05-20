@@ -15,7 +15,7 @@
 ## 1. Module Identity
 
 ```
-module github.com/atheory/context-engine
+module github.com/atheory-ai/context-engine
 
 go 1.23
 ```
@@ -855,7 +855,7 @@ package runner
 
 import (
     "context"
-    "github.com/atheory/context-engine/internal/core"
+    "github.com/atheory-ai/context-engine/internal/core"
     // ... internal imports
 )
 
@@ -933,7 +933,7 @@ framework — hand-written mocks in `*_test.go` or `testdata/mock_*.go` files.
 
 | Decision | Value |
 |----------|-------|
-| Module path | `github.com/atheory/context-engine` |
+| Module path | `github.com/atheory-ai/context-engine` |
 | Entry point | `cmd/ce/main.go` (<50 lines) |
 | Internal boundary | `internal/` — not importable outside module |
 | Dependency floor | `internal/core` — zero internal imports |

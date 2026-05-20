@@ -9,36 +9,80 @@ Thanks for contributing to Context Engine.
 - Keep changes focused. Separate unrelated refactors from behavior changes.
 - Update docs and tests when commands, workflows, or user-facing behavior change.
 
-## Local Setup
+## Contributor Quickstart
 
-Requirements:
+These steps are intended to work from a clean machine.
 
-- Go 1.24.3+
-- A C compiler available on your machine for tree-sitter CGO builds
-- Optional: `goreleaser` if you are validating release packaging locally
+### 1. Install prerequisites
 
-Clone and build locally:
+Required for normal development and pull requests:
+
+| Tool | Version | Notes |
+| ---- | ------- | ----- |
+| Go | 1.24.3+ | Uses the version declared in [go.mod](./go.mod) |
+| Git | Any current version | Required for checkout and formatting checks |
+| Make | Any current version | Runs the project verification targets |
+| C compiler | Any current version | Required because tree-sitter is built through CGO |
+
+Platform notes:
+
+- macOS: install Xcode Command Line Tools with `xcode-select --install`.
+- Debian/Ubuntu: install `build-essential`.
+- Windows: use a Go-compatible C toolchain such as MSYS2/MinGW.
+
+Release-only tools:
+
+- Zig and GoReleaser are only needed for `make build-cross`, release dry runs, and tagged release validation. They are not required for normal PR work.
+
+### 2. Clone and build
 
 ```bash
-go build -o ce ./cmd/ce
+git clone https://github.com/atheory-ai/context-engine.git
+cd context-engine
+make build
 ```
+
+This produces a local `./ce` binary for your current OS and architecture.
+
+### 3. Run the PR checks
+
+Before opening a pull request, run the same local checks CI expects:
+
+```bash
+make fmt-check
+make verify-unit
+make test-coverage
+make test-acceptance
+```
+
+For a single command that includes formatting, vet, unit tests, acceptance tests, and a local build:
+
+```bash
+make verify
+```
+
+### 4. Optional local smoke test
+
+```bash
+./ce --help
+./ce project --help
+./ce server --help
+```
+
+Indexing and querying require language plugins and provider configuration. Production release binaries embed default plugins; local source builds can use plugins built from [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk).
 
 ## Verification
 
 Before opening a pull request, run:
 
 ```bash
-files=$(git ls-files '*.go')
-if [ -n "$files" ]; then gofmt -w $files; fi
-go vet ./...
-go test ./...
-go build ./cmd/ce
+make verify
 ```
 
 If you changed release packaging or `.goreleaser.yaml`, also run:
 
 ```bash
-goreleaser build --snapshot --clean
+make build-cross
 ```
 
 ## Pull Requests
@@ -52,9 +96,16 @@ Please include:
 
 ## Architecture Notes
 
-- `internal/core` is the dependency floor and must not import other internal packages
-- All substrate writes go through the write buffer
-- Keep the project pure Go except for the existing tree-sitter CGO constraint
+Start with the contributor-facing [architecture guide](./docs/architecture.md), then read the relevant implementation spec in [docs/specs](./docs/specs/).
+
+The high-level constraints are:
+
+- `internal/core` is the dependency floor and must not import other internal packages.
+- All substrate writes go through the write buffer.
+- Keep the project pure Go except for the existing tree-sitter CGO constraint.
+- Plugin loading uses wazero and Extism only.
+
+For snapshot-style fixtures, follow [How To Write A Golden Test](./docs/golden-tests.md).
 
 ## Code of Conduct
 

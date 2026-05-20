@@ -1,0 +1,39 @@
+{
+  "name": "@atheory-ai/ce",
+  "version": "0.1.0",
+  "description": "Context Engine CLI for AI-powered codebase intelligence",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/atheory-ai/context-engine#readme",
+  "bugs": {
+    "url": "https://github.com/atheory-ai/context-engine/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/atheory-ai/context-engine"
+  },
+  "bin": {
+    "ce": "bin/ce.js"
+  },
+  "files": [
+    "bin/"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "context",
+    "codebase",
+    "mcp",
+    "cli"
+  ],
+  "optionalDependencies": {
+    "@atheory-ai/ce-darwin-arm64": "0.1.0",
+    "@atheory-ai/ce-darwin-x64": "0.1.0",
+    "@atheory-ai/ce-linux-x64": "0.1.0",
+    "@atheory-ai/ce-linux-arm64": "0.1.0",
+    "@atheory-ai/ce-win32-x64": "0.1.0",
+    "@atheory-ai/ce-win32-arm64": "0.1.0"
+  }
+}

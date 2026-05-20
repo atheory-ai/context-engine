@@ -3,7 +3,7 @@ package activation
 import (
 	"context"
 
-	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/core"
 )
 
 // resolveAnchors maps IR anchor refs to substrate nodes.

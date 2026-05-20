@@ -4,7 +4,7 @@ package ws
 import (
 	"net/http"
 
-	"github.com/atheory/context-engine/internal/runner"
+	"github.com/atheory-ai/context-engine/internal/runner"
 	"github.com/gorilla/websocket"
 )
 

@@ -12,10 +12,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/atheory/context-engine/internal/config"
-	"github.com/atheory/context-engine/internal/core"
-	"github.com/atheory/context-engine/internal/storage/db"
-	"github.com/atheory/context-engine/internal/storage/queries"
+	"github.com/atheory-ai/context-engine/internal/config"
+	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/storage/db"
+	"github.com/atheory-ai/context-engine/internal/storage/queries"
 )
 
 // Node is the preflight cognitive loop node.

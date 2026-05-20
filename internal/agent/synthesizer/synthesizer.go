@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/atheory/context-engine/internal/core"
-	"github.com/atheory/context-engine/internal/llm"
+	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/llm"
 )
 
 // Node is the Synthesizer cognitive loop node.

@@ -3,7 +3,7 @@ package strategizer
 import (
 	"testing"
 
-	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/core"
 )
 
 // ── Test Case 1 — Standard investigative query ─────────────────────────────

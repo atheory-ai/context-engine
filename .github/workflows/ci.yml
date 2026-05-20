@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
+  format:
     runs-on: ubuntu-latest
 
     steps:
@@ -28,11 +28,50 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run go vet
-        run: go vet ./...
+      - name: Run formatting check
+        run: make fmt-check
 
-      - name: Run tests
-        run: go test ./...
+  unit:
+    runs-on: ubuntu-latest
 
-      - name: Build CLI
-        run: go build ./cmd/ce
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run unit verification
+        run: make verify-unit
+
+      - name: Run coverage gate
+        run: make test-coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-coverage
+          path: |
+            coverage/unit.out
+            coverage/coverage.json
+            coverage/coverage.md
+          if-no-files-found: error
+
+  acceptance:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run acceptance tests
+        run: make test-acceptance

@@ -22,12 +22,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/atheory/context-engine/internal/config"
-	"github.com/atheory/context-engine/internal/core"
-	"github.com/atheory/context-engine/internal/indexer/parser"
-	"github.com/atheory/context-engine/internal/indexer/walker"
-	"github.com/atheory/context-engine/internal/plugins"
-	"github.com/atheory/context-engine/internal/storage/queries"
+	"github.com/atheory-ai/context-engine/internal/config"
+	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/indexer/parser"
+	"github.com/atheory-ai/context-engine/internal/indexer/walker"
+	"github.com/atheory-ai/context-engine/internal/plugins"
+	"github.com/atheory-ai/context-engine/internal/storage/queries"
 )
 
 // Stats summarises the results of an index run.

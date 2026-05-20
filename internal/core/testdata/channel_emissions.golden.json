@@ -1,0 +1,129 @@
+{
+  "capacities": {
+    "action": 32,
+    "cost": 8,
+    "coverage": 8,
+    "debug": 128,
+    "error": 16,
+    "message": 16,
+    "progress": 32,
+    "system": 16,
+    "thinking": 64,
+    "warning": 16
+  },
+  "lengths_after_emit": {
+    "action": 1,
+    "cost": 1,
+    "coverage": 1,
+    "debug": 1,
+    "error": 1,
+    "message": 16,
+    "progress": 1,
+    "system": 1,
+    "thinking": 1,
+    "warning": 1
+  },
+  "message_len_after_first_drain": 15,
+  "routed": {
+    "action": {
+      "RunID": "run-1",
+      "TurnID": "turn-1",
+      "LoopIndex": 1,
+      "Source": "tool:callgraph",
+      "Channel": "action",
+      "Content": "action",
+      "Markdown": false,
+      "Metadata": null
+    },
+    "cost": {
+      "RunID": "run-1",
+      "TurnID": "turn-1",
+      "LoopIndex": 1,
+      "Source": "budget",
+      "Channel": "cost",
+      "Content": "cost",
+      "Markdown": false,
+      "Metadata": null
+    },
+    "coverage": {
+      "RunID": "run-1",
+      "TurnID": "turn-1",
+      "LoopIndex": 1,
+      "Source": "reviewer",
+      "Channel": "coverage",
+      "Content": "coverage",
+      "Markdown": false,
+      "Metadata": null
+    },
+    "debug": {
+      "RunID": "run-1",
+      "TurnID": "turn-1",
+      "LoopIndex": 1,
+      "Source": "debug",
+      "Channel": "debug",
+      "Content": "debug",
+      "Markdown": false,
+      "Metadata": null
+    },
+    "error": {
+      "RunID": "run-1",
+      "TurnID": "turn-1",
+      "LoopIndex": 1,
+      "Source": "runner",
+      "Channel": "error",
+      "Content": "error",
+      "Markdown": false,
+      "Metadata": null
+    },
+    "message": {
+      "RunID": "run-1",
+      "TurnID": "turn-1",
+      "LoopIndex": 1,
+      "Source": "synthesizer",
+      "Channel": "message",
+      "Content": "message",
+      "Markdown": true,
+      "Metadata": null
+    },
+    "progress": {
+      "RunID": "run-1",
+      "TurnID": "turn-1",
+      "LoopIndex": 1,
+      "Source": "indexer",
+      "Channel": "progress",
+      "Content": "progress",
+      "Markdown": false,
+      "Metadata": null
+    },
+    "system": {
+      "RunID": "run-1",
+      "TurnID": "turn-1",
+      "LoopIndex": 1,
+      "Source": "runner",
+      "Channel": "system",
+      "Content": "system",
+      "Markdown": false,
+      "Metadata": null
+    },
+    "thinking": {
+      "RunID": "run-1",
+      "TurnID": "turn-1",
+      "LoopIndex": 1,
+      "Source": "strategizer",
+      "Channel": "thinking",
+      "Content": "thinking",
+      "Markdown": false,
+      "Metadata": null
+    },
+    "warning": {
+      "RunID": "run-1",
+      "TurnID": "turn-1",
+      "LoopIndex": 1,
+      "Source": "runner",
+      "Channel": "warning",
+      "Content": "warning",
+      "Markdown": false,
+      "Metadata": null
+    }
+  }
+}

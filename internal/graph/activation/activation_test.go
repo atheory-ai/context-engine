@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/core"
 )
 
 // testSubstrate is an in-memory SubstrateReader for testing.

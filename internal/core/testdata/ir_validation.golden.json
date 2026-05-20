@@ -1,0 +1,120 @@
+[
+  {
+    "invalid_ir": false,
+    "ir": {
+      "Mode": "thinking",
+      "Anchors": [
+        {
+          "Type": "symbol",
+          "ID": "github.com/atheory-ai/context-engine/internal/core.IR",
+          "Confidence": "medium"
+        },
+        {
+          "Type": "file",
+          "ID": "internal/core/ir.go",
+          "Confidence": "high"
+        }
+      ],
+      "Predicates": {
+        "callgraph": "true"
+      },
+      "OpenQueries": [
+        "How is IR validation normalized?"
+      ],
+      "MaxLoops": 0,
+      "KLimit": 0,
+      "RoleHint": "architect",
+      "ModelTier": "thinking"
+    },
+    "name": "valid_with_soft_corrections",
+    "valid": true
+  },
+  {
+    "error": "invalid IR: no anchors — investigation has no entry point",
+    "invalid_ir": true,
+    "ir": {
+      "Mode": "",
+      "Anchors": null,
+      "Predicates": null,
+      "OpenQueries": [
+        "What should fail?"
+      ],
+      "MaxLoops": 0,
+      "KLimit": 0,
+      "RoleHint": "",
+      "ModelTier": ""
+    },
+    "name": "missing_anchors",
+    "valid": false
+  },
+  {
+    "error": "invalid IR: no open_queries — investigation has nothing to resolve",
+    "invalid_ir": true,
+    "ir": {
+      "Mode": "",
+      "Anchors": [
+        {
+          "Type": "concept",
+          "ID": "activation",
+          "Confidence": "low"
+        }
+      ],
+      "Predicates": null,
+      "OpenQueries": null,
+      "MaxLoops": 0,
+      "KLimit": 0,
+      "RoleHint": "",
+      "ModelTier": ""
+    },
+    "name": "missing_open_queries",
+    "valid": false
+  },
+  {
+    "error": "invalid IR: anchor[0] has unknown type \"package\"",
+    "invalid_ir": true,
+    "ir": {
+      "Mode": "",
+      "Anchors": [
+        {
+          "Type": "package",
+          "ID": "core",
+          "Confidence": "medium"
+        }
+      ],
+      "Predicates": null,
+      "OpenQueries": [
+        "What should fail?"
+      ],
+      "MaxLoops": 0,
+      "KLimit": 0,
+      "RoleHint": "",
+      "ModelTier": ""
+    },
+    "name": "invalid_anchor_type",
+    "valid": false
+  },
+  {
+    "error": "invalid IR: anchor[0] has empty ID",
+    "invalid_ir": true,
+    "ir": {
+      "Mode": "",
+      "Anchors": [
+        {
+          "Type": "namespace",
+          "ID": "",
+          "Confidence": "medium"
+        }
+      ],
+      "Predicates": null,
+      "OpenQueries": [
+        "What should fail?"
+      ],
+      "MaxLoops": 0,
+      "KLimit": 0,
+      "RoleHint": "",
+      "ModelTier": ""
+    },
+    "name": "empty_anchor_id",
+    "valid": false
+  }
+]

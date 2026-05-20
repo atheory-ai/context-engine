@@ -1,5 +1,7 @@
 package writebuffer
 
+import "sort"
+
 // pendingKey identifies a unique deduplicated slot in the pending map.
 // OpRecordEnrichment ops bypass this — they always append.
 type pendingKey struct {
@@ -64,6 +66,9 @@ func (p *pendingMap) drain() []WriteOp {
 	for _, op := range p.dedup {
 		ops = append(ops, op)
 	}
+	sort.SliceStable(ops, func(i, j int) bool {
+		return flushOrder(ops[i].Type) < flushOrder(ops[j].Type)
+	})
 	ops = append(ops, p.enrichments...)
 
 	// Reset — reuse backing arrays where possible.
@@ -73,6 +78,25 @@ func (p *pendingMap) drain() []WriteOp {
 	p.enrichments = p.enrichments[:0]
 
 	return ops
+}
+
+func flushOrder(opType OpType) int {
+	switch opType {
+	case OpUpsertNode:
+		return 10
+	case OpUpsertEdge:
+		return 20
+	case OpUpdateActivation:
+		return 30
+	case OpUpdateWeight:
+		return 40
+	case OpUpsertConcept:
+		return 50
+	case OpRecordEnrichment:
+		return 60
+	default:
+		return 100
+	}
 }
 
 // keyFor extracts the deduplication key for an op.

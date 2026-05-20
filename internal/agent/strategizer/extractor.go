@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/core"
 )
 
 // Extract parses the Strategizer's response text and returns an IR.

@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/atheory/context-engine/internal/core"
-	"github.com/atheory/context-engine/internal/tools/shared"
+	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/tools/shared"
 )
 
 // Tool implements the references built-in tool.

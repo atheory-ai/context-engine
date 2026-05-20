@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/atheory/context-engine/internal/config"
-	"github.com/atheory/context-engine/internal/storage/db"
-	"github.com/atheory/context-engine/internal/storage/queries"
+	"github.com/atheory-ai/context-engine/internal/config"
+	"github.com/atheory-ai/context-engine/internal/storage/db"
+	"github.com/atheory-ai/context-engine/internal/storage/queries"
 )
 
 type contextKey string
@@ -88,17 +88,17 @@ func isWriteMethod(method string) bool {
 	}
 }
 
-// validateToken opens audit.db read-only and looks up the token.
+// validateToken opens meta.db read-only and looks up the token.
 // Returns nil if the token is not found or is revoked.
 func validateToken(dataDir, token string) (*queries.Token, error) {
-	dbPath := filepath.Join(dataDir, "audit.db")
-	auditDB, err := db.OpenReadOnly(dbPath)
+	dbPath := filepath.Join(dataDir, "meta.db")
+	metaDB, err := db.OpenReadOnly(dbPath)
 	if err != nil {
 		return nil, err
 	}
-	defer auditDB.Close()
+	defer metaDB.Close()
 
-	t, err := queries.GetToken(context.Background(), auditDB, token)
+	t, err := queries.GetToken(context.Background(), metaDB, token)
 	if err != nil {
 		return nil, err
 	}

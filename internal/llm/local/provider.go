@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/core"
 )
 
 var errNotImplemented = errors.New("local provider: not implemented in Phase 1")

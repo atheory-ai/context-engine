@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/atheory/context-engine/internal/runner"
+	"github.com/atheory-ai/context-engine/internal/runner"
 )
 
 // ListProjects handles GET /api/v1/projects.

@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/atheory/context-engine/internal/runner"
-	"github.com/atheory/context-engine/internal/storage/queries"
+	"github.com/atheory-ai/context-engine/internal/runner"
+	"github.com/atheory-ai/context-engine/internal/storage/queries"
 	"github.com/google/uuid"
 )
 

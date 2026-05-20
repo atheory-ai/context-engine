@@ -2,6 +2,19 @@
 
 Context Engine (`ce`) is an AI-powered coding assistant that builds a persistent knowledge graph of your codebase and reasons over it. Instead of re-reading files on every query, it indexes your code once — extracting symbols, namespaces, dependencies, and concepts — then uses that graph to answer questions with precise, grounded context.
 
+Upstream repository: [atheory-ai/context-engine](https://github.com/atheory-ai/context-engine). Author and maintainer: Jeremy Harper ([@ladyhunterbear](https://github.com/ladyhunterbear)).
+
+---
+
+## Repository role
+
+This repository owns the CE runtime: the `ce` binary, CLI, runner, storage layer, indexer, MCP server, REST/WebSocket API, and release artifacts. It does not own the TypeScript plugin authoring SDK or the Studio frontend; those live in sibling repositories and are checked during CE releases for compatibility.
+
+Sibling repositories:
+
+- [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) — TypeScript plugin SDK, plugin sandbox, templates, and default plugin source
+- [atheory-ce-studio](https://github.com/atheory-ai/atheory-ce-studio) — developer inspector UI for querying, graph exploration, history, and trace inspection
+
 ---
 
 ## How it works
@@ -16,8 +29,8 @@ Context Engine (`ce`) is an AI-powered coding assistant that builds a persistent
 
 ```text
 ~/.ce/
-  meta.db        — project registry, paths, settings
-  audit.db       — API tokens, access log
+  meta.db        — project registry, paths, settings, API tokens
+  audit.db       — sessions, turns, access log
   graphs/
     local.db     — current project's knowledge graph
     org.db       — org-wide graph (cross-project intelligence)
@@ -37,19 +50,48 @@ query → Strategizer → Activation → Fan-out (6 tools) → Reviewer → Synt
 
 | Tool | Version | Notes |
 | ---- | ------- | ----- |
-| Go | 1.23+ | `brew install go` |
+| Go | 1.24.3+ | `brew install go` |
 | C compiler | Any | For tree-sitter CGO — already present on macOS (Xcode CLT) |
-| Language plugins | `.wasm` files | See [ce-plugin-sdk](https://github.com/ladyhunterbear/ce-plugin-sdk) |
+| Language plugins | `.wasm` files | See [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) |
 
 ---
 
 ## Installation
 
+### npm
+
+For Node-based development environments, install the published wrapper package:
+
+```bash
+npm install -g @atheory-ai/ce
+ce version
+```
+
+The wrapper installs the matching platform package and runs the native `ce`
+binary.
+
+### GitHub Releases
+
+For direct binary installation from GitHub Releases:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/atheory-ai/context-engine/main/install.sh | sh
+```
+
+Set `CE_INSTALL_DIR` to choose a different install directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/atheory-ai/context-engine/main/install.sh | CE_INSTALL_DIR=/usr/local/bin sh
+```
+
+The npm package and install script both use the same release binaries produced
+by this repository.
+
 ### Build from source
 
 ```bash
-git clone https://github.com/ladyhunterbear/atheory-ce.git
-cd atheory-ce
+git clone https://github.com/atheory-ai/context-engine.git
+cd context-engine
 go build -o ce ./cmd/ce
 
 # Or install to $GOPATH/bin:
@@ -58,7 +100,7 @@ go install ./cmd/ce
 
 ### Install default language plugins
 
-Default plugins (Go, TypeScript, Python) must be built from the plugin SDK and placed in `~/.ce/plugins/defaults/`. See [ce-plugin-sdk](https://github.com/ladyhunterbear/ce-plugin-sdk) for instructions.
+Default plugins (Go, TypeScript, Python) must be built from the plugin SDK and placed in `~/.ce/plugins/defaults/`. See [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) for instructions.
 
 In production releases, plugins are embedded into the binary automatically.
 
@@ -127,7 +169,7 @@ Server exposes:
 
 - `http://localhost:4040/mcp/sse` — MCP SSE endpoint (for IDE integrations)
 - `http://localhost:4040/api/v1` — REST API
-- `http://localhost:4040/ws/query` — WebSocket streaming (used by CE Studio)
+- `ws://localhost:4040/api/v1/ws` — WebSocket streaming (used by CE Studio)
 
 For IDE integration (Claude Desktop, Cursor, Claude Code), use the hidden stdio transport:
 
@@ -249,18 +291,24 @@ plugins:
 ## Development
 
 ```bash
-# Run all tests
-go test ./...
+# Build the CLI
+make build
+
+# Run the standard verification suite
+make verify
+
+# Run all Go tests
+make test
 
 # Run tests for a specific package
 go test ./internal/graph/activation/...
 go test ./internal/tools/...
 
-# Build with race detector
-go build -race ./cmd/ce
+# Run tests with the race detector
+make test-race
 
-# Lint
-golangci-lint run
+# Format Go files
+make fmt
 ```
 
 ### Key packages
@@ -298,11 +346,18 @@ golangci-lint run
 
 ## Related repos
 
-- [ce-plugin-sdk](https://github.com/ladyhunterbear/ce-plugin-sdk) — plugin development kit, default language plugins
-- [atheory-ce-studio](https://github.com/ladyhunterbear/atheory-ce-studio) — web UI
+- [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) — plugin development kit, default language plugins
+- [atheory-ce-studio](https://github.com/atheory-ai/atheory-ce-studio) — developer inspector UI
 
 ## Project docs
 
+- [Architecture guide](./docs/architecture.md) — contributor-facing codebase map
+- [Golden tests](./docs/golden-tests.md) — how to add and review golden fixtures
+- [Plugin authoring](./docs/plugin-authoring.md) — CE runtime expectations linked to SDK APIs
+- [Release compatibility](./docs/release-compatibility.md) — aligned versioning, compatibility matrix, release notes, and local dev linking
+- [Roadmap and stability](./docs/stability.md) — stable vs experimental API surfaces
+- [Data, privacy, and security model](./docs/security-model.md) — local storage, LLM payloads, tokens, and audit logs
+- [Troubleshooting](./docs/troubleshooting.md) — plugin loading, SQLite files, MCP, and Studio connection issues
 - [LICENSE](./LICENSE) — license terms
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — contributor workflow and verification steps
 - [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) — community expectations
@@ -317,7 +372,17 @@ golangci-lint run
 Releases use GoReleaser with CGO enabled for all platforms:
 
 ```bash
-goreleaser build --snapshot --clean
+make release-snapshot
 ```
 
-Binaries land in `dist/`. The release pipeline embeds compiled WASM plugins from `ce-plugin-sdk` into the binary.
+Binaries land in `dist/`. The release workflow validates builds for darwin, linux, and windows on amd64 and arm64 with Zig-backed CGO cross-compilation. The release pipeline embeds compiled WASM plugins from `ce-plugin-sdk` into the binary.
+
+Release publishing also creates npm packages:
+
+- `@atheory-ai/ce`
+- `@atheory-ai/ce-darwin-arm64`
+- `@atheory-ai/ce-darwin-x64`
+- `@atheory-ai/ce-linux-arm64`
+- `@atheory-ai/ce-linux-x64`
+- `@atheory-ai/ce-win32-arm64`
+- `@atheory-ai/ce-win32-x64`

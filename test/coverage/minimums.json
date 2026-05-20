@@ -1,0 +1,16 @@
+{
+  "default": 0,
+  "internal/agent/strategizer": 45,
+  "internal/core": 95,
+  "internal/graph/activation": 40,
+  "internal/graph/substrate": 5,
+  "internal/plugins/runtime": 30,
+  "internal/runner": 25,
+  "internal/server/api": 40,
+  "internal/storage/migrations": 70,
+  "internal/storage/writebuffer": 80,
+  "internal/tools/callgraph": 75,
+  "internal/tools/concepts": 80,
+  "internal/tools/crossproject": 80,
+  "internal/tools/references": 80
+}

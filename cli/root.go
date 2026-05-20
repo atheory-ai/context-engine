@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/atheory/context-engine/internal/config"
+	"github.com/atheory-ai/context-engine/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

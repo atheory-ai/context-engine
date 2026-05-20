@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/atheory/context-engine/internal/server/mcp/protocol"
+	"github.com/atheory-ai/context-engine/internal/server/mcp/protocol"
 	"github.com/google/uuid"
 )
 

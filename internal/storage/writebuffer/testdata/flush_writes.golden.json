@@ -1,0 +1,75 @@
+{
+  "activation": [
+    {
+      "activation": 0.8,
+      "node_id": "node-a",
+      "peak_activation": 0.8,
+      "updated_at": 1700000000001
+    }
+  ],
+  "concepts": [
+    {
+      "definition": "Node relevance score",
+      "id": "concept-alpha",
+      "related": "[\"hebbian\"]",
+      "scope": "project",
+      "source": "test",
+      "synonyms": "[\"score\"]",
+      "term": "activation"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-a-b",
+      "project_id": "proj-golden",
+      "properties": "{}",
+      "source_class": "structural",
+      "source_id": "node-a",
+      "target_id": "node-b",
+      "type": "calls"
+    }
+  ],
+  "enrichments": [
+    {
+      "action": "updated",
+      "after_state": "{\"label\":\"Alpha\"}",
+      "created_at": 1700000000003,
+      "entity_id": "node-a",
+      "entity_type": "node",
+      "id": "enrichment-1",
+      "loop_index": 1,
+      "run_id": "run-1",
+      "turn_id": "turn-1"
+    }
+  ],
+  "nodes": [
+    {
+      "canonical_id": "pkg.Alpha",
+      "id": "node-a",
+      "label": "Alpha",
+      "project_id": "proj-golden",
+      "properties": "{\"file\":\"alpha.go\"}",
+      "source_class": "structural",
+      "type": "symbol"
+    },
+    {
+      "canonical_id": "pkg.Beta",
+      "id": "node-b",
+      "label": "Beta",
+      "project_id": "proj-golden",
+      "properties": "{}",
+      "source_class": "structural",
+      "type": "symbol"
+    }
+  ],
+  "weights": [
+    {
+      "co_activation_count": 2,
+      "edge_id": "edge-a-b",
+      "last_co_activation": 1700000000002,
+      "source_class": "associative",
+      "updated_at": 1700000000002,
+      "weight": 0.9
+    }
+  ]
+}

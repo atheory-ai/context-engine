@@ -1,7 +1,7 @@
 # Context Engine — Claude Code Guide
 
 ## Module
-github.com/atheory/context-engine
+github.com/atheory-ai/context-engine
 
 ## Specs (read before touching any component)
 All specs are in docs/specs/.
@@ -19,10 +19,6 @@ All specs are in docs/specs/.
 ## Hard constraints
 - internal/core imports nothing internal — it is the dependency floor
 - All substrate writes go through the write buffer — never write directly to graph DBs
-- No CGO — pure Go only, cross-compilation must be preserved
+- CGO is permitted for tree-sitter only; all other packages stay pure Go, and release cross-compilation must be preserved with configured C cross-compilers
 - Read-scoped token sessions never write to execution.db or the substrate
 - wazero + Extism for all plugin loading — no other WASM runtime
-
-## When uncertain about a decision
-Check docs/specs/decisions-log.md — find the relevant section by subsystem.
-Do not invent solutions to architectural questions — ask first.

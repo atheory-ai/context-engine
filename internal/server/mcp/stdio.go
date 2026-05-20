@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/atheory/context-engine/internal/server/mcp/protocol"
+	"github.com/atheory-ai/context-engine/internal/server/mcp/protocol"
 )
 
 // RunStdio runs the MCP server over the stdio transport.

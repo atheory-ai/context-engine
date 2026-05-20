@@ -11,7 +11,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/atheory/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/core"
 )
 
 // Node is the activation pass in the cognitive loop DAG.

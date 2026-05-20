@@ -1,0 +1,27 @@
+{
+  "default_limit_budget": {
+    "context_used_pct": 0,
+    "should_exit": false
+  },
+  "exit_budget": {
+    "context_used_pct": 0.9,
+    "should_exit": true
+  },
+  "recorded": {
+    "context_used_pct": 0.5,
+    "should_exit": false,
+    "summary": {
+      "RunID": "run-budget",
+      "TurnID": "turn-budget",
+      "LoopIndex": 0,
+      "Source": "",
+      "Channel": "cost",
+      "Content": "0.0123 USD | 300 tokens in | 200 tokens out | 50.0% context",
+      "Markdown": false,
+      "Metadata": null
+    },
+    "tokens_in": 300,
+    "tokens_out": 200,
+    "total_cost_usd": 0.012345
+  }
+}

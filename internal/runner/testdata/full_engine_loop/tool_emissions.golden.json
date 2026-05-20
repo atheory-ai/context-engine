@@ -1,0 +1,7 @@
+[
+  {
+    "channel": "thinking",
+    "source": "fixture-tool",
+    "content": "ProcessPayment calls InvoiceWriter with a validated invoice payload."
+  }
+]
