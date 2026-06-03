@@ -129,6 +129,10 @@ Use these node types when possible:
 | `concept` | domain vocabulary or architectural concepts |
 | `file` | source files; CE may create these automatically |
 | `directory` | directory-level grouping when useful |
+| `framework_hook` | framework hook/action/filter registration or invocation |
+| `framework_route` | framework route or endpoint registration |
+| `framework_entrypoint` | framework bootstrap or externally invoked entrypoint |
+| `test_surface` | test file, fixture, helper, or test method surface |
 
 Use these edge types when possible:
 
@@ -144,6 +148,10 @@ Use these edge types when possible:
 | `belongs_to` | entity belongs to a larger grouping |
 | `annotates` | entity maps to a concept |
 | `depends_on` | generic dependency when no more specific edge fits |
+| `registers` | file/symbol registers a hook, route, shortcode, block, service, or entrypoint |
+| `handles` | callback or handler handles a hook, route, or entrypoint |
+| `fires` | symbol or file fires a hook/event |
+| `participates_in` | file/symbol participates in a framework lifecycle concept |
 
 Prefer specific edge types over generic ones. Consistent graph facts make activation and built-in tools more useful.
 
@@ -332,6 +340,11 @@ For local source builds of CE, put default plugin artifacts under:
 ```
 
 Production CE releases embed default plugin artifacts and extract them on first run.
+
+Convention plugins are additive. A generic language plugin should emit syntax
+structure, while framework plugins such as WordPress or WooCommerce emit
+semantic graph facts for hooks, routes, lifecycle paths, and tests from the
+same source files.
 
 ## Runtime Expectations Checklist
 

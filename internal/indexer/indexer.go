@@ -236,15 +236,11 @@ func (idx *Indexer) processFile(
 		}
 	}
 
-	// Find the plugin that handles this file.
-	p := idx.plugins.PluginForFile(result.RelPath)
-	if p == nil {
+	// Find all plugins that handle this file. Generic language plugins provide
+	// structural symbols; convention plugins can add framework-specific meaning.
+	matchingPlugins := idx.plugins.PluginsForFile(result.RelPath)
+	if len(matchingPlugins) == 0 {
 		return -1, 0, nil // no plugin handles this extension
-	}
-
-	langHandler := p.Language()
-	if langHandler == nil {
-		return -1, 0, nil
 	}
 
 	// Parse the file with tree-sitter; treeJSON is nil if no grammar available.
@@ -253,48 +249,64 @@ func (idx *Indexer) processFile(
 		return 0, 0, fmt.Errorf("parse: %w", err)
 	}
 
-	// Call the plugin's extract() function.
-	extraction, err := langHandler.Extract(result.RelPath, content, treeJSON)
-	if err != nil {
-		return 0, 0, fmt.Errorf("extract: %w", err)
-	}
-
-	// Remap node/edge IDs from the plugin's empty project context to the real projectID.
-	remapped := remapIDs(extraction, projectID, p.ID(), now)
-
 	nodesOut := 0
-	for _, node := range remapped.Nodes {
-		if err := idx.substrate.UpsertNode(ctx, node); err != nil {
-			idx.emitWarning(fmt.Sprintf("write node %s: %v", node.CanonicalID, err))
-			continue
-		}
-		nodesOut++
-	}
-
 	edgesOut := 0
-	for _, edge := range remapped.Edges {
-		if err := idx.substrate.UpsertEdge(ctx, edge); err != nil {
-			idx.emitWarning(fmt.Sprintf("write edge: %v", err))
+	successfulPlugins := 0
+	extractErrors := 0
+	for _, p := range matchingPlugins {
+		langHandler := p.Language()
+		if langHandler == nil {
 			continue
 		}
-		edgesOut++
-	}
 
-	// Run analyzer passes — each produces additional edges from extracted nodes.
-	for _, analyzer := range p.Analyzers() {
-		extraEdges, err := analyzer.Analyze(remapped.Nodes)
+		// Call the plugin's extract() function.
+		extraction, err := langHandler.Extract(result.RelPath, content, treeJSON)
 		if err != nil {
-			idx.emitWarning(fmt.Sprintf("analyzer %s on %s: %v", analyzer.Name(), result.RelPath, err))
+			idx.emitWarning(fmt.Sprintf("extract %s with %s: %v", result.RelPath, p.ID(), err))
+			extractErrors++
 			continue
 		}
-		for _, edge := range extraEdges {
-			edge.ProjectID = projectID
+		successfulPlugins++
+
+		// Remap node/edge IDs from the plugin's empty project context to the real projectID.
+		remapped := remapIDs(extraction, projectID, p.ID(), now)
+
+		for _, node := range remapped.Nodes {
+			if err := idx.substrate.UpsertNode(ctx, node); err != nil {
+				idx.emitWarning(fmt.Sprintf("write node %s: %v", node.CanonicalID, err))
+				continue
+			}
+			nodesOut++
+		}
+
+		for _, edge := range remapped.Edges {
 			if err := idx.substrate.UpsertEdge(ctx, edge); err != nil {
-				idx.emitWarning(fmt.Sprintf("write analyzer edge: %v", err))
+				idx.emitWarning(fmt.Sprintf("write edge: %v", err))
 				continue
 			}
 			edgesOut++
 		}
+
+		// Run analyzer passes — each produces additional edges from extracted nodes.
+		for _, analyzer := range p.Analyzers() {
+			extraEdges, err := analyzer.Analyze(remapped.Nodes)
+			if err != nil {
+				idx.emitWarning(fmt.Sprintf("analyzer %s on %s: %v", analyzer.Name(), result.RelPath, err))
+				continue
+			}
+			for _, edge := range extraEdges {
+				edge.ProjectID = projectID
+				if err := idx.substrate.UpsertEdge(ctx, edge); err != nil {
+					idx.emitWarning(fmt.Sprintf("write analyzer edge: %v", err))
+					continue
+				}
+				edgesOut++
+			}
+		}
+	}
+
+	if successfulPlugins == 0 && extractErrors > 0 {
+		return 0, 0, fmt.Errorf("extract failed for all matching plugins")
 	}
 
 	// Persist the file hash for future incremental runs.

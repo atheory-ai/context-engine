@@ -36,6 +36,9 @@ func ExtractDefaults(dataDir string) error {
 		"typescript-grammar.wasm",
 		"python.wasm",
 		"python-grammar.wasm",
+		"php.wasm",
+		"wordpress-conventions.wasm",
+		"woocommerce-conventions.wasm",
 	}
 
 	for _, name := range files {

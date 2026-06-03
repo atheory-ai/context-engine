@@ -7,9 +7,11 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -126,7 +128,7 @@ func New(ctx context.Context, cfg *config.Config) (*Engine, error) {
 
 	// Load default plugins first (lowest priority — user plugins can override).
 	defaultsDir := filepath.Join(cfg.DataDir, "plugins", "defaults")
-	for _, name := range []string{"go-language.wasm", "typescript.wasm", "python.wasm"} {
+	for _, name := range []string{"go-language.wasm", "typescript.wasm", "python.wasm", "php.wasm", "wordpress-conventions.wasm", "woocommerce-conventions.wasm"} {
 		path := filepath.Join(defaultsDir, name)
 		if _, err := os.Stat(path); err != nil {
 			continue // not yet built (development) — skip
@@ -342,10 +344,16 @@ type SearchNode struct {
 	Label       string
 	CanonicalID string
 	SourceClass string
+	FilePath    string
+	LineStart   int
+	LineEnd     int
+	Score       int
+	MatchReason string
 }
 
 // SearchSubstrate performs a lightweight node search without running the cognitive loop.
-// Matches against node labels and canonical IDs using substring matching.
+// It tokenizes multi-term queries and ranks label, canonical ID, file path, and
+// source range matches so agents can chain directly into source inspection.
 func (e *Engine) SearchSubstrate(ctx context.Context, opts SearchOptions) ([]SearchNode, error) {
 	graphDB, err := e.dbRegistry.GraphDB("local")
 	if err != nil {
@@ -356,22 +364,37 @@ func (e *Engine) SearchSubstrate(ctx context.Context, opts SearchOptions) ([]Sea
 	if limit <= 0 {
 		limit = 10
 	}
+	if limit > 50 {
+		limit = 50
+	}
 
 	var args []any
 	var conds []string
 
 	conds = append(conds, "project_id = 'local'")
-	conds = append(conds, "(canonical_id LIKE ? OR label LIKE ?)")
-	term := "%" + opts.Query + "%"
-	args = append(args, term, term)
+	tokens := searchTokens(opts.Query)
+	if len(tokens) == 0 {
+		return nil, nil
+	}
+	var tokenConds []string
+	for _, token := range tokens {
+		term := "%" + token + "%"
+		tokenConds = append(tokenConds, "(canonical_id LIKE ? OR label LIKE ? OR json_extract(properties, '$.file_path') LIKE ?)")
+		args = append(args, term, term, term)
+	}
+	conds = append(conds, "("+strings.Join(tokenConds, " OR ")+")")
 
 	if opts.Type != "" {
 		conds = append(conds, "type = ?")
 		args = append(args, opts.Type)
 	}
-	args = append(args, limit)
+	candidateLimit := limit * 12
+	if candidateLimit < 100 {
+		candidateLimit = 100
+	}
+	args = append(args, candidateLimit)
 
-	q := `SELECT id, type, label, canonical_id, source_class FROM nodes WHERE ` +
+	q := `SELECT id, type, label, canonical_id, source_class, properties FROM nodes WHERE ` +
 		strings.Join(conds, " AND ") + ` ORDER BY length(canonical_id) LIMIT ?`
 
 	rows, err := graphDB.QueryContext(ctx, q, args...)
@@ -383,12 +406,32 @@ func (e *Engine) SearchSubstrate(ctx context.Context, opts SearchOptions) ([]Sea
 	var nodes []SearchNode
 	for rows.Next() {
 		var n SearchNode
-		if err := rows.Scan(&n.ID, &n.Type, &n.Label, &n.CanonicalID, &n.SourceClass); err != nil {
+		var propertiesJSON string
+		if err := rows.Scan(&n.ID, &n.Type, &n.Label, &n.CanonicalID, &n.SourceClass, &propertiesJSON); err != nil {
 			return nil, fmt.Errorf("search substrate scan: %w", err)
 		}
+		var props map[string]any
+		if err := json.Unmarshal([]byte(propertiesJSON), &props); err != nil {
+			props = map[string]any{}
+		}
+		n.FilePath = stringProperty(props, "file_path")
+		n.LineStart, n.LineEnd = nodeLineRange(props)
+		n.Score, n.MatchReason = scoreSearchNode(n, tokens)
 		nodes = append(nodes, n)
 	}
-	return nodes, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	sort.SliceStable(nodes, func(i, j int) bool {
+		if nodes[i].Score == nodes[j].Score {
+			return len(nodes[i].CanonicalID) < len(nodes[j].CanonicalID)
+		}
+		return nodes[i].Score > nodes[j].Score
+	})
+	if len(nodes) > limit {
+		nodes = nodes[:limit]
+	}
+	return nodes, nil
 }
 
 // Index walks rootDir, extracts nodes and edges via language plugins,

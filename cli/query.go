@@ -49,6 +49,9 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	if !cfg.Features.CEQuery {
+		return fmt.Errorf("ce query is experimental and disabled in this release; use CE MCP deterministic tools instead, or enable features.ce_query for local development")
+	}
 
 	forceTUI, _ := cmd.Flags().GetBool("tui")
 

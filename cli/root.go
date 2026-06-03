@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/atheory-ai/context-engine/internal/config"
 	"github.com/spf13/cobra"
@@ -84,6 +85,7 @@ func initConfig() {
 	}
 
 	viper.SetEnvPrefix("CE")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
 	// Ignore not-found errors — first run has no config yet.

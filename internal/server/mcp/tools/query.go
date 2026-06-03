@@ -13,7 +13,8 @@ var queryTool = protocol.Tool{
 	Name: "ce_query",
 	Description: `Run an AI-powered investigation query against the indexed codebase.
 Returns a structured answer with specific code references.
-Use for: understanding how code works, tracing call chains, finding where concepts are implemented.`,
+Use for: understanding how code works, tracing call chains, finding where concepts are implemented.
+Experimental in CE v1 and hidden unless features.ce_query is enabled. Requires configured LLM credentials for the selected provider. Without an LLM key, use deterministic tools such as ce_search, ce_file_context, ce_references, ce_callgraph, ce_summary, and ce_concepts.`,
 	InputSchema: json.RawMessage(`{
 		"type": "object",
 		"properties": {

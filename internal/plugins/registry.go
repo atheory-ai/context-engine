@@ -91,14 +91,24 @@ func (r *Registry) Loaded() []core.Plugin {
 	return out
 }
 
-// PluginForFile returns the plugin that handles the given file path.
+// PluginForFile returns the last plugin that handles the given file path.
 // Returns nil if no plugin matches.
-// Last-registered plugin for an extension wins (user plugins override defaults).
+// Kept for callers that need override semantics.
 func (r *Registry) PluginForFile(filePath string) core.Plugin {
+	matches := r.PluginsForFile(filePath)
+	if len(matches) == 0 {
+		return nil
+	}
+	return matches[len(matches)-1]
+}
+
+// PluginsForFile returns every language plugin that handles the given file path.
+// This supports additive convention plugins such as WordPress or WooCommerce
+// running alongside the generic PHP language plugin.
+func (r *Registry) PluginsForFile(filePath string) []core.Plugin {
 	ext := strings.ToLower(filepath.Ext(filePath))
 
-	// Iterate in reverse registration order — last registered wins.
-	var match core.Plugin
+	var matches []core.Plugin
 	for _, id := range r.loadOrder {
 		p, ok := r.plugins[id]
 		if !ok {
@@ -109,19 +119,23 @@ func (r *Registry) PluginForFile(filePath string) core.Plugin {
 			continue
 		}
 		// Check extensions first (fast path).
+		matched := false
 		for _, handledExt := range h.Extensions() {
 			if strings.ToLower(handledExt) == ext {
-				match = p
+				matched = true
 				break
 			}
 		}
 		// Check custom match if declared (slow path).
 		if h.HasCustomMatch() && h.Match(filePath) {
-			match = p
+			matched = true
+		}
+		if matched {
+			matches = append(matches, p)
 		}
 	}
 
-	return match
+	return matches
 }
 
 // ConceptSeeds aggregates all concept seeds contributed by loaded plugins.

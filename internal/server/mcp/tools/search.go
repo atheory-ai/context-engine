@@ -15,7 +15,7 @@ var searchTool = protocol.Tool{
 	Description: `Lightweight substrate search without running the full cognitive loop.
 Returns matching nodes directly from the knowledge graph.
 Use for: looking up specific symbols, finding files by name, checking if something is indexed.
-Faster than ce_query but less intelligent — no activation propagation or tool fan-out.`,
+	Faster than ce_query but less intelligent — no activation propagation or tool fan-out.`,
 	InputSchema: json.RawMessage(`{
 		"type": "object",
 		"properties": {
@@ -82,8 +82,19 @@ func handleSearch(engine *runner.Engine) HandlerFunc {
 
 		var lines []string
 		for _, node := range nodes {
-			lines = append(lines, fmt.Sprintf("[%s] %s (%s)",
-				node.Type, node.CanonicalID, node.SourceClass))
+			var b strings.Builder
+			b.WriteString(fmt.Sprintf("[%s] %s (%s)\n  id: %s\n  label: %s",
+				node.Type, node.CanonicalID, node.SourceClass, node.ID, node.Label))
+			if node.FilePath != "" {
+				b.WriteString("\n  file: " + node.FilePath)
+				if node.LineStart > 0 {
+					b.WriteString(fmt.Sprintf(":%d-%d", node.LineStart, node.LineEnd))
+				}
+			}
+			if node.MatchReason != "" {
+				b.WriteString("\n  match: " + node.MatchReason)
+			}
+			lines = append(lines, b.String())
 		}
 
 		return textResult(strings.Join(lines, "\n")), nil
