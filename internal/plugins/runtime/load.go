@@ -51,16 +51,18 @@ func (r *Runtime) Load(ctx context.Context, wasmPath string, pluginConfig map[st
 	hostFuncs := buildHostFunctions(deps)
 
 	// ── 5. Create Extism plugin (wazero cache handles compilation artifacts) ─
-	extismPlugin, err := extism.NewPlugin(ctx, newExtismManifest(wasmBytes), extism.PluginConfig{
+	extismConfig := extism.PluginConfig{
 		RuntimeConfig: r.cache.RuntimeConfig(),
-		EnableWasi:    false,
-	}, hostFuncs)
+		EnableWasi:    true,
+	}
+	extismPlugin, err := extism.NewPlugin(ctx, newExtismManifest(wasmBytes), extismConfig, hostFuncs)
 	if err != nil {
 		return nil, fmt.Errorf("create extism plugin %s: %w", wasmPath, err)
 	}
 
 	// ── 6. Call ce_plugin_manifest to read plugin metadata ───────────────────
-	_, manifestJSON, err := extismPlugin.Call("ce_plugin_manifest", nil)
+	manifestExport := resolveExportName(exports, "ce_plugin_manifest")
+	manifestJSON, err := callPlugin(ctx, extismPlugin, wasmBytes, extismConfig, hostFuncs, manifestExport, nil)
 	if err != nil {
 		_ = extismPlugin.Close(ctx)
 		return nil, fmt.Errorf("call ce_plugin_manifest on %s: %w", wasmPath, err)
@@ -85,13 +87,16 @@ func (r *Runtime) Load(ctx context.Context, wasmPath string, pluginConfig map[st
 
 	// ── 8. Wrap in Plugin instance ───────────────────────────────────────────
 	return &pluginInstance{
-		id:       core.PluginID(pmeta.ID),
-		name:     pmeta.Name,
-		version:  pmeta.Version,
-		wasm:     extismPlugin,
-		manifest: pmeta,
-		wasmDir:  filepath.Dir(wasmPath),
-		exports:  exports,
+		id:        core.PluginID(pmeta.ID),
+		name:      pmeta.Name,
+		version:   pmeta.Version,
+		wasm:      extismPlugin,
+		manifest:  pmeta,
+		wasmDir:   filepath.Dir(wasmPath),
+		wasmBytes: wasmBytes,
+		hostFuncs: hostFuncs,
+		config:    extismConfig,
+		exports:   exports,
 	}, nil
 }
 

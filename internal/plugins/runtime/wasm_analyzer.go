@@ -25,7 +25,7 @@ func (a *wasmAnalyzer) Analyze(nodes []core.Node) ([]core.Edge, error) {
 
 	input, _ := json.Marshal(nodes)
 
-	_, result, err := a.plugin.wasm.Call("ce_analyzer_run", input)
+	result, err := a.plugin.call("ce_analyzer_run", input)
 	if err != nil {
 		return nil, fmt.Errorf("ce_analyzer_run %s: %w", a.descriptor.Name, err)
 	}

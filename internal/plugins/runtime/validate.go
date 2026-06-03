@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
@@ -12,6 +13,19 @@ import (
 type expectedSig struct {
 	params  []api.ValueType
 	results []api.ValueType
+}
+
+var exportAliases = map[string]string{
+	"ce_plugin_manifest":   "ce-plugin-manifest",
+	"ce_language_match":    "ce-language-match",
+	"ce_language_extract":  "ce-language-extract",
+	"ce_language_concepts": "ce-language-concepts",
+	"ce_analyzers_list":    "ce-analyzers-list",
+	"ce_analyzer_run":      "ce-analyzer-run",
+	"ce_tools_list":        "ce-tools-list",
+	"ce_tool_activate":     "ce-tool-activate",
+	"ce_tool_execute":      "ce-tool-execute",
+	"ce_role_definition":   "ce-role-definition",
 }
 
 // collectExports returns the set of function names exported by the WASM binary.
@@ -34,6 +48,16 @@ func collectExports(wasmBytes []byte) (map[string]bool, error) {
 	return result, nil
 }
 
+func resolveExportName(exports map[string]bool, name string) string {
+	if exports[name] {
+		return name
+	}
+	if alias, ok := exportAliases[name]; ok && exports[alias] {
+		return alias
+	}
+	return name
+}
+
 // validateExports inspects a WASM binary's export section without executing it.
 // Returns an error if the mandatory ce_plugin_manifest export is missing,
 // or if any present optional exports have incorrect signatures.
@@ -51,7 +75,9 @@ func validateExports(wasmBytes []byte) error {
 
 	// ce_plugin_manifest is the only unconditionally required export.
 	if _, ok := exports["ce_plugin_manifest"]; !ok {
-		return fmt.Errorf("missing required export: ce_plugin_manifest")
+		if _, ok := exports[exportAliases["ce_plugin_manifest"]]; !ok {
+			return fmt.Errorf("missing required export: ce_plugin_manifest")
+		}
 	}
 
 	// Optional signature checks — warn on mismatch but allow unknown conventions
@@ -68,7 +94,12 @@ func validateExports(wasmBytes []byte) error {
 	}
 
 	for name, expected := range signatureChecks {
-		fn, ok := exports[name]
+		fnName := name
+		fn, ok := exports[fnName]
+		if !ok {
+			fnName = strings.ReplaceAll(name, "_", "-")
+			fn, ok = exports[fnName]
+		}
 		if !ok {
 			continue // optional export absent — fine
 		}
