@@ -51,7 +51,7 @@ func TestIndexAcceptance(t *testing.T) {
 	}
 }
 
-func TestQueryAcceptancePreflight(t *testing.T) {
+func TestQueryAcceptanceDisabledByDefault(t *testing.T) {
 	project := newFixtureProject(t)
 	initProject(t, project)
 
@@ -60,8 +60,8 @@ func TestQueryAcceptancePreflight(t *testing.T) {
 		t.Fatalf("query unexpectedly succeeded before indexing\nstdout:\n%s", res.Stdout)
 	}
 	combined := res.Stdout + res.Stderr
-	if !strings.Contains(combined, "project not yet indexed") {
-		t.Fatalf("query should surface deterministic preflight failure, got:\n%s", combined)
+	if !strings.Contains(combined, "ce query is experimental and disabled in this release") {
+		t.Fatalf("query should be disabled by default, got:\n%s", combined)
 	}
 }
 

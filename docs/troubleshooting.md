@@ -32,7 +32,7 @@ ce --debug query "what handles authentication?"
 
 ### `ce plugin list` shows no language plugins
 
-Local source builds do not automatically include production plugin artifacts unless they were embedded at build time. Production release binaries embed default plugins and extract them on first run.
+Local source builds do not automatically include production plugin artifacts unless they were embedded at build time. Production release binaries embed default language and convention plugins and extract them on first run.
 
 For local development:
 

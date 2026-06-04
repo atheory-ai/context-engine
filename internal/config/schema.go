@@ -5,15 +5,16 @@ package config
 // Config is the fully resolved configuration for a CE session.
 // Built by Load() from ce.yaml + global config + env vars + flags.
 type Config struct {
-	Project ProjectConfig
-	LLM     LLMConfig
-	Engine  EngineConfig
-	Indexer IndexerConfig
-	Plugins []PluginEntry
-	Tracing TracingConfig
-	Server  ServerConfig
-	Data    DataConfig
-	Display DisplayConfig
+	Project  ProjectConfig
+	LLM      LLMConfig
+	Engine   EngineConfig
+	Indexer  IndexerConfig
+	Plugins  []PluginEntry
+	Tracing  TracingConfig
+	Server   ServerConfig
+	Data     DataConfig
+	Display  DisplayConfig
+	Features FeatureConfig
 
 	// Runtime fields — not from ce.yaml
 	ReadOnly bool   // true for read-scoped token sessions
@@ -86,4 +87,9 @@ type DisplayConfig struct {
 	NoColor      bool `mapstructure:"no_color"`
 	ShowCost     bool `mapstructure:"show_cost"`
 	ShowThinking bool `mapstructure:"show_thinking"`
+}
+
+// FeatureConfig controls experimental or pre-release features.
+type FeatureConfig struct {
+	CEQuery bool `mapstructure:"ce_query"`
 }

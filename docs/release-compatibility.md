@@ -83,6 +83,9 @@ mkdir -p ~/.ce/plugins/defaults
 cp plugins/go-language/dist/go-language.wasm ~/.ce/plugins/defaults/
 cp plugins/typescript-language/dist/typescript.wasm ~/.ce/plugins/defaults/
 cp plugins/python-language/dist/python.wasm ~/.ce/plugins/defaults/
+cp plugins/php-language/dist/php.wasm ~/.ce/plugins/defaults/
+cp plugins/wordpress-conventions/dist/wordpress-conventions.wasm ~/.ce/plugins/defaults/
+cp plugins/woocommerce-conventions/dist/woocommerce-conventions.wasm ~/.ce/plugins/defaults/
 ```
 
 For an isolated local run, point CE at a throwaway data directory:

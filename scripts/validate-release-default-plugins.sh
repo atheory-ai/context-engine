@@ -8,6 +8,9 @@ required_plugins=(
   typescript-grammar.wasm
   python.wasm
   python-grammar.wasm
+  php.wasm
+  wordpress-conventions.wasm
+  woocommerce-conventions.wasm
 )
 
 goreleaser_bin="${GORELEASER:-goreleaser}"

@@ -98,9 +98,9 @@ go build -o ce ./cmd/ce
 go install ./cmd/ce
 ```
 
-### Install default language plugins
+### Install default plugins
 
-Default plugins (Go, TypeScript, Python) must be built from the plugin SDK and placed in `~/.ce/plugins/defaults/`. See [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) for instructions.
+Default plugins (Go, TypeScript, Python, PHP, WordPress conventions, and WooCommerce conventions) must be built from the plugin SDK and placed in `~/.ce/plugins/defaults/`. See [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) for instructions.
 
 In production releases, plugins are embedded into the binary automatically.
 
@@ -150,11 +150,27 @@ After indexing, nodes are automatically lifted into the org graph (`org.db`) for
 
 ### `ce query`
 
-```bash
-ce query                   # Interactive TUI (recommended)
-ce query "how does X work?"  # One-shot CLI query
-ce query "..." --show-cost   # Show token cost
-```
+CE v1 is centered on deterministic MCP tools for agent harnesses:
+
+- `ce_status`
+- `ce_search`
+- `ce_file_context`
+- `ce_references`
+- `ce_callgraph`
+- `ce_summary`
+- `ce_concepts`
+- `ce_crossproject`
+- `ce_source_ranges`
+- `ce_investigate`
+- `ce_related_tests`
+- `ce_entrypoints`
+- `ce_lifecycle`
+
+These tools operate on the indexed graph/source context and let the external
+agent harness drive the investigation. The old `ce query` / MCP `ce_query`
+LLM investigation loop is experimental and disabled by default. For local
+development only, enable it with `features.ce_query: true` or
+`CE_FEATURES_CE_QUERY=true`.
 
 ### `ce server`
 

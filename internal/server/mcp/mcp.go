@@ -52,10 +52,13 @@ func (s *Server) RegisterTool(tool protocol.Tool, handler tools.HandlerFunc) {
 }
 
 func (s *Server) registerTools() {
-	tools.RegisterQuery(s)
+	if s.cfg.Features.CEQuery {
+		tools.RegisterQuery(s)
+	}
 	tools.RegisterIndex(s)
 	tools.RegisterStatus(s)
 	tools.RegisterSearch(s)
+	tools.RegisterDirectTools(s)
 }
 
 // Shutdown gracefully stops the SSE HTTP server (if running).

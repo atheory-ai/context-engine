@@ -62,14 +62,14 @@ The main user-facing flows are:
 ```text
 file walker
   -> parser
-  -> language plugin
+  -> all matching language/convention plugins
   -> IR nodes and edges
   -> write buffer
   -> project graph database
   -> org graph lifting
 ```
 
-The indexer owns orchestration, not language knowledge. Language-specific extraction belongs in plugins. The Go runtime may parse with tree-sitter so plugins can receive a syntax tree, but plugin source and plugin authoring tools live in `ce-plugin-sdk`.
+The indexer owns orchestration, not language knowledge. Language-specific extraction belongs in plugins. Framework and codebase convention extraction also belongs in plugins, and multiple matching plugins may contribute graph facts for the same file. The Go runtime may parse with tree-sitter so plugins can receive a syntax tree, but plugin source and plugin authoring tools live in `ce-plugin-sdk`.
 
 All substrate writes must go through the write buffer. Do not write directly to graph databases from indexing or learning paths.
 
