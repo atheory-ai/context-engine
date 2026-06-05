@@ -58,7 +58,7 @@ func (h *wasmLanguageHandler) Match(filePath string) bool {
 	h.plugin.mu.Lock()
 	defer h.plugin.mu.Unlock()
 
-	_, result, err := h.plugin.wasm.Call("ce_language_match", []byte(filePath))
+	result, err := h.plugin.call("ce_language_match", []byte(filePath))
 	if err != nil {
 		return false
 	}
@@ -89,7 +89,7 @@ func (h *wasmLanguageHandler) Extract(filePath string, content []byte, treeJSON 
 		"tree":      treeRaw,
 	})
 
-	_, result, err := h.plugin.wasm.Call("ce_language_extract", input)
+	result, err := h.plugin.call("ce_language_extract", input)
 	if err != nil {
 		return core.ExtractionResult{}, fmt.Errorf("ce_language_extract: %w", err)
 	}
@@ -107,7 +107,7 @@ func (h *wasmLanguageHandler) Concepts() []core.ConceptSeed {
 	h.plugin.mu.Lock()
 	defer h.plugin.mu.Unlock()
 
-	_, result, err := h.plugin.wasm.Call("ce_language_concepts", nil)
+	result, err := h.plugin.call("ce_language_concepts", nil)
 	if err != nil {
 		return nil
 	}

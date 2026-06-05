@@ -30,7 +30,7 @@ func (t *wasmTool) Activate(ir core.IR) bool {
 		"ir":        ir,
 	})
 
-	_, result, err := t.plugin.wasm.Call("ce_tool_activate", input)
+	result, err := t.plugin.call("ce_tool_activate", input)
 	if err != nil {
 		return false
 	}
@@ -49,7 +49,7 @@ func (t *wasmTool) Execute(ctx context.Context, req core.ToolRequest) (core.Tool
 		"request":   req,
 	})
 
-	_, result, err := t.plugin.wasm.Call("ce_tool_execute", input)
+	result, err := t.plugin.call("ce_tool_execute", input)
 	if err != nil {
 		return core.ToolResult{}, fmt.Errorf("ce_tool_execute %s: %w", t.descriptor.Name, err)
 	}

@@ -1,11 +1,14 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 
 	extism "github.com/extism/go-sdk"
+	"github.com/tetratelabs/wazero"
 
 	"github.com/atheory-ai/context-engine/internal/core"
 )
@@ -13,19 +16,73 @@ import (
 // pluginInstance wraps an Extism plugin and implements core.Plugin.
 // All WASM calls are serialized through mu — Extism plugins are not goroutine-safe.
 type pluginInstance struct {
-	id       core.PluginID
-	name     string
-	version  string
-	wasm     *extism.Plugin
-	manifest PluginManifest
-	wasmDir  string          // directory containing the plugin .wasm file
-	exports  map[string]bool // set of exported function names
-	mu       sync.Mutex
+	id        core.PluginID
+	name      string
+	version   string
+	wasm      *extism.Plugin
+	manifest  PluginManifest
+	wasmDir   string // directory containing the plugin .wasm file
+	wasmBytes []byte
+	hostFuncs []extism.HostFunction
+	config    extism.PluginConfig
+	exports   map[string]bool // set of exported function names
+	mu        sync.Mutex
+}
+
+func callPlugin(ctx context.Context, wasm *extism.Plugin, wasmBytes []byte, config extism.PluginConfig, hostFuncs []extism.HostFunction, name string, input []byte) ([]byte, error) {
+	_, output, err := wasm.CallWithContext(ctx, name, input)
+	if err != nil {
+		return nil, err
+	}
+	if len(output) > 0 {
+		return output, nil
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	fallbackConfig := config
+	fallbackConfig.EnableWasi = true
+	fallbackConfig.ModuleConfig = wazero.NewModuleConfig().
+		WithStdin(bytes.NewReader(input)).
+		WithStdout(&stdout).
+		WithStderr(&stderr)
+
+	fallback, err := extism.NewPlugin(ctx, newExtismManifest(wasmBytes), fallbackConfig, hostFuncs)
+	if err != nil {
+		return nil, fmt.Errorf("create stream fallback plugin: %w", err)
+	}
+	defer fallback.Close(ctx) //nolint:errcheck
+
+	_, fallbackOutput, err := fallback.CallWithContext(ctx, name, nil)
+	if err != nil {
+		return nil, err
+	}
+	if len(fallbackOutput) > 0 {
+		return fallbackOutput, nil
+	}
+	if stdout.Len() > 0 {
+		return stdout.Bytes(), nil
+	}
+	return fallbackOutput, nil
+}
+
+func (p *pluginInstance) call(name string, input []byte) ([]byte, error) {
+	return callPlugin(context.Background(), p.wasm, p.wasmBytes, p.config, p.hostFuncs, p.exportName(name), input)
 }
 
 // hasExport returns true if the plugin exports the given function name.
 func (p *pluginInstance) hasExport(name string) bool {
-	return p.exports[name]
+	return p.exports[p.exportName(name)]
+}
+
+func (p *pluginInstance) exportName(name string) string {
+	if p.exports[name] {
+		return name
+	}
+	if alias, ok := exportAliases[name]; ok && p.exports[alias] {
+		return alias
+	}
+	return name
 }
 
 func (p *pluginInstance) ID() core.PluginID { return p.id }
@@ -49,7 +106,7 @@ func (p *pluginInstance) Roles() []core.RoleDefinition {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	_, data, err := p.wasm.Call("ce_role_definition", nil)
+	data, err := p.call("ce_role_definition", nil)
 	if err != nil {
 		return nil
 	}
@@ -69,7 +126,7 @@ func (p *pluginInstance) Tools() []core.Tool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	_, data, err := p.wasm.Call("ce_tools_list", nil)
+	data, err := p.call("ce_tools_list", nil)
 	if err != nil {
 		return nil
 	}
@@ -94,7 +151,7 @@ func (p *pluginInstance) Analyzers() []core.Analyzer {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	_, data, err := p.wasm.Call("ce_analyzers_list", nil)
+	data, err := p.call("ce_analyzers_list", nil)
 	if err != nil {
 		return nil
 	}
