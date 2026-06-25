@@ -9,7 +9,7 @@ ENV_PREFIX=CE
 NPM_SCOPE=@atheory-ai
 
 PROJECT_HOMEPAGE=https://atheory.ai
-PROJECT_DESCRIPTION=Context Engine — AI-powered codebase intelligence
+PROJECT_DESCRIPTION="Context Engine — AI-powered codebase intelligence"
 PROJECT_LICENSE=Apache-2.0
 
 # CE doesn't currently stamp a second package; main.version is enough.

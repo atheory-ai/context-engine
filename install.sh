@@ -27,7 +27,21 @@ VERSION="${CE_VERSION:-latest}"
 DRY_RUN=0
 
 usage() {
-  sed -n '3,16p' "$0"
+  cat <<'EOF'
+Install Context Engine (ce).
+
+Usage:
+  curl -fsSL https://raw.githubusercontent.com/atheory-ai/context-engine/main/install.sh | sh
+
+Environment:
+  CE_VERSION       Version to install, e.g. 0.1.0 or v0.1.0 (default: latest)
+  CE_INSTALL_DIR   Directory to install into (default: ~/.local/bin)
+  CE_BASE_URL      Override release asset base URL (used by tests)
+
+Options:
+  --dry-run        Print what would be installed without downloading
+  --help           Show this help
+EOF
 }
 
 while [ "$#" -gt 0 ]; do
@@ -135,6 +149,10 @@ verify_cosign() {
   bundle="$tmp/${archive_name}.bundle"
 
   if ! download "$bundle_url" "$bundle" 2>/dev/null; then
+    if [ "${CE_REQUIRE_COSIGN:-0}" = "1" ]; then
+      echo "ce installer: cosign bundle required but not found at $bundle_url" >&2
+      exit 1
+    fi
     echo "ce installer: cosign bundle not found at $bundle_url" >&2
     echo "  (older releases predate cosign signing; skipping)" >&2
     return 0

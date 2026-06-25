@@ -650,8 +650,11 @@ func parseLoopProgress(content string) (int, int) {
 	if len(parts) != 2 {
 		return 0, 0
 	}
-	current, _ := strconv.Atoi(strings.TrimSpace(parts[0])) //nolint:errcheck // malformed → 0 → progress bar shows 0/0
-	total, _ := strconv.Atoi(strings.TrimSpace(parts[1]))   //nolint:errcheck // see comment above
+	current, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
+	total, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err1 != nil || err2 != nil || current < 0 || total <= 0 {
+		return 0, 0
+	}
 	return current, total
 }
 

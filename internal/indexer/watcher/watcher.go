@@ -61,7 +61,9 @@ func (w *Watcher) Run(ctx context.Context) {
 			// If a new directory appeared, watch it recursively.
 			if event.Has(fsnotify.Create) {
 				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
-					_ = w.addRecursive(event.Name) //nolint:errcheck // watcher self-heals on next event; logging would be too chatty
+					if err := w.addRecursive(event.Name); err != nil {
+						go w.retryAddRecursive(ctx, event.Name)
+					}
 				}
 			}
 
@@ -81,6 +83,21 @@ func (w *Watcher) Run(ctx context.Context) {
 // Close stops the watcher immediately.
 func (w *Watcher) Close() error {
 	return w.fsw.Close()
+}
+
+func (w *Watcher) retryAddRecursive(ctx context.Context, dir string) {
+	for _, delay := range []time.Duration{100 * time.Millisecond, 500 * time.Millisecond, time.Second} {
+		timer := time.NewTimer(delay)
+		select {
+		case <-timer.C:
+			if err := w.addRecursive(dir); err == nil {
+				return
+			}
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		}
+	}
 }
 
 // addRecursive adds dir and all its subdirectories to the fsnotify watcher.
