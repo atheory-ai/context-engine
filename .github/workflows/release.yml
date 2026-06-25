@@ -61,7 +61,7 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
 
       - name: Install Zig
         uses: goto-bus-stop/setup-zig@7ab2955eb728f5440978d5824358023be3a2802d
@@ -287,7 +287,7 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
       - name: Install Zig
         uses: goto-bus-stop/setup-zig@7ab2955eb728f5440978d5824358023be3a2802d
         with:
