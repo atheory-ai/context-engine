@@ -85,13 +85,13 @@ func (d *dag) run(ctx context.Context, query string, ch *core.AppChannels) (retE
 		if retErr != nil {
 			status = "error"
 		}
-		_ = queries.UpdateTurn(bg, d.engine.dbRegistry.Audit(), string(rc.TurnID),
+		_ = queries.UpdateTurn(bg, d.engine.dbRegistry.Audit(), string(rc.TurnID), //nolint:errcheck // teardown; main error already returned
 			sql.NullInt64{Int64: now, Valid: true},
 			sql.NullInt64{Int64: int64(rc.CurrentLoop()), Valid: true},
 			status,
 		)
-		_ = queries.EndSession(bg, d.engine.dbRegistry.Audit(), string(rc.SessionID), now)
-		_ = d.engine.dbRegistry.Unmount(string(rc.ProjectID))
+		_ = queries.EndSession(bg, d.engine.dbRegistry.Audit(), string(rc.SessionID), now) //nolint:errcheck // see comment above
+		_ = d.engine.dbRegistry.Unmount(string(rc.ProjectID))                              //nolint:errcheck // see comment above
 	}()
 
 	// ── 2. Router ──────────────────────────────────────────────────────────

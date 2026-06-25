@@ -7,7 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // register the pure-Go sqlite driver as "sqlite"
 )
 
 // Open opens a SQLite database for read-write access with the standard CE pragmas.

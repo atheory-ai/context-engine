@@ -132,7 +132,7 @@ func runProjectInit(_ *cobra.Command, args []string) error {
 	// ── Create data directory ──────────────────────────────────────────────
 	dataDir := viper.GetString("data_dir")
 	if dataDir == "" {
-		home, _ := os.UserHomeDir()
+		home, _ := os.UserHomeDir() //nolint:errcheck // empty home falls back to cwd-relative ".ce"; MkdirAll below catches the real failure
 		dataDir = filepath.Join(home, ".ce")
 	}
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
@@ -217,7 +217,7 @@ func writeCEYAML(path string, data map[string]any) error {
 func registerProject(absPath, gitURL, basePrompt, archPrompt string) error {
 	dataDir := viper.GetString("data_dir")
 	if dataDir == "" {
-		home, _ := os.UserHomeDir()
+		home, _ := os.UserHomeDir() //nolint:errcheck // empty home falls back to cwd-relative ".ce"
 		dataDir = filepath.Join(home, ".ce")
 	}
 

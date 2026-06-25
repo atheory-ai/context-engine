@@ -141,7 +141,7 @@ func runServerStatus(_ *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	pid, _ := strconv.Atoi(strings.TrimSpace(string(data)))
+	pid, _ := strconv.Atoi(strings.TrimSpace(string(data))) //nolint:errcheck // malformed PID file → pid=0 → FindProcess fails harmlessly below
 
 	proc, err := os.FindProcess(pid)
 	if err != nil || proc.Signal(syscall.Signal(0)) != nil {

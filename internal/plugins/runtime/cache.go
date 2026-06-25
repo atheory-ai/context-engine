@@ -96,8 +96,8 @@ func (c *CompilationCache) TouchLastUsed(wasmHash string) {
 		return
 	}
 	meta.LastUsed = time.Now().UnixMilli()
-	updated, _ := json.Marshal(meta)
-	_ = os.WriteFile(metaPath, updated, 0644)
+	updated, _ := json.Marshal(meta)          //nolint:errcheck // marshaling a struct with primitive fields never errors
+	_ = os.WriteFile(metaPath, updated, 0644) //nolint:errcheck // best-effort LRU touch; next load re-touches
 }
 
 // writeMeta writes a new meta.json for the given hash.

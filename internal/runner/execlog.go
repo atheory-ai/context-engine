@@ -97,6 +97,6 @@ func inferTier(model string) string {
 // newExecID generates a short random hex ID for execution log entries.
 func newExecID() string {
 	b := make([]byte, 8)
-	_, _ = rand.Read(b)
+	_, _ = rand.Read(b) //nolint:errcheck // math/rand.Read never returns a non-nil error
 	return hex.EncodeToString(b)
 }

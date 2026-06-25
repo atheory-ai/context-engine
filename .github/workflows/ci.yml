@@ -1,5 +1,9 @@
 name: CI
 
+# Derived from atheory-ai/release-template v0.2.3.
+# Adds: golangci-lint, govulncheck, race detector. Preserves existing
+# format / unit+coverage / acceptance jobs.
+
 on:
   pull_request:
   push:
@@ -16,40 +20,60 @@ concurrency:
 
 jobs:
   format:
+    name: Format
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
-
       - name: Run formatting check
         run: make fmt-check
 
-  unit:
+  lint:
+    name: Lint (golangci-lint)
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.8
+          args: --timeout=5m
 
+  vuln:
+    name: Vuln Scan (govulncheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run govulncheck
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+  unit:
+    name: Unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
       - name: Run unit verification
         run: make verify-unit
-
       - name: Run coverage gate
         run: make test-coverage
-
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
@@ -60,18 +84,26 @@ jobs:
             coverage/coverage.md
           if-no-files-found: error
 
-  acceptance:
+  race:
+    name: Race Detector
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
+      - name: Race test
+        run: make test-race
 
+  acceptance:
+    name: Acceptance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
       - name: Run acceptance tests
         run: make test-acceptance

@@ -38,7 +38,7 @@ func newPluginCmd() *cobra.Command {
 		Hidden: true,
 	}
 	extractCmd.Flags().String("input", "", "path to JSON file with {filePath, content}")
-	_ = extractCmd.MarkFlagRequired("input")
+	_ = extractCmd.MarkFlagRequired("input") //nolint:errcheck // cobra returns error only if flag doesn't exist; we just declared it
 
 	// list
 	listCmd := &cobra.Command{

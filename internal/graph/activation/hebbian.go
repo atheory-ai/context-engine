@@ -63,7 +63,7 @@ func UpdateWeights(
 			core.MaxEdgeWeight,
 		)
 
-		_ = substrate.UpdateEdgeWeight(ctx, core.WeightUpdate{
+		_ = substrate.UpdateEdgeWeight(ctx, core.WeightUpdate{ //nolint:errcheck // fire-and-forget; buffer may be full
 			EdgeID:            ca.edge.ID,
 			ProjectID:         projectID,
 			NewWeight:         newWeight,
@@ -74,7 +74,7 @@ func UpdateWeights(
 
 	// Decay all other edges for this project.
 	// Fire-and-forget — errors are non-fatal.
-	_ = substrate.DecayEdgeWeights(ctx, projectID, core.HebbianDecayRate)
+	_ = substrate.DecayEdgeWeights(ctx, projectID, core.HebbianDecayRate) //nolint:errcheck // see comment above
 
 	return nil
 }
@@ -94,12 +94,12 @@ func updateSourceClass(current string, newWeight float64) string {
 	return current
 }
 
-func clamp(v, min, max float64) float64 {
-	if v < min {
-		return min
+func clamp(v, lo, hi float64) float64 {
+	if v < lo {
+		return lo
 	}
-	if v > max {
-		return max
+	if v > hi {
+		return hi
 	}
 	return v
 }

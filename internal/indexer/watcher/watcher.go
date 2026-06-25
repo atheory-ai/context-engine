@@ -61,7 +61,7 @@ func (w *Watcher) Run(ctx context.Context) {
 			// If a new directory appeared, watch it recursively.
 			if event.Has(fsnotify.Create) {
 				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
-					_ = w.addRecursive(event.Name)
+					_ = w.addRecursive(event.Name) //nolint:errcheck // watcher self-heals on next event; logging would be too chatty
 				}
 			}
 

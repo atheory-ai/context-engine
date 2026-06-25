@@ -195,14 +195,14 @@ func (r *Node) parseResponse(rc *core.RunContext, content string) (ReviewResult,
 // ── XML helpers ───────────────────────────────────────────────────────────────
 
 func extractTagText(s, tag string) (string, error) {
-	open := "<" + tag + ">"
-	close := "</" + tag + ">"
-	start := strings.Index(s, open)
+	openTag := "<" + tag + ">"
+	closeTag := "</" + tag + ">"
+	start := strings.Index(s, openTag)
 	if start == -1 {
 		return "", fmt.Errorf("tag <%s> not found", tag)
 	}
-	start += len(open)
-	end := strings.Index(s[start:], close)
+	start += len(openTag)
+	end := strings.Index(s[start:], closeTag)
 	if end == -1 {
 		return "", fmt.Errorf("closing tag </%s> not found", tag)
 	}

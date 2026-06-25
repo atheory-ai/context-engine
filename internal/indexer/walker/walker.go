@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 )
 
-// WalkerConfig configures a Walker.
-type WalkerConfig struct {
+// Config configures a Walker.
+type Config struct {
 	// ExcludePatterns are glob patterns (from ce.yaml) to exclude.
 	ExcludePatterns []string
 	// MaxFileSizeBytes is the maximum file size to index (0 = use default 10MB).
@@ -33,7 +33,7 @@ type Walker struct {
 }
 
 // New creates a Walker for the given root directory.
-func New(root string, cfg WalkerConfig) (*Walker, error) {
+func New(root string, cfg Config) (*Walker, error) {
 	maxSize := int64(cfg.MaxFileSizeBytes)
 	if maxSize <= 0 {
 		maxSize = 10 * 1024 * 1024 // 10 MB default

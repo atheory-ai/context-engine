@@ -203,9 +203,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "up", "k":
-			m.traceView.LineUp(1)
+			m.traceView.ScrollUp(1)
 		case "down", "j":
-			m.traceView.LineDown(1)
+			m.traceView.ScrollDown(1)
 		case "g":
 			m.traceView.GotoTop()
 		case "G":
@@ -224,9 +224,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.resetForNewQuery()
 			m.state = ViewStateInput
 		case "up", "k":
-			m.answerView.LineUp(1)
+			m.answerView.ScrollUp(1)
 		case "down", "j":
-			m.answerView.LineDown(1)
+			m.answerView.ScrollDown(1)
 		case "g":
 			m.answerView.GotoTop()
 		case "G":
@@ -239,9 +239,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "t", "T", "escape":
 			m.state = ViewStateAnswer
 		case "up", "k":
-			m.traceView.LineUp(1)
+			m.traceView.ScrollUp(1)
 		case "down", "j":
-			m.traceView.LineDown(1)
+			m.traceView.ScrollDown(1)
 		case "q":
 			return m, tea.Quit
 		}
@@ -418,20 +418,20 @@ func (m Model) renderTopBar() string {
 	)
 }
 
-func renderLoopProgress(current, max int) string {
-	if max == 0 {
+func renderLoopProgress(current, total int) string {
+	if total == 0 {
 		return ""
 	}
 	filled := current
-	if filled > max {
-		filled = max
+	if filled > total {
+		filled = total
 	}
-	empty := max - filled
+	empty := total - filled
 
 	bar := LoopFilled.Render(strings.Repeat("●", filled)) +
 		LoopEmpty.Render(strings.Repeat("○", empty))
 
-	return fmt.Sprintf("loop %d/%d  %s", current, max, bar)
+	return fmt.Sprintf("loop %d/%d  %s", current, total, bar)
 }
 
 func renderCost(usd float64) string {
@@ -579,14 +579,14 @@ func (m Model) renderToolIndicators() string {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-func truncateLine(s string, max int) string {
-	if max <= 0 {
+func truncateLine(s string, width int) string {
+	if width <= 0 {
 		return s
 	}
-	if len(s) <= max {
+	if len(s) <= width {
 		return s
 	}
-	return s[:max-1] + "…"
+	return s[:width-1] + "…"
 }
 
 func pluralize(n int) string {
@@ -650,9 +650,9 @@ func parseLoopProgress(content string) (int, int) {
 	if len(parts) != 2 {
 		return 0, 0
 	}
-	current, _ := strconv.Atoi(strings.TrimSpace(parts[0]))
-	max, _ := strconv.Atoi(strings.TrimSpace(parts[1]))
-	return current, max
+	current, _ := strconv.Atoi(strings.TrimSpace(parts[0])) //nolint:errcheck // malformed → 0 → progress bar shows 0/0
+	total, _ := strconv.Atoi(strings.TrimSpace(parts[1]))   //nolint:errcheck // see comment above
+	return current, total
 }
 
 // parseCostUSD attempts to parse a cost value from a cost emission's content.
