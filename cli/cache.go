@@ -61,13 +61,13 @@ func runCacheClear(cmd *cobra.Command, _ []string) error {
 
 	if pluginsOnly {
 		cacheDir := filepath.Join(dataDir, "cache", "plugins")
-		entries, _ := os.ReadDir(cacheDir)
+		entries, _ := os.ReadDir(cacheDir) //nolint:errcheck // missing dir → 0 entries; RemoveAll below is the real op
 		fmt.Printf("Clearing %d plugin cache entries...\n", len(entries))
 		return os.RemoveAll(cacheDir)
 	}
 
 	cacheDir := filepath.Join(dataDir, "cache")
-	entries, _ := os.ReadDir(cacheDir)
+	entries, _ := os.ReadDir(cacheDir) //nolint:errcheck // see comment above
 	fmt.Printf("Clearing all cache (%d entries)...\n", len(entries))
 	return os.RemoveAll(cacheDir)
 }
@@ -75,7 +75,7 @@ func runCacheClear(cmd *cobra.Command, _ []string) error {
 func resolveDataDirFromViper() string {
 	dataDir := viper.GetString("data_dir")
 	if dataDir == "" {
-		home, _ := os.UserHomeDir()
+		home, _ := os.UserHomeDir() //nolint:errcheck // empty home falls back to cwd-relative ".ce"
 		dataDir = filepath.Join(home, ".ce")
 	}
 	return dataDir

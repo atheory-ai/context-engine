@@ -26,10 +26,11 @@ func (r *Retrier) Do(ctx context.Context, fn func() error) error {
 
 	for attempt := 0; attempt <= r.maxRetries; attempt++ {
 		if attempt > 0 {
-			// Exponential backoff: 1s, 2s, 4s
+			// Exponential backoff: 1s, 2s, 4s.
+			// #nosec G115 -- attempt >= 1 in this branch so attempt-1 >= 0; uint conversion is safe.
 			backoff := time.Duration(1<<uint(attempt-1)) * time.Second
-			// Add jitter: ±20%
-			jitter := time.Duration(rand.Int63n(int64(backoff / 5)))
+			// Add jitter: ±20%. math/rand is fine — jitter is for load spreading, not security.
+			jitter := time.Duration(rand.Int63n(int64(backoff / 5))) //nolint:gosec // G404
 			delay := backoff + jitter
 
 			select {

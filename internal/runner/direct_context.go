@@ -295,7 +295,8 @@ func (e *Engine) Investigate(ctx context.Context, opts InvestigateOptions) (*Dir
 	}
 
 	if opts.IncludeTests {
-		tests, _ := e.RelatedTests(ctx, RelatedContextOptions{Query: opts.Query, Limit: 10})
+		// Optional context expansion; failures yield empty result, which is rendered as missing section.
+		tests, _ := e.RelatedTests(ctx, RelatedContextOptions{Query: opts.Query, Limit: 10}) //nolint:errcheck
 		if tests != nil && strings.TrimSpace(tests.Content) != "" {
 			b.WriteString("### Related tests\n")
 			b.WriteString(limitSection(tests.Content, 3000) + "\n\n")
@@ -303,7 +304,7 @@ func (e *Engine) Investigate(ctx context.Context, opts InvestigateOptions) (*Dir
 	}
 
 	if opts.IncludeHooks {
-		entrypoints, _ := e.Entrypoints(ctx, RelatedContextOptions{Query: opts.Query, Limit: 10})
+		entrypoints, _ := e.Entrypoints(ctx, RelatedContextOptions{Query: opts.Query, Limit: 10}) //nolint:errcheck // see comment above
 		if entrypoints != nil && strings.TrimSpace(entrypoints.Content) != "" {
 			b.WriteString("### Entrypoints and framework signals\n")
 			b.WriteString(limitSection(entrypoints.Content, 3000) + "\n\n")
@@ -312,7 +313,7 @@ func (e *Engine) Investigate(ctx context.Context, opts InvestigateOptions) (*Dir
 
 	if opts.IncludeSources {
 		for _, node := range seeds {
-			src, _ := e.SourceRanges(ctx, SourceRangeOptions{NodeID: string(node.ID), Context: 2})
+			src, _ := e.SourceRanges(ctx, SourceRangeOptions{NodeID: string(node.ID), Context: 2}) //nolint:errcheck // see comment above
 			if src != nil && strings.TrimSpace(src.Content) != "" {
 				b.WriteString("### Source range\n")
 				b.WriteString(limitSection(src.Content, 1800) + "\n\n")
@@ -504,9 +505,9 @@ func compactNode(n *core.Node) string {
 	return fmt.Sprintf("[%s] `%s` id: `%s`%s", n.Type, n.CanonicalID, n.ID, loc)
 }
 
-func limitSection(s string, max int) string {
-	if len(s) <= max {
+func limitSection(s string, limit int) string {
+	if len(s) <= limit {
 		return s
 	}
-	return s[:max] + "\n...[truncated]"
+	return s[:limit] + "\n...[truncated]"
 }

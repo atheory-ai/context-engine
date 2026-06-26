@@ -85,13 +85,19 @@ func (d *dag) run(ctx context.Context, query string, ch *core.AppChannels) (retE
 		if retErr != nil {
 			status = "error"
 		}
-		_ = queries.UpdateTurn(bg, d.engine.dbRegistry.Audit(), string(rc.TurnID),
+		if err := queries.UpdateTurn(bg, d.engine.dbRegistry.Audit(), string(rc.TurnID),
 			sql.NullInt64{Int64: now, Valid: true},
 			sql.NullInt64{Int64: int64(rc.CurrentLoop()), Valid: true},
 			status,
-		)
-		_ = queries.EndSession(bg, d.engine.dbRegistry.Audit(), string(rc.SessionID), now)
-		_ = d.engine.dbRegistry.Unmount(string(rc.ProjectID))
+		); err != nil && retErr == nil {
+			retErr = fmt.Errorf("update turn teardown: %w", err)
+		}
+		if err := queries.EndSession(bg, d.engine.dbRegistry.Audit(), string(rc.SessionID), now); err != nil && retErr == nil {
+			retErr = fmt.Errorf("end session teardown: %w", err)
+		}
+		if err := d.engine.dbRegistry.Unmount(string(rc.ProjectID)); err != nil && retErr == nil {
+			retErr = fmt.Errorf("unmount project db: %w", err)
+		}
 	}()
 
 	// ── 2. Router ──────────────────────────────────────────────────────────

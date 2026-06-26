@@ -89,5 +89,5 @@ func initConfig() {
 	viper.AutomaticEnv()
 
 	// Ignore not-found errors — first run has no config yet.
-	_ = viper.ReadInConfig()
+	_ = viper.ReadInConfig() //nolint:errcheck // see comment above
 }

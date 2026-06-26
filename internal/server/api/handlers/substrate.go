@@ -31,7 +31,7 @@ func GetNodes(engine *runner.Engine) http.HandlerFunc {
 		q := r.URL.Query()
 		search := q.Get("search")
 		nodeType := q.Get("type")
-		limit, _ := strconv.Atoi(q.Get("limit"))
+		limit, _ := strconv.Atoi(q.Get("limit")) //nolint:errcheck // malformed limit → 0 → clamped to default 50 below
 		if limit <= 0 || limit > 200 {
 			limit = 50
 		}

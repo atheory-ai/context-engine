@@ -122,7 +122,7 @@ func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.Proj
 	}
 
 	// Set up the directory walker.
-	w, err := walker.New(rootDir, walker.WalkerConfig{
+	w, err := walker.New(rootDir, walker.Config{
 		ExcludePatterns:  idx.cfg.Indexer.Exclude,
 		MaxFileSizeBytes: idx.cfg.Indexer.MaxFileSizeBytes,
 	})
@@ -311,7 +311,7 @@ func (idx *Indexer) processFile(
 
 	// Persist the file hash for future incremental runs.
 	if idx.queries != nil {
-		_ = idx.queries.UpsertFileHash(ctx, string(projectID), result.RelPath, hash)
+		_ = idx.queries.UpsertFileHash(ctx, string(projectID), result.RelPath, hash) //nolint:errcheck // best-effort; next run re-hashes if missing
 	}
 
 	return nodesOut, edgesOut, nil

@@ -76,7 +76,7 @@ func (r *Runtime) Load(ctx context.Context, wasmPath string, pluginConfig map[st
 
 	// ── 7. Write cache metadata (first load only) ────────────────────────────
 	if !r.cache.IsCached(wasmHash) {
-		_ = r.cache.writeMeta(wasmHash, CacheMeta{
+		_ = r.cache.writeMeta(wasmHash, CacheMeta{ //nolint:errcheck // best-effort cache; missing meta only forces re-read on next load
 			WASMHash:   wasmHash,
 			PluginName: pmeta.Name,
 			Version:    pmeta.Version,

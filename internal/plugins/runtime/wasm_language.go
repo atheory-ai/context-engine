@@ -112,6 +112,6 @@ func (h *wasmLanguageHandler) Concepts() []core.ConceptSeed {
 		return nil
 	}
 	var seeds []core.ConceptSeed
-	_ = json.Unmarshal(result, &seeds)
+	_ = json.Unmarshal(result, &seeds) //nolint:errcheck // bad WASM output yields empty seeds; plugin author error, not a runtime fault
 	return seeds
 }

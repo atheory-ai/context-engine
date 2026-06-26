@@ -73,7 +73,7 @@ func (n *Node) Run(
 	// ── 3. Persist activation values to write buffer ───────────────────────
 	// Fire-and-forget — errors are non-fatal (buffer may be full).
 	for nodeID, activation := range activationMap {
-		_ = writer.UpdateActivation(ctx, nodeID, activation)
+		_ = writer.UpdateActivation(ctx, nodeID, activation) //nolint:errcheck // see comment above
 	}
 
 	// ── 4. Select top-K nodes ──────────────────────────────────────────────

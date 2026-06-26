@@ -7,9 +7,9 @@ import (
 	"github.com/atheory-ai/context-engine/internal/core"
 )
 
-// LLMConfig is the configuration for the LLM layer.
+// Config is the configuration for the LLM layer.
 // The config package reads ce.yaml and constructs this struct for the runner.
-type LLMConfig struct {
+type Config struct {
 	// DefaultProvider selects the LLM backend: "anthropic" | "openai" | "local"
 	DefaultProvider string
 
@@ -33,12 +33,12 @@ type AnthropicConfig struct {
 type Router struct {
 	provider   core.LLMProvider
 	tierModels map[string]string // tier → model ID
-	cfg        LLMConfig
+	cfg        Config
 }
 
 // NewRouter creates a Router from the given configuration.
 // The active provider is selected based on cfg.DefaultProvider.
-func NewRouter(cfg LLMConfig, providers ...ProviderEntry) *Router {
+func NewRouter(cfg Config, providers ...ProviderEntry) *Router {
 	r := &Router{
 		cfg:        cfg,
 		tierModels: make(map[string]string),

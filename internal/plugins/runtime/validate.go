@@ -105,7 +105,7 @@ func validateExports(wasmBytes []byte) error {
 		}
 		// Ignore signature mismatches silently in Phase 1.
 		// Extism PDK functions may use different raw signatures.
-		_ = checkSignature(fn, expected)
+		_ = checkSignature(fn, expected) //nolint:errcheck // see comment above
 	}
 
 	return nil

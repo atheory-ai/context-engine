@@ -133,6 +133,6 @@ func (n *Node) Run(
 // newID generates a short random hex ID (16 hex chars = 8 bytes).
 func newID() string {
 	b := make([]byte, 8)
-	_, _ = rand.Read(b)
+	_, _ = rand.Read(b) //nolint:errcheck // math/rand.Read never returns a non-nil error
 	return hex.EncodeToString(b)
 }
