@@ -141,12 +141,20 @@ func runServerStatus(_ *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	pid, _ := strconv.Atoi(strings.TrimSpace(string(data))) //nolint:errcheck // malformed PID file → pid=0 → FindProcess fails harmlessly below
+	// Parse + validate PID. On Unix, os.FindProcess(0) succeeds and
+	// proc.Signal(0) can succeed too, so a malformed PID file would
+	// otherwise be reported as a running server.
+	pid, perr := strconv.Atoi(strings.TrimSpace(string(data)))
+	if perr != nil || pid <= 0 {
+		fmt.Println("CE server: not running (stale PID file)")
+		_ = os.Remove(pidPath)
+		return nil
+	}
 
 	proc, err := os.FindProcess(pid)
 	if err != nil || proc.Signal(syscall.Signal(0)) != nil {
 		fmt.Println("CE server: not running (stale PID file)")
-		os.Remove(pidPath)
+		_ = os.Remove(pidPath)
 		return nil
 	}
 
