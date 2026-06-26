@@ -97,7 +97,7 @@ func (c *CompilationCache) TouchLastUsed(wasmHash string) {
 	}
 	meta.LastUsed = time.Now().UnixMilli()
 	updated, _ := json.Marshal(meta)          //nolint:errcheck // marshaling a struct with primitive fields never errors
-	_ = os.WriteFile(metaPath, updated, 0644) //nolint:errcheck // best-effort LRU touch; next load re-touches
+	_ = os.WriteFile(metaPath, updated, 0o644) //nolint:errcheck,gosec // best-effort LRU touch; G306: plugin-cache metadata read by other CE invocations
 }
 
 // writeMeta writes a new meta.json for the given hash.
@@ -111,7 +111,7 @@ func (c *CompilationCache) writeMeta(wasmHash string, meta CacheMeta) error {
 	if err != nil {
 		return fmt.Errorf("marshal cache meta: %w", err)
 	}
-	return os.WriteFile(filepath.Join(dir, "meta.json"), data, 0644)
+	return os.WriteFile(filepath.Join(dir, "meta.json"), data, 0o644) //nolint:gosec // G306: plugin-cache metadata read by other CE invocations
 }
 
 // Close closes the underlying wazero compilation cache.

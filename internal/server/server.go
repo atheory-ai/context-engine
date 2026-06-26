@@ -105,7 +105,7 @@ func (s *Server) shutdown() {
 
 func (s *Server) writePIDFile() {
 	pidPath := filepath.Join(s.cfg.DataDir, "server.pid")
-	os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())), 0644) //nolint:errcheck
+	os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())), 0o644) //nolint:errcheck,gosec // best-effort; G306: PID file read by other CE invocations
 }
 
 func (s *Server) removePIDFile() {

@@ -55,7 +55,7 @@ func ExtractDefaults(dataDir string) error {
 
 		destPath := filepath.Join(defaultsDir, name)
 		if shouldWrite(destPath, data) {
-			if err := os.WriteFile(destPath, data, 0644); err != nil {
+			if err := os.WriteFile(destPath, data, 0o644); err != nil { //nolint:gosec // G306: default-plugin payload the user inspects
 				return fmt.Errorf("write %s: %w", destPath, err)
 			}
 		}
