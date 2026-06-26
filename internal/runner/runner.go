@@ -171,7 +171,7 @@ func buildLLMRouter(cfg *config.Config) *llm.Router {
 		BaseURL: cfg.LLM.BaseURL,
 	})
 
-	llmCfg := llm.LLMConfig{
+	llmCfg := llm.Config{
 		DefaultProvider: cfg.LLM.Provider,
 		TierModels:      cfg.LLM.Models,
 		Anthropic: llm.AnthropicConfig{
@@ -316,10 +316,10 @@ func (e *Engine) ProjectStatus(ctx context.Context) (*ProjectStatusResult, error
 	// Best-effort: count nodes and edges from the project graph.
 	if graphDB, err := e.dbRegistry.GraphDB("local"); err == nil {
 		var n int
-		_ = graphDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM nodes WHERE project_id = 'local'`).Scan(&n)
+		_ = graphDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM nodes WHERE project_id = 'local'`).Scan(&n) //nolint:errcheck // best-effort stats; n=0 on failure is fine
 		result.NodeCount = n
 		var eg int
-		_ = graphDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM edges WHERE project_id = 'local'`).Scan(&eg)
+		_ = graphDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM edges WHERE project_id = 'local'`).Scan(&eg) //nolint:errcheck // see comment above
 		result.EdgeCount = eg
 	}
 
@@ -394,6 +394,8 @@ func (e *Engine) SearchSubstrate(ctx context.Context, opts SearchOptions) ([]Sea
 	}
 	args = append(args, candidateLimit)
 
+	// #nosec G202 -- conds is built from a fixed set of programmer-defined
+	// SQL fragments with `?` placeholders; values are bound separately via args.
 	q := `SELECT id, type, label, canonical_id, source_class, properties FROM nodes WHERE ` +
 		strings.Join(conds, " AND ") + ` ORDER BY length(canonical_id) LIMIT ?`
 
@@ -469,7 +471,7 @@ func (e *Engine) Index(ctx context.Context, rootDir string, full bool) (indexer.
 	// Update project record in meta.db (best-effort — don't mask index errors).
 	if runErr == nil {
 		now := time.Now().UnixMilli()
-		_ = queries.UpsertProject(ctx, e.dbRegistry.Meta(), queries.Project{
+		_ = queries.UpsertProject(ctx, e.dbRegistry.Meta(), queries.Project{ //nolint:errcheck // metadata best-effort; index already succeeded
 			ID:         string(projectID),
 			GitURL:     e.cfg.Project.GitURL,
 			Name:       filepath.Base(rootDir),
@@ -478,8 +480,8 @@ func (e *Engine) Index(ctx context.Context, rootDir string, full bool) (indexer.
 			LastSeenAt: now,
 			Properties: "{}",
 		})
-		_ = queries.UpsertProjectPath(ctx, e.dbRegistry.Meta(), string(projectID), rootDir, now)
-		_ = queries.UpdateLastIndexedAt(ctx, e.dbRegistry.Meta(), string(projectID), now)
+		_ = queries.UpsertProjectPath(ctx, e.dbRegistry.Meta(), string(projectID), rootDir, now) //nolint:errcheck // see comment above
+		_ = queries.UpdateLastIndexedAt(ctx, e.dbRegistry.Meta(), string(projectID), now)        //nolint:errcheck // see comment above
 
 		// Lift indexed nodes/edges into the org graph, then detect cross-project edges.
 		if liftErr := e.orgGraph.Lift(ctx, projectID, localDB); liftErr != nil {

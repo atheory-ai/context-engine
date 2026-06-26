@@ -79,22 +79,22 @@ func Extract(response string) (*core.IR, error) {
 // extractText finds the content of a simple tag: <tag>content</tag>
 // Returns error if tag not found.
 func extractText(s, tag string) (string, error) {
-	open := "<" + tag + ">"
-	close := "</" + tag + ">"
-	start := strings.Index(s, open)
+	openTag := "<" + tag + ">"
+	closeTag := "</" + tag + ">"
+	start := strings.Index(s, openTag)
 	if start == -1 {
 		return "", fmt.Errorf("tag <%s> not found", tag)
 	}
-	start += len(open)
-	end := strings.Index(s[start:], close)
+	start += len(openTag)
+	end := strings.Index(s[start:], closeTag)
 	if end == -1 {
 		return "", fmt.Errorf("tag </%s> not found", tag)
 	}
 	return s[start : start+end], nil
 }
 
-// extractInt finds a tag with integer content, clamped to [min, max].
-func extractInt(s, tag string, min, max int) (int, error) {
+// extractInt finds a tag with integer content, clamped to [lo, hi].
+func extractInt(s, tag string, lo, hi int) (int, error) {
 	v, err := extractText(s, tag)
 	if err != nil {
 		return 0, err
@@ -103,11 +103,11 @@ func extractInt(s, tag string, min, max int) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("tag <%s> not an integer: %s", tag, v)
 	}
-	if n < min {
-		n = min
+	if n < lo {
+		n = lo
 	}
-	if n > max {
-		n = max
+	if n > hi {
+		n = hi
 	}
 	return n, nil
 }

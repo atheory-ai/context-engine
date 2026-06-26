@@ -3,6 +3,7 @@ package writebuffer
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -77,7 +78,7 @@ func (b *buffer) Send(op WriteOp) error {
 	case b.ch <- op:
 		return nil
 	default:
-		return fmt.Errorf(errBufferFull)
+		return errors.New(errBufferFull)
 	}
 }
 

@@ -49,7 +49,7 @@ func resolveDataDir(configured string) string {
 	if env := os.Getenv("CE_DATA_DIR"); env != "" {
 		return env
 	}
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home falls back to cwd-relative ".ce"
 	return filepath.Join(home, ".ce")
 }
 

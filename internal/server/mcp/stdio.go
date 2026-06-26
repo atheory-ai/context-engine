@@ -35,7 +35,7 @@ func (s *Server) RunStdio(ctx context.Context) error {
 
 		var req protocol.Request
 		if err := json.Unmarshal(line, &req); err != nil {
-			_ = encoder.Encode(protocol.ErrorResponse(nil, -32700, "parse error", err.Error()))
+			_ = encoder.Encode(protocol.ErrorResponse(nil, -32700, "parse error", err.Error())) //nolint:errcheck // best-effort error notify; client already broken
 			continue
 		}
 

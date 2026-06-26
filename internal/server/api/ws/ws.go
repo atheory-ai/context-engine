@@ -8,8 +8,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// WSEvent is a single event frame sent over the WebSocket connection.
-type WSEvent struct {
+// Event is a single event frame sent over the WebSocket connection.
+type Event struct {
 	Type     string         `json:"type"` // "thinking"|"action"|"message"|"warning"|"error"|"cost"|"done"
 	Content  string         `json:"content"`
 	Metadata map[string]any `json:"metadata,omitempty"`
@@ -42,12 +42,12 @@ func Handler(engine *runner.Engine) http.HandlerFunc {
 		// Read the query from the client.
 		var req wsQueryRequest
 		if err := conn.ReadJSON(&req); err != nil {
-			conn.WriteJSON(WSEvent{Type: "error", Content: "invalid request"}) //nolint:errcheck
+			conn.WriteJSON(Event{Type: "error", Content: "invalid request"}) //nolint:errcheck
 			return
 		}
 
 		if req.Query == "" {
-			conn.WriteJSON(WSEvent{Type: "error", Content: "query is required"}) //nolint:errcheck
+			conn.WriteJSON(Event{Type: "error", Content: "query is required"}) //nolint:errcheck
 			return
 		}
 
@@ -70,24 +70,24 @@ func Handler(engine *runner.Engine) http.HandlerFunc {
 		for {
 			select {
 			case e := <-ch.Thinking:
-				conn.WriteJSON(WSEvent{Type: "thinking", Content: e.Content}) //nolint:errcheck
+				conn.WriteJSON(Event{Type: "thinking", Content: e.Content}) //nolint:errcheck
 			case e := <-ch.Action:
-				conn.WriteJSON(WSEvent{Type: "action", Content: e.Content}) //nolint:errcheck
+				conn.WriteJSON(Event{Type: "action", Content: e.Content}) //nolint:errcheck
 			case e := <-ch.Message:
-				conn.WriteJSON(WSEvent{Type: "message", Content: e.Content}) //nolint:errcheck
+				conn.WriteJSON(Event{Type: "message", Content: e.Content}) //nolint:errcheck
 			case e := <-ch.Warning:
-				conn.WriteJSON(WSEvent{Type: "warning", Content: e.Content}) //nolint:errcheck
+				conn.WriteJSON(Event{Type: "warning", Content: e.Content}) //nolint:errcheck
 			case e := <-ch.Error:
-				conn.WriteJSON(WSEvent{Type: "error", Content: e.Content}) //nolint:errcheck
+				conn.WriteJSON(Event{Type: "error", Content: e.Content}) //nolint:errcheck
 			case e := <-ch.Cost:
-				conn.WriteJSON(WSEvent{Type: "cost", Content: e.Content}) //nolint:errcheck
+				conn.WriteJSON(Event{Type: "cost", Content: e.Content}) //nolint:errcheck
 			case e := <-ch.System:
-				conn.WriteJSON(WSEvent{Type: "system", Content: e.Content}) //nolint:errcheck
+				conn.WriteJSON(Event{Type: "system", Content: e.Content}) //nolint:errcheck
 			case err := <-queryErr:
 				if err != nil {
-					conn.WriteJSON(WSEvent{Type: "error", Content: err.Error()}) //nolint:errcheck
+					conn.WriteJSON(Event{Type: "error", Content: err.Error()}) //nolint:errcheck
 				}
-				conn.WriteJSON(WSEvent{Type: "done"}) //nolint:errcheck
+				conn.WriteJSON(Event{Type: "done"}) //nolint:errcheck
 				return
 			case <-r.Context().Done():
 				return

@@ -10,14 +10,6 @@ const (
 	ModelHaiku45 = "claude-haiku-4-5-20251001"
 )
 
-// defaultTierModels maps CE model tiers to Anthropic model IDs.
-// Can be overridden via LLM config.
-var defaultTierModels = map[string]string{
-	core.TierFast:     ModelHaiku45,
-	core.TierStandard: ModelSonnet4,
-	core.TierThinking: ModelOpus4,
-}
-
 // modelMeta holds metadata for a known Anthropic model.
 type modelMeta struct {
 	ContextLimit int

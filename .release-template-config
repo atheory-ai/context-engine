@@ -1,0 +1,19 @@
+# Consumed by atheory-ai/release-template's apply-template.sh and
+# .github/workflows/template-drift-check.yml.
+
+PROJECT_NAME=ce
+BINARY_NAME=ce
+REPO_OWNER=atheory-ai
+REPO_NAME=context-engine
+ENV_PREFIX=CE
+NPM_SCOPE=@atheory-ai
+
+PROJECT_HOMEPAGE=https://atheory.ai
+PROJECT_DESCRIPTION="Context Engine — AI-powered codebase intelligence"
+PROJECT_LICENSE=Apache-2.0
+
+# CE doesn't currently stamp a second package; main.version is enough.
+VERSION_LDFLAG_PATH=
+
+# CI apt deps (none currently needed).
+CI_APT_DEPS=
