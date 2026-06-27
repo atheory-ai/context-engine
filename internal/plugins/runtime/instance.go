@@ -29,6 +29,11 @@ type pluginInstance struct {
 	mu        sync.Mutex
 }
 
+const (
+	callConventionExtismInputOutput = "extism-input-output"
+	callConventionJavyStreamIO      = "javy-stream-io"
+)
+
 func callPlugin(ctx context.Context, wasm *extism.Plugin, wasmBytes []byte, config extism.PluginConfig, hostFuncs []extism.HostFunction, name string, input []byte) ([]byte, error) {
 	_, output, err := wasm.CallWithContext(ctx, name, input)
 	if err != nil {
@@ -37,7 +42,10 @@ func callPlugin(ctx context.Context, wasm *extism.Plugin, wasmBytes []byte, conf
 	if len(output) > 0 {
 		return output, nil
 	}
+	return callPluginStreamIO(ctx, wasmBytes, config, hostFuncs, name, input)
+}
 
+func callPluginStreamIO(ctx context.Context, wasmBytes []byte, config extism.PluginConfig, hostFuncs []extism.HostFunction, name string, input []byte) ([]byte, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	fallbackConfig := config
@@ -67,7 +75,11 @@ func callPlugin(ctx context.Context, wasm *extism.Plugin, wasmBytes []byte, conf
 }
 
 func (p *pluginInstance) call(name string, input []byte) ([]byte, error) {
-	return callPlugin(context.Background(), p.wasm, p.wasmBytes, p.config, p.hostFuncs, p.exportName(name), input)
+	exportName := p.exportName(name)
+	if p.callConvention() == callConventionJavyStreamIO {
+		return callPluginStreamIO(context.Background(), p.wasmBytes, p.config, p.hostFuncs, exportName, input)
+	}
+	return callPlugin(context.Background(), p.wasm, p.wasmBytes, p.config, p.hostFuncs, exportName, input)
 }
 
 // hasExport returns true if the plugin exports the given function name.
@@ -83,6 +95,13 @@ func (p *pluginInstance) exportName(name string) string {
 		return alias
 	}
 	return name
+}
+
+func (p *pluginInstance) callConvention() string {
+	if p.manifest.ABI == nil || p.manifest.ABI.CallConvention == "" {
+		return callConventionExtismInputOutput
+	}
+	return p.manifest.ABI.CallConvention
 }
 
 func (p *pluginInstance) ID() core.PluginID { return p.id }
