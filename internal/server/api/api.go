@@ -59,7 +59,10 @@ func New(cfg *config.Config, engine *runner.Engine) *Server {
 func (s *Server) Start(ctx context.Context, addr string) error {
 	s.srv.Addr = addr
 
-	go func() {
+	// G118 nolint: the request context is already cancelled by the
+	// time this goroutine runs; Shutdown needs a separate context
+	// with its own timeout for graceful drain. Background is right.
+	go func() { //nolint:gosec // G118 — see comment above
 		<-ctx.Done()
 		s.srv.Shutdown(context.Background()) //nolint:errcheck
 	}()

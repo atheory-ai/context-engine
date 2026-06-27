@@ -240,10 +240,10 @@ func extractEnrichments(s string, rc *core.RunContext) []core.Enrichment {
 		for _, am := range attrRegex.FindAllStringSubmatch(m[1], -1) {
 			attrs[am[1]] = am[2]
 		}
-		action, _ := attrs["action"]
-		entityType, _ := attrs["entity_type"]
-		entityID, _ := attrs["entity_id"]
-		rationale, _ := attrs["rationale"]
+		action := attrs["action"]
+		entityType := attrs["entity_type"]
+		entityID := attrs["entity_id"]
+		rationale := attrs["rationale"]
 		if action == "" || entityID == "" {
 			continue
 		}

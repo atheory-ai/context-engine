@@ -37,7 +37,10 @@ func (s *Server) StartSSE(ctx context.Context, addr string) error {
 	}
 	s.httpSrv = srv
 
-	go func() {
+	// G118 nolint: the request context is already cancelled by the
+	// time this goroutine runs; Shutdown needs a separate context to
+	// time-box graceful drain. Background is the right choice.
+	go func() { //nolint:gosec // G118 — see comment above
 		<-ctx.Done()
 		srv.Shutdown(context.Background()) //nolint:errcheck
 	}()

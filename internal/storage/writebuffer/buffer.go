@@ -67,7 +67,7 @@ func New(
 		cancel:        cancel,
 		done:          make(chan struct{}),
 	}
-	go b.run(innerCtx)
+	go b.run(innerCtx) //nolint:gosec // G118: writebuffer is a long-lived background service constructed from Background(); no request context to inherit
 	return b
 }
 
