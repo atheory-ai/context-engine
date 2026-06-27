@@ -2,14 +2,40 @@
 // It loads, validates, and manages WASM plugins for the Context Engine.
 package runtime
 
+import "encoding/json"
+
 // PluginManifest is the JSON structure returned by ce_plugin_manifest.
 // Every valid CE plugin returns this when called with no input.
 type PluginManifest struct {
 	ID           string              `json:"id"`
 	Name         string              `json:"name"`
 	Version      string              `json:"version"`
+	ABI          *PluginABIInfo      `json:"abi,omitempty"`
 	Capabilities PluginCapabilities  `json:"capabilities"`
 	Language     *PluginLanguageInfo `json:"language,omitempty"`
+}
+
+// PluginABIInfo declares the SDK/runtime ABI contract a plugin was built for.
+type PluginABIInfo struct {
+	Name           string `json:"name"`
+	Version        int    `json:"version"`
+	CallConvention string `json:"callConvention,omitempty"`
+}
+
+func (a *PluginABIInfo) UnmarshalJSON(data []byte) error {
+	type alias PluginABIInfo
+	var raw struct {
+		alias
+		SnakeCallConvention string `json:"call_convention"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*a = PluginABIInfo(raw.alias)
+	if a.CallConvention == "" {
+		a.CallConvention = raw.SnakeCallConvention
+	}
+	return nil
 }
 
 // PluginCapabilities declares what this plugin can do.

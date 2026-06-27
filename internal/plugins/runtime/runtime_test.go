@@ -92,6 +92,70 @@ func TestCollectExportsValidFixture(t *testing.T) {
 	}
 }
 
+func TestPluginABIInfoUnmarshalAcceptsCamelAndSnakeCallConvention(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{
+		`{"name":"ce-plugin","version":1,"callConvention":"javy-stream-io"}`,
+		`{"name":"ce-plugin","version":1,"call_convention":"javy-stream-io"}`,
+	} {
+		var abi PluginABIInfo
+		if err := json.Unmarshal([]byte(raw), &abi); err != nil {
+			t.Fatalf("UnmarshalJSON(%s): %v", raw, err)
+		}
+		if abi.CallConvention != callConventionJavyStreamIO {
+			t.Fatalf("CallConvention = %q, want %q", abi.CallConvention, callConventionJavyStreamIO)
+		}
+	}
+}
+
+func TestValidateManifestABI(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		abi     *PluginABIInfo
+		wantErr string
+	}{
+		{name: "legacy manifest"},
+		{
+			name: "stream io",
+			abi:  &PluginABIInfo{Name: "ce-plugin", Version: 1, CallConvention: callConventionJavyStreamIO},
+		},
+		{
+			name: "extism input output",
+			abi:  &PluginABIInfo{Name: "ce-plugin", Version: 1, CallConvention: callConventionExtismInputOutput},
+		},
+		{
+			name:    "unsupported convention",
+			abi:     &PluginABIInfo{Name: "ce-plugin", Version: 1, CallConvention: "unknown"},
+			wantErr: "call convention",
+		},
+		{
+			name:    "unsupported name",
+			abi:     &PluginABIInfo{Name: "argent-plugin", Version: 1, CallConvention: callConventionJavyStreamIO},
+			wantErr: "name",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateManifestABI(tt.abi)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("validateManifestABI() error = %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("validateManifestABI() error = %v, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestNewExtismManifestSandboxLimits(t *testing.T) {
 	t.Parallel()
 
