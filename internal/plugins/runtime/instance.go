@@ -39,10 +39,15 @@ func callPlugin(ctx context.Context, wasm *extism.Plugin, wasmBytes []byte, conf
 	if err != nil {
 		return nil, err
 	}
-	if len(output) > 0 {
-		return output, nil
+	return output, nil
+}
+
+func callPluginManifest(ctx context.Context, wasm *extism.Plugin, wasmBytes []byte, config extism.PluginConfig, hostFuncs []extism.HostFunction, name string) ([]byte, error) {
+	output, err := callPlugin(ctx, wasm, wasmBytes, config, hostFuncs, name, nil)
+	if err != nil || len(output) > 0 {
+		return output, err
 	}
-	return callPluginStreamIO(ctx, wasmBytes, config, hostFuncs, name, input)
+	return callPluginStreamIO(ctx, wasmBytes, config, hostFuncs, name, nil)
 }
 
 func callPluginStreamIO(ctx context.Context, wasmBytes []byte, config extism.PluginConfig, hostFuncs []extism.HostFunction, name string, input []byte) ([]byte, error) {

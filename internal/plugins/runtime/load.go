@@ -62,7 +62,7 @@ func (r *Runtime) Load(ctx context.Context, wasmPath string, pluginConfig map[st
 
 	// ── 6. Call ce_plugin_manifest to read plugin metadata ───────────────────
 	manifestExport := resolveExportName(exports, "ce_plugin_manifest")
-	manifestJSON, err := callPlugin(ctx, extismPlugin, wasmBytes, extismConfig, hostFuncs, manifestExport, nil)
+	manifestJSON, err := callPluginManifest(ctx, extismPlugin, wasmBytes, extismConfig, hostFuncs, manifestExport)
 	if err != nil {
 		_ = extismPlugin.Close(ctx)
 		return nil, fmt.Errorf("call ce_plugin_manifest on %s: %w", wasmPath, err)
