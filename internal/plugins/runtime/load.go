@@ -62,7 +62,7 @@ func (r *Runtime) Load(ctx context.Context, wasmPath string, pluginConfig map[st
 
 	// ── 6. Call ce_plugin_manifest to read plugin metadata ───────────────────
 	manifestExport := resolveExportName(exports, "ce_plugin_manifest")
-	manifestJSON, err := callPlugin(ctx, extismPlugin, wasmBytes, extismConfig, hostFuncs, manifestExport, nil)
+	manifestJSON, err := callPluginManifest(ctx, extismPlugin, wasmBytes, extismConfig, hostFuncs, manifestExport)
 	if err != nil {
 		_ = extismPlugin.Close(ctx)
 		return nil, fmt.Errorf("call ce_plugin_manifest on %s: %w", wasmPath, err)
@@ -72,6 +72,10 @@ func (r *Runtime) Load(ctx context.Context, wasmPath string, pluginConfig map[st
 	if err := json.Unmarshal(manifestJSON, &pmeta); err != nil {
 		_ = extismPlugin.Close(ctx)
 		return nil, fmt.Errorf("parse plugin manifest from %s: %w", wasmPath, err)
+	}
+	if err := validateManifestABI(pmeta.ABI); err != nil {
+		_ = extismPlugin.Close(ctx)
+		return nil, fmt.Errorf("unsupported plugin ABI in %s: %w", wasmPath, err)
 	}
 
 	// ── 7. Write cache metadata (first load only) ────────────────────────────
@@ -98,6 +102,24 @@ func (r *Runtime) Load(ctx context.Context, wasmPath string, pluginConfig map[st
 		config:    extismConfig,
 		exports:   exports,
 	}, nil
+}
+
+func validateManifestABI(abi *PluginABIInfo) error {
+	if abi == nil {
+		return nil
+	}
+	if abi.Name != "" && abi.Name != "ce-plugin" {
+		return fmt.Errorf("name %q", abi.Name)
+	}
+	if abi.Version != 0 && abi.Version != 1 {
+		return fmt.Errorf("version %d", abi.Version)
+	}
+	switch abi.CallConvention {
+	case "", callConventionExtismInputOutput, callConventionJavyStreamIO:
+		return nil
+	default:
+		return fmt.Errorf("call convention %q", abi.CallConvention)
+	}
 }
 
 func newExtismManifest(wasmBytes []byte) extism.Manifest {
