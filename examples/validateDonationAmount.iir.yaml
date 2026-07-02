@@ -1,0 +1,23 @@
+# Intended IIR for validateDonationAmount.
+# Declares the function's contract: inputs, return type, expected behavior,
+# failure modes, and — importantly — that it performs NO side effects.
+kind: FunctionIntent
+name: validateDonationAmount
+language: typescript
+visibility: public
+inputs:
+  - name: amount
+    type: Money
+  - name: campaign
+    type: Campaign
+returns:
+  type: ValidationResult<Money>
+behavior:
+  - when: amount is below campaign.minimumDonation
+    then: return validation error amount_below_minimum
+sideEffects: []
+failureModes:
+  - amount_below_minimum
+constraints:
+  - public function must have explicit return type
+  - expected validation failure must not throw
