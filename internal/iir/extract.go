@@ -35,6 +35,12 @@ func ExtractFunction(ctx context.Context, source []byte, targetName string) (*Fu
 	defer tree.Close()
 
 	root := tree.RootNode()
+	// ParseCtx returns a tree even for invalid source (with error nodes), so
+	// guard against building a garbled FunctionIntent from malformed input.
+	if root.HasError() {
+		return nil, fmt.Errorf("source has syntax errors; cannot extract intent")
+	}
+
 	funcs := collectFunctions(root, source)
 	if len(funcs) == 0 {
 		return nil, fmt.Errorf("no function declarations found in source")
@@ -129,7 +135,7 @@ func fromVariableDeclaration(node *sitter.Node, src []byte, exported bool) []fun
 		out = append(out, funcCandidate{
 			name:       nodeFieldText(declr, "name", src),
 			exported:   exported,
-			params:     value.ChildByFieldName("parameters"),
+			params:     arrowParams(value),
 			returnType: value.ChildByFieldName("return_type"),
 			body:       value.ChildByFieldName("body"),
 		})
@@ -170,24 +176,77 @@ func buildIntent(fn funcCandidate, src []byte, imports map[string]bool) *Functio
 
 func extractParams(params *sitter.Node, src []byte) []Param {
 	out := []Param{}
-	if params == nil {
-		return out
-	}
-	for i := 0; i < int(params.NamedChildCount()); i++ {
-		p := params.NamedChild(i)
+	for _, p := range paramNodes(params) {
 		switch p.Type() {
-		case "required_parameter", "optional_parameter":
-			name := nodeFieldText(p, "pattern", src)
-			typ := TypeUnknown
-			if ann := p.ChildByFieldName("type"); ann != nil {
-				typ = typeAnnotationText(ann, src)
-			}
-			out = append(out, Param{Name: name, Type: typ})
+		case "required_parameter", "optional_parameter", "rest_parameter":
+			out = append(out, Param{Name: paramName(p, src), Type: paramType(p, src)})
 		case "identifier":
 			out = append(out, Param{Name: p.Content(src), Type: TypeUnknown})
 		}
 	}
 	return out
+}
+
+// paramNodes normalizes the different shapes a parameter list can take: a
+// `formal_parameters` container, or a single unparenthesized arrow parameter
+// (e.g. `x => x`) that appears as a bare node.
+func paramNodes(params *sitter.Node) []*sitter.Node {
+	if params == nil {
+		return nil
+	}
+	if params.Type() == "formal_parameters" {
+		nodes := make([]*sitter.Node, 0, params.NamedChildCount())
+		for i := 0; i < int(params.NamedChildCount()); i++ {
+			nodes = append(nodes, params.NamedChild(i))
+		}
+		return nodes
+	}
+	return []*sitter.Node{params}
+}
+
+// arrowParams resolves an arrow function's parameters across grammar shapes:
+// the `parameters` field (parenthesized), the `parameter` field, or a bare
+// leading identifier for the unparenthesized single-parameter form.
+func arrowParams(fn *sitter.Node) *sitter.Node {
+	if p := fn.ChildByFieldName("parameters"); p != nil {
+		return p
+	}
+	if p := fn.ChildByFieldName("parameter"); p != nil {
+		return p
+	}
+	if fn.NamedChildCount() > 0 {
+		if first := fn.NamedChild(0); first.Type() == "identifier" {
+			return first
+		}
+	}
+	return nil
+}
+
+// paramName resolves a parameter's name. It prefers the `pattern` field,
+// unwrapping a `rest_pattern` (`...args`) to the bound identifier, and falls
+// back to the first identifier for node shapes without a pattern field.
+func paramName(p *sitter.Node, src []byte) string {
+	if pat := p.ChildByFieldName("pattern"); pat != nil {
+		if pat.Type() == "rest_pattern" {
+			return firstIdentifier(pat, src)
+		}
+		return pat.Content(src)
+	}
+	return firstIdentifier(p, src)
+}
+
+// paramType resolves a parameter's type annotation, preferring the `type` field
+// and falling back to a `type_annotation` child for node types that omit it.
+func paramType(p *sitter.Node, src []byte) string {
+	if ann := p.ChildByFieldName("type"); ann != nil {
+		return typeAnnotationText(ann, src)
+	}
+	for i := 0; i < int(p.NamedChildCount()); i++ {
+		if c := p.NamedChild(i); c.Type() == "type_annotation" {
+			return typeAnnotationText(c, src)
+		}
+	}
+	return TypeUnknown
 }
 
 func extractReturn(returnType *sitter.Node, src []byte) Return {
@@ -360,6 +419,16 @@ func lastIdentifier(node *sitter.Node, src []byte) string {
 	var id string
 	walk(node, func(n *sitter.Node) {
 		if n.Type() == "identifier" {
+			id = n.Content(src)
+		}
+	})
+	return id
+}
+
+func firstIdentifier(node *sitter.Node, src []byte) string {
+	var id string
+	walk(node, func(n *sitter.Node) {
+		if id == "" && n.Type() == "identifier" {
 			id = n.Content(src)
 		}
 	})

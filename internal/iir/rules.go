@@ -120,8 +120,13 @@ func validateRulePack(pack RulePack) error {
 			return fmt.Errorf("rules[%d]: duplicate id %q", i, r.ID)
 		}
 		seen[r.ID] = true
-		if r.Target == "" {
+		switch r.Target {
+		case KindFunctionIntent:
+		case "":
 			return fmt.Errorf("rule %q: missing target", r.ID)
+		default:
+			return fmt.Errorf("rule %q: unsupported target %q (Slice 1 supports only %q)",
+				r.ID, r.Target, KindFunctionIntent)
 		}
 		switch r.Severity {
 		case SeverityError, SeverityWarning, SeverityInfo:
@@ -129,6 +134,9 @@ func validateRulePack(pack RulePack) error {
 			return fmt.Errorf("rule %q: missing severity", r.ID)
 		default:
 			return fmt.Errorf("rule %q: unknown severity %q", r.ID, r.Severity)
+		}
+		if fs := r.Require.FailureStrategy; fs != nil && *fs != "ResultType" {
+			return fmt.Errorf("rule %q: unsupported failureStrategy %q (expected \"ResultType\")", r.ID, *fs)
 		}
 	}
 	return nil
@@ -185,13 +193,27 @@ func ruleSelects(when RuleWhen, intent *FunctionIntent) bool {
 // and, on failure, repair guidance. Multiple requirements are ANDed; the first
 // failing one is reported.
 func checkRequire(req RuleRequire, intent *FunctionIntent) (ok bool, msg, repair string) {
-	if req.ExplicitReturnType != nil && *req.ExplicitReturnType && !intent.Returns.Explicit {
-		return false, "function must declare an explicit return type",
-			"Add an explicit return type annotation to the function signature."
+	// Booleans are honored in both directions: `true` asserts the property,
+	// `false` asserts its absence. A mismatch either way is a failure — never a
+	// silent pass.
+	if req.ExplicitReturnType != nil && *req.ExplicitReturnType != intent.Returns.Explicit {
+		if *req.ExplicitReturnType {
+			return false, "function must declare an explicit return type",
+				"Add an explicit return type annotation to the function signature."
+		}
+		return false, "function must not declare an explicit return type",
+			"Remove the explicit return type annotation from the function signature."
 	}
-	if req.SideEffectsDeclared != nil && *req.SideEffectsDeclared && intent.SideEffects == nil {
-		return false, "side effects must be declared (use an empty list to assert none)",
-			"Declare a sideEffects list in the IIR (empty [] means no side effects)."
+	if req.SideEffectsDeclared != nil {
+		declared := intent.SideEffects != nil
+		if *req.SideEffectsDeclared != declared {
+			if *req.SideEffectsDeclared {
+				return false, "side effects must be declared (use an empty list to assert none)",
+					"Declare a sideEffects list in the IIR (empty [] means no side effects)."
+			}
+			return false, "side effects must not be declared",
+				"Remove the sideEffects declaration from the IIR."
+		}
 	}
 	if req.FailureStrategy != nil && *req.FailureStrategy == "ResultType" && intent.HasFailureModes() {
 		if returnLooksLikeResult(intent.Returns.Type) {

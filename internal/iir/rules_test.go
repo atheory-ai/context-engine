@@ -105,6 +105,23 @@ func TestRules_ResultTypeStrategy(t *testing.T) {
 	}
 }
 
+func TestRules_ExplicitReturnTypeFalseIsHonored(t *testing.T) {
+	// require explicitReturnType:false must fail a function that HAS an
+	// explicit return type — a false assertion is not a silent pass.
+	falseVal := false
+	pack := RulePack{Rules: []Rule{{
+		ID: "no-explicit-return", Target: KindFunctionIntent, Severity: SeverityError,
+		Require: RuleRequire{ExplicitReturnType: &falseVal},
+	}}}
+	intent := &FunctionIntent{
+		Kind: KindFunctionIntent, Name: "f", Visibility: VisibilityPublic,
+		Returns: Return{Type: "number", Explicit: true}, SideEffects: []string{},
+	}
+	if r := resultByID(EvaluateRules(pack, intent), "no-explicit-return"); r == nil || r.Status != RuleFailed {
+		t.Errorf("expected false requirement to fail an explicit-return function, got %+v", r)
+	}
+}
+
 func TestLoadRulePack_Valid(t *testing.T) {
 	doc := `
 rules:
@@ -130,10 +147,12 @@ rules:
 
 func TestLoadRulePack_Invalid(t *testing.T) {
 	cases := map[string]string{
-		"empty":            `rules: []`,
-		"missing id":       "rules:\n  - target: FunctionIntent\n    severity: error",
-		"unknown severity": "rules:\n  - id: x\n    target: FunctionIntent\n    severity: fatal",
-		"duplicate id":     "rules:\n  - id: x\n    target: FunctionIntent\n    severity: error\n  - id: x\n    target: FunctionIntent\n    severity: error",
+		"empty":                `rules: []`,
+		"missing id":           "rules:\n  - target: FunctionIntent\n    severity: error",
+		"unknown severity":     "rules:\n  - id: x\n    target: FunctionIntent\n    severity: fatal",
+		"duplicate id":         "rules:\n  - id: x\n    target: FunctionIntent\n    severity: error\n  - id: x\n    target: FunctionIntent\n    severity: error",
+		"unsupported target":   "rules:\n  - id: x\n    target: FuncIntent\n    severity: error",
+		"unknown failureStrat": "rules:\n  - id: x\n    target: FunctionIntent\n    severity: warning\n    require:\n      failureStrategy: Throw",
 	}
 	for name, doc := range cases {
 		t.Run(name, func(t *testing.T) {

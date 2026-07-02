@@ -11,7 +11,7 @@ Do not attempt to build the full system at once.
 Implement Slice 1 only:
 
 ```bash
-context-engine iir verify <intent-file> <source-file> --json
+ce iir verify <intent-file> <source-file> --json
 ```
 
 ## Read first
@@ -38,7 +38,7 @@ context-engine iir verify <intent-file> <source-file> --json
 The following command works:
 
 ```bash
-context-engine iir verify examples/validateDonationAmount.iir.yaml examples/function-source-sample.ts --json
+ce iir verify examples/validateDonationAmount.iir.yaml examples/function-source-sample.ts --json
 ```
 
 It outputs a verification report and exits non-zero when verification fails.

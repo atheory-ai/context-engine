@@ -7,7 +7,7 @@ Implement the smallest deterministic IIR verification loop for a single TypeScri
 The target command:
 
 ```bash
-context-engine iir verify <intent-file> <source-file> --json
+ce iir verify <intent-file> <source-file> --json
 ```
 
 The command should read intended IIR, parse the source file, extract actual IIR, compare them, apply rules, and output a verification report.
@@ -62,7 +62,7 @@ constraints:
 ## CLI behavior
 
 ```bash
-context-engine iir verify examples/validateDonationAmount.iir.yaml examples/function-source-sample.ts --json
+ce iir verify examples/validateDonationAmount.iir.yaml examples/function-source-sample.ts --json
 ```
 
 Expected output shape:

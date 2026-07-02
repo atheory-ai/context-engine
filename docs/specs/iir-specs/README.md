@@ -11,7 +11,7 @@ Start with:
 The first implementation target is:
 
 ```bash
-context-engine iir verify <intent-file> <source-file> --json
+ce iir verify <intent-file> <source-file> --json
 ```
 
 The intended development model is slice-based:

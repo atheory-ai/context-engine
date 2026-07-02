@@ -151,3 +151,33 @@ func TestExtract_NoFunctionsErrors(t *testing.T) {
 		t.Error("expected error when no functions present")
 	}
 }
+
+func TestExtract_MalformedSourceErrors(t *testing.T) {
+	// Unbalanced braces produce error nodes; extraction must fail fast rather
+	// than build a garbled intent.
+	src := `export function f(a: number: ): {{ return `
+	if _, err := ExtractFunction(context.Background(), []byte(src), "f"); err == nil {
+		t.Error("expected error for malformed source")
+	}
+}
+
+func TestExtract_UnparenthesizedArrowParam(t *testing.T) {
+	got := extract(t, `export const inc = x => x + 1;`, "inc")
+	want := []Param{{Name: "x", Type: TypeUnknown}}
+	if !reflect.DeepEqual(got.Inputs, want) {
+		t.Errorf("inputs = %+v, want %+v", got.Inputs, want)
+	}
+}
+
+func TestExtract_RestParameter(t *testing.T) {
+	got := extract(t, `export function sum(...values: number[]): number { return 0; }`, "sum")
+	if len(got.Inputs) != 1 {
+		t.Fatalf("inputs = %+v, want one rest param", got.Inputs)
+	}
+	if got.Inputs[0].Name != "values" {
+		t.Errorf("rest param name = %q, want values", got.Inputs[0].Name)
+	}
+	if got.Inputs[0].Type != "number[]" {
+		t.Errorf("rest param type = %q, want number[]", got.Inputs[0].Type)
+	}
+}
