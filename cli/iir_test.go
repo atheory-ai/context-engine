@@ -73,6 +73,9 @@ func runGenerate(t *testing.T, args ...string) error {
 
 func TestIirGenerate_RoundTripVerifyPasses(t *testing.T) {
 	intent := writeTemp(t, "intent.yaml", testIntentYAML)
+	// Isolate cwd so --verify's rule discovery can't pick up a project rule
+	// pack that happens to live above the real working directory.
+	t.Chdir(t.TempDir())
 	if err := runGenerate(t, intent, "--verify"); err != nil {
 		t.Errorf("expected generated source to round-trip, got %v", err)
 	}
@@ -82,6 +85,21 @@ func TestIirGenerate_NoVerifyJustEmits(t *testing.T) {
 	intent := writeTemp(t, "intent.yaml", testIntentYAML)
 	if err := runGenerate(t, intent); err != nil {
 		t.Errorf("expected plain generate to succeed, got %v", err)
+	}
+}
+
+func TestIirGenerate_MissingIntentFileIsLoudError(t *testing.T) {
+	err := runGenerate(t, filepath.Join(t.TempDir(), "nope.yaml"))
+	if err == nil || errors.Is(err, errSilent) {
+		t.Errorf("expected a loud error for a missing intent file, got %v", err)
+	}
+}
+
+func TestIirGenerate_InvalidRulesPathIsLoudError(t *testing.T) {
+	intent := writeTemp(t, "intent.yaml", testIntentYAML)
+	err := runGenerate(t, intent, "--verify", "--rules", filepath.Join(t.TempDir(), "missing.yaml"))
+	if err == nil || errors.Is(err, errSilent) {
+		t.Errorf("expected a loud error for a missing --rules file, got %v", err)
 	}
 }
 

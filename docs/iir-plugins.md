@@ -55,6 +55,7 @@ type Plugin struct {
     Languages   []string
     Extractors  []Extractor
     Comparators []Comparator
+    Emitters    []Emitter
     RulePacks   []PluginRulePack // each carries the owning PluginID
 }
 ```
@@ -85,6 +86,7 @@ reg.Register(myPlugin)                 // add more
 
 ext, ok := reg.ExtractorFor(input)     // last-registered supporting extractor
 cmp, ok := reg.ComparatorFor(a, b)     // last-registered supporting comparator
+em, ok := reg.EmitterFor(intent)       // last-registered supporting emitter
 packs := reg.RulePacks()               // all packs, each tagged with its PluginID
 ```
 

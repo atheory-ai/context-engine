@@ -197,12 +197,21 @@ func TestGenerate_RejectsNonFunctionIntent(t *testing.T) {
 }
 
 func TestBuiltinEmitter_SupportsAndEmits(t *testing.T) {
+	intent := &FunctionIntent{Kind: KindFunctionIntent, Language: "typescript", Name: "f"}
 	em := BuiltinEmitter()
-	if !em.Supports(&FunctionIntent{Kind: KindFunctionIntent, Language: "typescript", Name: "f"}) {
+	if !em.Supports(intent) {
 		t.Error("expected support for a TypeScript FunctionIntent")
 	}
-	reg := DefaultRegistry()
-	if _, ok := reg.EmitterFor(&FunctionIntent{Kind: KindFunctionIntent, Name: "f"}); !ok {
-		t.Error("registry should resolve the built-in emitter")
+
+	resolved, ok := DefaultRegistry().EmitterFor(intent)
+	if !ok {
+		t.Fatal("registry should resolve the built-in emitter")
+	}
+	src, err := resolved.Emit(intent)
+	if err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	if !strings.Contains(src, "function f(") {
+		t.Errorf("emitted source missing function f:\n%s", src)
 	}
 }
