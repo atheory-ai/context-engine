@@ -131,6 +131,36 @@ func TestIirGenTests_MissingIntentFileIsLoudError(t *testing.T) {
 	}
 }
 
+func runRepair(t *testing.T, args ...string) error {
+	t.Helper()
+	cmd := newIirRepairCmd()
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs(args)
+	return cmd.Execute()
+}
+
+func TestIirRepair_ConvergesFromBrokenSource(t *testing.T) {
+	intent := writeTemp(t, "intent.yaml", testIntentYAML)
+	// Source with an undeclared side effect: fails, then the regenerate repair
+	// converges it.
+	src := writeTemp(t, "dirty.ts", testDirtySource)
+	t.Chdir(t.TempDir()) // isolate rule-pack discovery
+	if err := runRepair(t, intent, src); err != nil {
+		t.Errorf("expected repair to converge, got %v", err)
+	}
+}
+
+func TestIirRepair_MissingIntentFileIsLoudError(t *testing.T) {
+	src := writeTemp(t, "clean.ts", testCleanSource)
+	err := runRepair(t, filepath.Join(t.TempDir(), "nope.yaml"), src)
+	if err == nil || errors.Is(err, errSilent) {
+		t.Errorf("expected a loud error for a missing intent file, got %v", err)
+	}
+}
+
 func TestIirGenerate_MissingIntentFileIsLoudError(t *testing.T) {
 	err := runGenerate(t, filepath.Join(t.TempDir(), "nope.yaml"))
 	if err == nil || errors.Is(err, errSilent) {
