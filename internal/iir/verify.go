@@ -83,6 +83,11 @@ func collectRepairTargets(mismatches []Mismatch, ruleResults []RuleResult) []str
 		out = append(out, s)
 	}
 	for _, m := range mismatches {
+		// Info-level findings (e.g. unsupported comparisons) are not actionable
+		// repairs, so they don't populate repair targets.
+		if m.Severity == SeverityInfo {
+			continue
+		}
 		add(m.RepairTarget)
 	}
 	for _, r := range ruleResults {

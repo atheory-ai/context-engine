@@ -20,6 +20,7 @@ type MismatchKind string
 
 const (
 	MismatchName               MismatchKind = "mismatched_name"
+	MismatchChangedContract    MismatchKind = "changed_public_contract"
 	MismatchMissingInput       MismatchKind = "missing_input"
 	MismatchExtraInput         MismatchKind = "extra_input"
 	MismatchInputType          MismatchKind = "mismatched_input_type"
@@ -28,13 +29,29 @@ const (
 	MismatchUndeclaredEffect   MismatchKind = "undeclared_side_effect"
 	MismatchUndetectedEffect   MismatchKind = "undetected_side_effect"
 	MismatchChangedFailureMode MismatchKind = "changed_failure_mode"
+	MismatchMissingBehavior    MismatchKind = "missing_behavior"
+	MismatchExtraBehavior      MismatchKind = "extra_behavior"
+	// MismatchUnsupported marks an aspect the engine cannot yet verify. It is
+	// reported (never a silent pass) at info severity so it does not fail
+	// verification.
+	MismatchUnsupported MismatchKind = "unsupported_comparison"
+)
+
+// MatchKind distinguishes an exact agreement from an acceptable equivalent
+// (e.g. types that differ only in insignificant formatting).
+type MatchKind string
+
+const (
+	MatchExact      MatchKind = "exact_match"
+	MatchEquivalent MatchKind = "acceptable_equivalent"
 )
 
 // Match records an aspect of the contract that intended and extracted IIR agree
 // on. Matches make a passing report auditable, not just empty.
 type Match struct {
-	Path    string `json:"path"`
-	Message string `json:"message"`
+	Kind    MatchKind `json:"kind"`
+	Path    string    `json:"path"`
+	Message string    `json:"message"`
 }
 
 // Mismatch is a machine-readable divergence with a concrete repair target.
@@ -56,17 +73,97 @@ func Compare(intended, extracted *FunctionIntent) (matches []Match, mismatches [
 	mismatches = []Mismatch{}
 
 	compareName(intended, extracted, &matches, &mismatches)
+	compareVisibility(intended, extracted, &matches, &mismatches)
 	compareInputs(intended, extracted, &matches, &mismatches)
 	compareReturn(intended, extracted, &matches, &mismatches)
 	compareSideEffects(intended, extracted, &matches, &mismatches)
 	compareFailureModes(intended, extracted, &matches, &mismatches)
+	compareBehavior(intended, extracted, &matches, &mismatches)
 
 	return matches, mismatches
+}
+
+// compareVisibility detects a changed public contract: a function the intent
+// declares public that source makes private (or vice versa) changes the API
+// surface and is an error.
+func compareVisibility(intended, extracted *FunctionIntent, matches *[]Match, mismatches *[]Mismatch) {
+	if intended.Visibility == extracted.Visibility {
+		*matches = append(*matches, Match{
+			Kind:    MatchExact,
+			Path:    "FunctionIntent.visibility",
+			Message: fmt.Sprintf("visibility %q matches", intended.Visibility),
+		})
+		return
+	}
+	*mismatches = append(*mismatches, Mismatch{
+		Kind:     MismatchChangedContract,
+		Severity: SeverityError,
+		Path:     "FunctionIntent.visibility",
+		Message: fmt.Sprintf("intended %q visibility but source is %q",
+			intended.Visibility, extracted.Visibility),
+		Expected:     intended.Visibility,
+		Actual:       extracted.Visibility,
+		RepairTarget: fmt.Sprintf("Make the function %s, or update the intent's visibility.", intended.Visibility),
+	})
+}
+
+// compareBehavior performs a basic behavior comparison. Because behavior
+// extraction from source is not yet implemented (a later slice), a declared
+// behavior with no extracted counterpart is reported as unsupported rather than
+// silently passed or falsely flagged as missing. When both sides carry behavior
+// clauses, a count-based comparison surfaces missing/extra behavior.
+func compareBehavior(intended, extracted *FunctionIntent, matches *[]Match, mismatches *[]Mismatch) {
+	if len(intended.Behavior) == 0 {
+		return // intent makes no behavioral claim
+	}
+	if len(extracted.Behavior) == 0 {
+		*mismatches = append(*mismatches, Mismatch{
+			Kind:         MismatchUnsupported,
+			Severity:     SeverityInfo,
+			Path:         "FunctionIntent.behavior",
+			Message:      fmt.Sprintf("declared %d behavior clause(s) could not be verified: behavior extraction is not yet supported", len(intended.Behavior)),
+			Expected:     intended.Behavior,
+			Actual:       extracted.Behavior,
+			RepairTarget: "Behavior verification arrives in a later slice; review the declared behavior manually for now.",
+		})
+		return
+	}
+
+	if len(extracted.Behavior) < len(intended.Behavior) {
+		*mismatches = append(*mismatches, Mismatch{
+			Kind:         MismatchMissingBehavior,
+			Severity:     SeverityWarning,
+			Path:         "FunctionIntent.behavior",
+			Message:      fmt.Sprintf("intended %d behavior clause(s) but source expresses %d", len(intended.Behavior), len(extracted.Behavior)),
+			Expected:     len(intended.Behavior),
+			Actual:       len(extracted.Behavior),
+			RepairTarget: "Implement the missing behavior or remove it from the intent.",
+		})
+		return
+	}
+	if len(extracted.Behavior) > len(intended.Behavior) {
+		*mismatches = append(*mismatches, Mismatch{
+			Kind:         MismatchExtraBehavior,
+			Severity:     SeverityInfo,
+			Path:         "FunctionIntent.behavior",
+			Message:      fmt.Sprintf("source expresses %d behavior clause(s) but intent declares %d", len(extracted.Behavior), len(intended.Behavior)),
+			Expected:     len(intended.Behavior),
+			Actual:       len(extracted.Behavior),
+			RepairTarget: "Declare the additional behavior in the intent or remove it from the source.",
+		})
+		return
+	}
+	*matches = append(*matches, Match{
+		Kind:    MatchExact,
+		Path:    "FunctionIntent.behavior",
+		Message: fmt.Sprintf("behavior clause count matches (%d)", len(intended.Behavior)),
+	})
 }
 
 func compareName(intended, extracted *FunctionIntent, matches *[]Match, mismatches *[]Mismatch) {
 	if intended.Name == extracted.Name {
 		*matches = append(*matches, Match{
+			Kind:    MatchExact,
 			Path:    "FunctionIntent.name",
 			Message: fmt.Sprintf("function name %q matches", intended.Name),
 		})
@@ -121,6 +218,7 @@ func compareInputs(intended, extracted *FunctionIntent, matches *[]Match, mismat
 			continue
 		}
 		*matches = append(*matches, Match{
+			Kind:    inputMatchKind(want.Type, got.Type),
 			Path:    path,
 			Message: fmt.Sprintf("input %q matches", want.Name),
 		})
@@ -171,9 +269,29 @@ func compareReturn(intended, extracted *FunctionIntent, matches *[]Match, mismat
 		return
 	}
 	*matches = append(*matches, Match{
+		Kind:    typeMatchKind(intended.Returns.Type, extracted.Returns.Type),
 		Path:    "FunctionIntent.returns.type",
 		Message: fmt.Sprintf("return type %q matches", intended.Returns.Type),
 	})
+}
+
+// typeMatchKind reports whether two agreeing types are identical or merely
+// equivalent after normalizing insignificant formatting.
+func typeMatchKind(a, b string) MatchKind {
+	if a == b {
+		return MatchExact
+	}
+	return MatchEquivalent
+}
+
+// inputMatchKind classifies an input match. When either type is unknown the
+// types were never actually compared, so the agreement is on name alone — an
+// exact match, not an equivalence claim.
+func inputMatchKind(want, got string) MatchKind {
+	if want == TypeUnknown || got == TypeUnknown {
+		return MatchExact
+	}
+	return typeMatchKind(want, got)
 }
 
 func compareSideEffects(intended, extracted *FunctionIntent, matches *[]Match, mismatches *[]Mismatch) {
@@ -224,6 +342,7 @@ func compareSideEffects(intended, extracted *FunctionIntent, matches *[]Match, m
 
 	if len(undeclared) == 0 && len(undetected) == 0 {
 		*matches = append(*matches, Match{
+			Kind:    MatchExact,
 			Path:    "FunctionIntent.sideEffects",
 			Message: "declared side effects match source",
 		})
@@ -245,6 +364,7 @@ func compareFailureModes(intended, extracted *FunctionIntent, matches *[]Match, 
 	}
 	if len(undetected) == 0 {
 		*matches = append(*matches, Match{
+			Kind:    MatchExact,
 			Path:    "FunctionIntent.failureModes",
 			Message: "declared failure modes observed in source",
 		})
