@@ -93,31 +93,35 @@ type RuleResult struct {
 // the base layer; project rule packs are layered on top (see MergeRulePacks).
 // Rules are encoded as executable objects rather than prompt guidance.
 func DefaultRulePack() RulePack {
-	trueVal := true
-	resultType := "ResultType"
+	// Each optional field gets its own pointer (via ptrTo) rather than sharing
+	// one address, so a later in-place edit of one rule can't affect another.
 	return RulePack{Rules: []Rule{
 		{
 			ID:       "function-explicit-return-type",
 			Target:   KindFunctionIntent,
 			Severity: SeverityError,
 			When:     RuleWhen{Visibility: VisibilityPublic},
-			Require:  RuleRequire{ExplicitReturnType: &trueVal},
+			Require:  RuleRequire{ExplicitReturnType: ptrTo(true)},
 		},
 		{
 			ID:       "declare-side-effects",
 			Target:   KindFunctionIntent,
 			Severity: SeverityError,
-			Require:  RuleRequire{SideEffectsDeclared: &trueVal},
+			Require:  RuleRequire{SideEffectsDeclared: ptrTo(true)},
 		},
 		{
 			ID:       "expected-failures-use-result",
 			Target:   KindFunctionIntent,
 			Severity: SeverityWarning,
-			When:     RuleWhen{HasFailureModes: &trueVal},
-			Require:  RuleRequire{FailureStrategy: &resultType},
+			When:     RuleWhen{HasFailureModes: ptrTo(true)},
+			Require:  RuleRequire{FailureStrategy: ptrTo("ResultType")},
 		},
 	}}
 }
+
+// ptrTo returns a pointer to a copy of v. It gives each optional rule field its
+// own address instead of sharing one local.
+func ptrTo[T any](v T) *T { return &v }
 
 // MergeRulePacks layers override rules onto a base pack. A rule in override with
 // the same id as one in base replaces it in place (preserving base ordering);
