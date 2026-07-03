@@ -70,15 +70,29 @@ func correlateIIR(
 	symbolNodes []core.Node,
 	now int64,
 ) ([]core.IIRRecord, error) {
+	// Build a name → node index. A name mapping to more than one symbol node
+	// (overloads, or same-named functions the plugin aggregated) is ambiguous:
+	// without a location we can't tell which node an intent belongs to, so we
+	// mark it and skip rather than risk attaching intent to the wrong symbol.
+	// (Location-based disambiguation is a later SDK follow-up — see the RFC.)
 	nodeByName := make(map[string]core.NodeID, len(symbolNodes))
+	ambiguous := make(map[string]bool)
 	for _, n := range symbolNodes {
-		if n.Type == nodeTypeSymbol {
-			nodeByName[n.Label] = n.ID
+		if n.Type != nodeTypeSymbol {
+			continue
 		}
+		if _, seen := nodeByName[n.Label]; seen {
+			ambiguous[n.Label] = true
+			continue
+		}
+		nodeByName[n.Label] = n.ID
 	}
 
 	out := make([]core.IIRRecord, 0, len(intents))
 	for _, fi := range intents {
+		if ambiguous[fi.Name] {
+			continue
+		}
 		nodeID, ok := nodeByName[fi.Name]
 		if !ok {
 			continue

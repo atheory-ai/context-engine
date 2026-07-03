@@ -49,6 +49,10 @@ type EngineConfig struct {
 
 // IIRConfig controls Intermediate Intent Representation extraction at index time.
 type IIRConfig struct {
+	// Enabled turns on per-function IIR extraction during indexing. Because the
+	// indexer skips unchanged files (by content hash), enabling this on an
+	// already-indexed project only extracts IIR as files change — run
+	// `ce index --full` to backfill existing files.
 	Enabled bool `mapstructure:"enabled"`
 }
 

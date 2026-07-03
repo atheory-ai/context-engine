@@ -63,6 +63,29 @@ func TestCorrelateIIR_MatchesSymbolByName(t *testing.T) {
 	}
 }
 
+func TestCorrelateIIR_SkipsAmbiguousDuplicateLabels(t *testing.T) {
+	// Two symbol nodes share the label "dup"; "unique" is unambiguous.
+	intents := []*iir.FunctionIntent{
+		{Kind: iir.KindFunctionIntent, Name: "dup"},
+		{Kind: iir.KindFunctionIntent, Name: "unique"},
+	}
+	nodes := []core.Node{
+		{ID: "n-dup-1", Type: "symbol", Label: "dup"},
+		{ID: "n-dup-2", Type: "symbol", Label: "dup"},
+		{ID: "n-unique", Type: "symbol", Label: "unique"},
+	}
+
+	recs, err := correlateIIR("proj", "typescript", "h", intents, nodes, 1)
+	if err != nil {
+		t.Fatalf("correlateIIR: %v", err)
+	}
+	// "dup" is ambiguous → no record (never attach to a guessed node); "unique"
+	// still correlates.
+	if len(recs) != 1 || recs[0].NodeID != "n-unique" {
+		t.Fatalf("want exactly the unambiguous record, got %+v", recs)
+	}
+}
+
 func TestCorrelateIIR_IgnoresNonSymbolNodes(t *testing.T) {
 	intents := []*iir.FunctionIntent{{Kind: iir.KindFunctionIntent, Name: "a"}}
 	nodes := []core.Node{{ID: "f", Type: "file", Label: "a"}}
