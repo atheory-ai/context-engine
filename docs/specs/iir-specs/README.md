@@ -27,3 +27,14 @@ Slice 7: tests
 ```
 
 Do not start with generation. Prove verification first.
+
+## Status
+
+Slices 1–7 and the Phase 6 repair loop are implemented and merged. The standalone
+IIR loop (verify / generate / gen-tests / repair) ships behind `ce iir`.
+
+Next is engine integration — see `11-engine-integration.md` (RFC): extract IIR at
+index time into the substrate, let plugins contribute rule "flavours" via merged
+rule packs, expose `ce.iir_*` host functions, and add the intent→code endpoint on
+every surface. The load-bearing decision there: **IIR is a host capability that
+plugins call and extend, not a plugin itself.**
