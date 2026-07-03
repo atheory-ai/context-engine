@@ -33,6 +33,7 @@ Generating tests from IIR creates an independent check against declared behavior
 
 - Each declared behavior can produce a test case.
 - Each failure mode can produce a test case.
+- Each side-effect expectation can produce a test case.
 - Test output is deterministic.
 - Test generation reports unsupported behaviors instead of inventing tests.
 - Generated tests include traceability back to IIR ids.
