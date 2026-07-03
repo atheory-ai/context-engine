@@ -117,14 +117,17 @@ func compareBehavior(intended, extracted *FunctionIntent, matches *[]Match, mism
 		return // intent makes no behavioral claim
 	}
 	if len(extracted.Behavior) == 0 {
+		// Behavior extraction only sees conditional branches; a function that
+		// expresses its logic without them yields nothing to map declared
+		// behavior onto. Report as unsupported (info) rather than guess.
 		*mismatches = append(*mismatches, Mismatch{
 			Kind:         MismatchUnsupported,
 			Severity:     SeverityInfo,
 			Path:         "FunctionIntent.behavior",
-			Message:      fmt.Sprintf("declared %d behavior clause(s) could not be verified: behavior extraction is not yet supported", len(intended.Behavior)),
+			Message:      fmt.Sprintf("declared %d behavior clause(s) could not be verified: no conditional branches found in source", len(intended.Behavior)),
 			Expected:     intended.Behavior,
 			Actual:       extracted.Behavior,
-			RepairTarget: "Behavior verification arrives in a later slice; review the declared behavior manually for now.",
+			RepairTarget: "Review the declared behavior against the source manually; only branch-based behavior is compared automatically.",
 		})
 		return
 	}
