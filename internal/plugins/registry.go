@@ -138,6 +138,30 @@ func (r *Registry) PluginsForFile(filePath string) []core.Plugin {
 	return matches
 }
 
+// iirRuleContributor is the optional interface a plugin implements to declare an
+// IIR rule pack. Kept out of core.Plugin so contributing rules is opt-in and
+// doesn't ripple through every plugin implementation.
+type iirRuleContributor interface {
+	IIRRulePackJSON() []byte
+}
+
+// IIRRulePackJSONs returns the raw IIR rule-pack JSON declared by loaded
+// plugins, in load order. Plugins that contribute none are skipped. The host
+// merges these over the built-in defaults (see iir.MergePluginRulePacks).
+func (r *Registry) IIRRulePackJSONs() [][]byte {
+	var out [][]byte
+	for _, p := range r.Loaded() {
+		c, ok := p.(iirRuleContributor)
+		if !ok {
+			continue
+		}
+		if raw := c.IIRRulePackJSON(); len(raw) > 0 {
+			out = append(out, raw)
+		}
+	}
+	return out
+}
+
 // ConceptSeeds aggregates all concept seeds contributed by loaded plugins.
 func (r *Registry) ConceptSeeds() []core.ConceptSeed {
 	var seeds []core.ConceptSeed

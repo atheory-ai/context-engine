@@ -141,6 +141,13 @@ func (p *pluginInstance) Roles() []core.RoleDefinition {
 	return []core.RoleDefinition{role}
 }
 
+// IIRRulePackJSON returns the plugin's declared IIR rule pack as raw JSON, or
+// nil if it contributes none. Declarative — read straight from the manifest, no
+// WASM call. This satisfies the host's optional iir-rule-contributor interface.
+func (p *pluginInstance) IIRRulePackJSON() []byte {
+	return p.manifest.IIRRules
+}
+
 // Tools returns the tools this plugin defines.
 // Returns nil if the plugin declares no tools.
 func (p *pluginInstance) Tools() []core.Tool {

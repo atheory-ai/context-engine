@@ -13,6 +13,12 @@ type PluginManifest struct {
 	ABI          *PluginABIInfo      `json:"abi,omitempty"`
 	Capabilities PluginCapabilities  `json:"capabilities"`
 	Language     *PluginLanguageInfo `json:"language,omitempty"`
+
+	// IIRRules is an optional IIR rule pack (YAML or JSON) this plugin
+	// contributes — its "flavour" of code expectations. Declarative data: the
+	// host merges it over the built-in defaults with no WASM call. Opaque here;
+	// internal/iir owns the schema.
+	IIRRules json.RawMessage `json:"iirRules,omitempty"`
 }
 
 // PluginABIInfo declares the SDK/runtime ABI contract a plugin was built for.
