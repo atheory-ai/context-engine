@@ -51,6 +51,34 @@ func ExtractFunction(ctx context.Context, source []byte, targetName string) (*Fu
 	return buildIntent(chosen, source, imports), nil
 }
 
+// ExtractAll extracts a FunctionIntent for every top-level function in the
+// source, in source order — the entry point for indexing a whole file. Returns
+// an empty slice (not an error) for a file with no functions; rejects malformed
+// source as ExtractFunction does.
+func ExtractAll(ctx context.Context, source []byte) ([]*FunctionIntent, error) {
+	parser := sitter.NewParser()
+	parser.SetLanguage(ts.GetLanguage())
+
+	tree, err := parser.ParseCtx(ctx, nil, source)
+	if err != nil {
+		return nil, fmt.Errorf("parse typescript: %w", err)
+	}
+	defer tree.Close()
+
+	root := tree.RootNode()
+	if root.HasError() {
+		return nil, fmt.Errorf("source has syntax errors; cannot extract intent")
+	}
+
+	funcs := collectFunctions(root, source)
+	imports := collectImports(root, source)
+	out := make([]*FunctionIntent, 0, len(funcs))
+	for _, fn := range funcs {
+		out = append(out, buildIntent(fn, source, imports))
+	}
+	return out, nil
+}
+
 // funcCandidate is a function-like declaration located in the CST.
 type funcCandidate struct {
 	name       string

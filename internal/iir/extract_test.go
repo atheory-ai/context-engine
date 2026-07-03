@@ -226,6 +226,44 @@ func TestExtract_MultilineConditionNormalized(t *testing.T) {
 	}
 }
 
+func TestExtractAll_MultipleFunctionsInOrder(t *testing.T) {
+	src := `
+export function a(x: number): number { return x; }
+function b(): void {}
+export const c = (y: string): string => y;
+`
+	got, err := ExtractAll(context.Background(), []byte(src))
+	if err != nil {
+		t.Fatalf("ExtractAll: %v", err)
+	}
+	names := make([]string, len(got))
+	for i, fi := range got {
+		names[i] = fi.Name
+	}
+	if !reflect.DeepEqual(names, []string{"a", "b", "c"}) {
+		t.Errorf("names = %v, want [a b c]", names)
+	}
+	if got[0].Visibility != VisibilityPublic || got[1].Visibility != VisibilityPrivate {
+		t.Errorf("visibility: a=%s b=%s", got[0].Visibility, got[1].Visibility)
+	}
+}
+
+func TestExtractAll_NoFunctionsIsEmptyNotError(t *testing.T) {
+	got, err := ExtractAll(context.Background(), []byte(`const x = 1;`))
+	if err != nil {
+		t.Fatalf("ExtractAll: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected no intents, got %d", len(got))
+	}
+}
+
+func TestExtractAll_MalformedErrors(t *testing.T) {
+	if _, err := ExtractAll(context.Background(), []byte(`export function f( {`)); err == nil {
+		t.Error("expected error for malformed source")
+	}
+}
+
 func TestExtract_NoFunctionsErrors(t *testing.T) {
 	if _, err := ExtractFunction(context.Background(), []byte(`const x = 1;`), "f"); err == nil {
 		t.Error("expected error when no functions present")

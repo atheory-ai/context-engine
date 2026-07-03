@@ -143,8 +143,9 @@ type testWriter struct {
 	decayCalled   bool
 }
 
-func (w *testWriter) UpsertNode(_ context.Context, _ core.Node) error { return nil }
-func (w *testWriter) UpsertEdge(_ context.Context, _ core.Edge) error { return nil }
+func (w *testWriter) UpsertNode(_ context.Context, _ core.Node) error     { return nil }
+func (w *testWriter) UpsertEdge(_ context.Context, _ core.Edge) error     { return nil }
+func (w *testWriter) UpsertIIR(_ context.Context, _ core.IIRRecord) error { return nil }
 func (w *testWriter) UpdateActivation(_ context.Context, _ core.NodeID, _ float64) error {
 	return nil
 }
