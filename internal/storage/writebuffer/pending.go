@@ -92,6 +92,8 @@ func flushOrder(opType OpType) int {
 		return 40
 	case OpUpsertConcept:
 		return 50
+	case OpUpsertIIR:
+		return 55 // after nodes (IIR references node ids), before enrichments
 	case OpRecordEnrichment:
 		return 60
 	default:
@@ -114,6 +116,8 @@ func keyFor(op WriteOp) pendingKey {
 		entityID = op.Payload.(WeightUpdate).EdgeID
 	case OpUpsertConcept:
 		entityID = op.Payload.(ConceptUpsert).ID
+	case OpUpsertIIR:
+		entityID = op.Payload.(IIRUpsert).ID
 	}
 	return pendingKey{
 		opType:    op.Type,

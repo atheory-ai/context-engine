@@ -277,6 +277,21 @@ func execOp(ctx context.Context, tx *sql.Tx, op WriteOp) error {
 			c.CreatedAt, c.UpdatedAt)
 		return err
 
+	case OpUpsertIIR:
+		r := op.Payload.(IIRUpsert)
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO iir (id, project_id, node_id, kind, language, iir, source_hash, run_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET
+				language    = excluded.language,
+				iir         = excluded.iir,
+				source_hash = excluded.source_hash,
+				run_id      = excluded.run_id,
+				updated_at  = excluded.updated_at
+		`, r.ID, r.ProjectID, r.NodeID, r.Kind, r.Language, r.IIR,
+			nullableString(r.SourceHash), nullableString(r.RunID), r.CreatedAt, r.UpdatedAt)
+		return err
+
 	case OpRecordEnrichment:
 		e := op.Payload.(EnrichmentRecord)
 		_, err := tx.ExecContext(ctx, `
