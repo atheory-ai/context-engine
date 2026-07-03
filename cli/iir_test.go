@@ -88,6 +88,31 @@ func TestIirGenerate_NoVerifyJustEmits(t *testing.T) {
 	}
 }
 
+func runGenTests(t *testing.T, args ...string) error {
+	t.Helper()
+	cmd := newIirGenTestsCmd()
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs(args)
+	return cmd.Execute()
+}
+
+func TestIirGenTests_EmitsAndReportsCoverage(t *testing.T) {
+	intent := writeTemp(t, "intent.yaml", testIntentYAML)
+	if err := runGenTests(t, intent, "--coverage"); err != nil {
+		t.Errorf("expected gen-tests to succeed, got %v", err)
+	}
+}
+
+func TestIirGenTests_MissingIntentFileIsLoudError(t *testing.T) {
+	err := runGenTests(t, filepath.Join(t.TempDir(), "nope.yaml"))
+	if err == nil || errors.Is(err, errSilent) {
+		t.Errorf("expected a loud error for a missing intent file, got %v", err)
+	}
+}
+
 func TestIirGenerate_MissingIntentFileIsLoudError(t *testing.T) {
 	err := runGenerate(t, filepath.Join(t.TempDir(), "nope.yaml"))
 	if err == nil || errors.Is(err, errSilent) {

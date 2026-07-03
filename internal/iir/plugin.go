@@ -60,14 +60,15 @@ type PluginRulePack struct {
 // Plugin is the manifest of IIR contributions from one source (built-in or, in
 // the future, external). Interface-first: it carries implementations directly.
 type Plugin struct {
-	ID          string
-	Name        string
-	Version     string
-	Languages   []string
-	Extractors  []Extractor
-	Comparators []Comparator
-	Emitters    []Emitter
-	RulePacks   []PluginRulePack
+	ID           string
+	Name         string
+	Version      string
+	Languages    []string
+	Extractors   []Extractor
+	Comparators  []Comparator
+	Emitters     []Emitter
+	TestEmitters []TestEmitter
+	RulePacks    []PluginRulePack
 }
 
 // --- Built-in implementations ---------------------------------------------
@@ -130,14 +131,15 @@ func BuiltinComparator() Comparator { return functionComparator{} }
 // shape external plugins will use.
 func BuiltinPlugin() Plugin {
 	return Plugin{
-		ID:          builtinPluginID,
-		Name:        "IIR Built-in",
-		Version:     "0.1.0",
-		Languages:   []string{"typescript"},
-		Extractors:  []Extractor{BuiltinExtractor()},
-		Comparators: []Comparator{BuiltinComparator()},
-		Emitters:    []Emitter{BuiltinEmitter()},
-		RulePacks:   []PluginRulePack{{PluginID: builtinPluginID, Pack: DefaultRulePack()}},
+		ID:           builtinPluginID,
+		Name:         "IIR Built-in",
+		Version:      "0.1.0",
+		Languages:    []string{"typescript"},
+		Extractors:   []Extractor{BuiltinExtractor()},
+		Comparators:  []Comparator{BuiltinComparator()},
+		Emitters:     []Emitter{BuiltinEmitter()},
+		TestEmitters: []TestEmitter{BuiltinTestEmitter()},
+		RulePacks:    []PluginRulePack{{PluginID: builtinPluginID, Pack: DefaultRulePack()}},
 	}
 }
 
@@ -200,6 +202,14 @@ func (r *Registry) EmitterFor(intent *FunctionIntent) (Emitter, bool) {
 	return lastMatch(r.plugins,
 		func(p Plugin) []Emitter { return p.Emitters },
 		func(e Emitter) bool { return e.Supports(intent) })
+}
+
+// TestEmitterFor returns the last-registered test emitter that supports the
+// intent.
+func (r *Registry) TestEmitterFor(intent *FunctionIntent) (TestEmitter, bool) {
+	return lastMatch(r.plugins,
+		func(p Plugin) []TestEmitter { return p.TestEmitters },
+		func(e TestEmitter) bool { return e.Supports(intent) })
 }
 
 // RulePacks returns every registered rule pack with its owning plugin id, in

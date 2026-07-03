@@ -20,8 +20,65 @@ The verify command reads intended IIR, parses a source file, extracts the
 actual IIR, compares them, applies rules, and prints a verification report.`,
 	}
 
-	cmd.AddCommand(newIirVerifyCmd(), newIirGenerateCmd())
+	cmd.AddCommand(newIirVerifyCmd(), newIirGenerateCmd(), newIirGenTestsCmd())
 	return cmd
+}
+
+func newIirGenTestsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "gen-tests <intent-file>",
+		Short: "Generate tests from declared IIR",
+		Long: `Generate deterministic test cases from a FunctionIntent.
+
+Tests derive from declared intent — one case per behavior, failure mode, and
+side effect — each tied to an IIR node id for traceability. Expectations that
+cannot be turned into a test are reported as unsupported, not invented.
+
+With --coverage, a coverage report over the IIR expectations is printed to
+stderr.`,
+		Args: cobra.ExactArgs(1),
+		RunE: runIirGenTests,
+	}
+
+	cmd.Flags().Bool("coverage", false, "print a coverage report over the IIR expectations")
+	return cmd
+}
+
+func runIirGenTests(cmd *cobra.Command, args []string) error {
+	intent, err := iir.LoadIntentFile(args[0])
+	if err != nil {
+		return err
+	}
+
+	artifact, err := iir.GenerateTests(intent)
+	if err != nil {
+		return err
+	}
+	fmt.Fprint(cmd.OutOrStdout(), artifact.Source)
+
+	showCoverage, _ := cmd.Flags().GetBool("coverage")
+	if !showCoverage {
+		return nil
+	}
+
+	out := cmd.OutOrStderr()
+	covered := 0
+	for _, c := range artifact.Coverage {
+		if c.Covered {
+			covered++
+		}
+	}
+	fmt.Fprintf(out, "\n--- coverage: %d/%d expectations ---\n", covered, len(artifact.Coverage))
+	for _, c := range artifact.Coverage {
+		status := "covered"
+		detail := c.TestName
+		if !c.Covered {
+			status = "unsupported"
+			detail = c.Reason
+		}
+		fmt.Fprintf(out, "  [%s] %s: %s\n", status, c.NodeID, detail)
+	}
+	return nil
 }
 
 func newIirGenerateCmd() *cobra.Command {
