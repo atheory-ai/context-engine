@@ -66,6 +66,7 @@ type Plugin struct {
 	Languages   []string
 	Extractors  []Extractor
 	Comparators []Comparator
+	Emitters    []Emitter
 	RulePacks   []PluginRulePack
 }
 
@@ -135,6 +136,7 @@ func BuiltinPlugin() Plugin {
 		Languages:   []string{"typescript"},
 		Extractors:  []Extractor{BuiltinExtractor()},
 		Comparators: []Comparator{BuiltinComparator()},
+		Emitters:    []Emitter{BuiltinEmitter()},
 		RulePacks:   []PluginRulePack{{PluginID: builtinPluginID, Pack: DefaultRulePack()}},
 	}
 }
@@ -183,6 +185,19 @@ func (r *Registry) ComparatorFor(intended, extracted *FunctionIntent) (Comparato
 		for j := len(cmps) - 1; j >= 0; j-- {
 			if cmps[j].Supports(intended, extracted) {
 				return cmps[j], true
+			}
+		}
+	}
+	return nil, false
+}
+
+// EmitterFor returns the last-registered emitter that supports the intent.
+func (r *Registry) EmitterFor(intent *FunctionIntent) (Emitter, bool) {
+	for i := len(r.plugins) - 1; i >= 0; i-- {
+		ems := r.plugins[i].Emitters
+		for j := len(ems) - 1; j >= 0; j-- {
+			if ems[j].Supports(intent) {
+				return ems[j], true
 			}
 		}
 	}

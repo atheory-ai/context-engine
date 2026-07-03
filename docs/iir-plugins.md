@@ -15,11 +15,12 @@ A plugin contributes one or more of:
 
 - **extractors** — turn source into IIR nodes
 - **comparators** — diff intended IIR against extracted IIR
+- **emitters** — generate source from IIR (see Slice 6)
 - **rule packs** — durable, executable code expectations (see Slice 2)
 
-Analyzers, additional IIR node types, code/test emitters, and renderers are
-named in the spec as future contribution types; the current interfaces cover
-the verification loop (extract → compare → rules).
+Analyzers, additional IIR node types, test emitters, and renderers are named in
+the spec as future contribution types; the current interfaces cover the full
+loop — extract → compare → rules, and generate.
 
 ## Interfaces
 
@@ -39,6 +40,12 @@ type Comparator interface {
     ID() string
     Supports(intended, extracted *FunctionIntent) bool
     Compare(intended, extracted *FunctionIntent) ComparisonResult
+}
+
+type Emitter interface {
+    ID() string
+    Supports(intent *FunctionIntent) bool
+    Emit(intent *FunctionIntent) (string, error)
 }
 
 type Plugin struct {
@@ -61,8 +68,9 @@ them through those interfaces:
 
 - `BuiltinExtractor()` → the `Extractor` used by `VerifySource`
 - `BuiltinComparator()` → the `Comparator` used by `Verify`
-- `BuiltinPlugin()` → the manifest bundling both, plus the default rule pack
-  associated with the `builtin` plugin id
+- `BuiltinEmitter()` → the `Emitter` behind `iir generate` / `GenerateFunction`
+- `BuiltinPlugin()` → the manifest bundling all three, plus the default rule
+  pack associated with the `builtin` plugin id
 
 This is the guarantee Slice 5 exists to establish: whatever a plugin can do,
 the built-ins already do the same way.

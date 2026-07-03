@@ -20,8 +20,71 @@ The verify command reads intended IIR, parses a source file, extracts the
 actual IIR, compares them, applies rules, and prints a verification report.`,
 	}
 
-	cmd.AddCommand(newIirVerifyCmd())
+	cmd.AddCommand(newIirVerifyCmd(), newIirGenerateCmd())
 	return cmd
+}
+
+func newIirGenerateCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "generate <intent-file>",
+		Short: "Generate TypeScript source from declared IIR",
+		Long: `Generate deterministic TypeScript source from a FunctionIntent.
+
+Reads intended IIR (YAML or JSON) and emits a source skeleton whose structure
+matches the intent. With --verify, the generated source is re-extracted and
+verified back against the intent (the round-trip), exiting non-zero if that
+verification fails.`,
+		Args: cobra.ExactArgs(1),
+		RunE: runIirGenerate,
+	}
+
+	cmd.Flags().Bool("verify", false, "re-extract and verify the generated source against the intent")
+	cmd.Flags().String("rules", "",
+		"path to a rule pack (YAML/JSON) layered over the built-in defaults; "+
+			"used with --verify")
+	return cmd
+}
+
+func runIirGenerate(cmd *cobra.Command, args []string) error {
+	intentPath := args[0]
+	doVerify, _ := cmd.Flags().GetBool("verify")
+	rulesPath, _ := cmd.Flags().GetString("rules")
+
+	intent, err := iir.LoadIntentFile(intentPath)
+	if err != nil {
+		return err
+	}
+
+	source, err := iir.GenerateFunction(intent)
+	if err != nil {
+		return err
+	}
+	fmt.Fprint(cmd.OutOrStdout(), source)
+
+	if !doVerify {
+		return nil
+	}
+
+	pack, _, err := resolveRulePack(rulesPath)
+	if err != nil {
+		return err
+	}
+	report, err := iir.VerifySource(context.Background(), intent, []byte(source), pack)
+	if err != nil {
+		return err
+	}
+
+	out := cmd.OutOrStderr()
+	fmt.Fprintf(out, "\n--- round-trip: %s ---\n", report.Status)
+	for _, m := range report.Mismatches {
+		if m.Severity == iir.SeverityError {
+			fmt.Fprintf(out, "  [%s] %s: %s\n", m.Severity, m.Kind, m.Message)
+		}
+	}
+	if report.Status != iir.StatusPassed {
+		return errSilent
+	}
+	return nil
 }
 
 func newIirVerifyCmd() *cobra.Command {

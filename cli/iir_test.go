@@ -60,6 +60,31 @@ func writeTemp(t *testing.T, name, content string) string {
 	return path
 }
 
+func runGenerate(t *testing.T, args ...string) error {
+	t.Helper()
+	cmd := newIirGenerateCmd()
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs(args)
+	return cmd.Execute()
+}
+
+func TestIirGenerate_RoundTripVerifyPasses(t *testing.T) {
+	intent := writeTemp(t, "intent.yaml", testIntentYAML)
+	if err := runGenerate(t, intent, "--verify"); err != nil {
+		t.Errorf("expected generated source to round-trip, got %v", err)
+	}
+}
+
+func TestIirGenerate_NoVerifyJustEmits(t *testing.T) {
+	intent := writeTemp(t, "intent.yaml", testIntentYAML)
+	if err := runGenerate(t, intent); err != nil {
+		t.Errorf("expected plain generate to succeed, got %v", err)
+	}
+}
+
 func TestIirVerify_PassExitsZero(t *testing.T) {
 	intent := writeTemp(t, "intent.yaml", testIntentYAML)
 	src := writeTemp(t, "clean.ts", testCleanSource)
