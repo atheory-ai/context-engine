@@ -2,8 +2,19 @@ package iir
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
+
+// tsIdentifierRE matches a conservative (ASCII) TypeScript identifier.
+var tsIdentifierRE = regexp.MustCompile(`^[A-Za-z_$][A-Za-z0-9_$]*$`)
+
+// validGeneratableName reports whether name is safe to emit as a TypeScript
+// identifier (import binding, call target). Extraction only ever yields valid
+// identifiers; this guards hand-written IIR from producing broken source.
+func validGeneratableName(name string) bool {
+	return tsIdentifierRE.MatchString(name)
+}
 
 // This file implements deterministic code generation from IIR. The principle
 // (per the Slice 6 spec) is that the emitter generates code from structured
@@ -52,8 +63,8 @@ func GenerateFunction(intent *FunctionIntent) (string, error) {
 	if intent == nil || intent.Kind != KindFunctionIntent {
 		return "", fmt.Errorf("generate: unsupported IIR node")
 	}
-	if strings.TrimSpace(intent.Name) == "" {
-		return "", fmt.Errorf("generate: FunctionIntent has no name")
+	if !validGeneratableName(intent.Name) {
+		return "", fmt.Errorf("generate: %q is not a valid TypeScript identifier", intent.Name)
 	}
 
 	resultStrategy := returnLooksLikeResult(intent.Returns.Type)

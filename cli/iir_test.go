@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -101,8 +103,24 @@ func runGenTests(t *testing.T, args ...string) error {
 
 func TestIirGenTests_EmitsAndReportsCoverage(t *testing.T) {
 	intent := writeTemp(t, "intent.yaml", testIntentYAML)
-	if err := runGenTests(t, intent, "--coverage"); err != nil {
-		t.Errorf("expected gen-tests to succeed, got %v", err)
+
+	cmd := newIirGenTestsCmd()
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetArgs([]string{intent, "--coverage"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("expected gen-tests to succeed, got %v", err)
+	}
+
+	// stdout carries the test source; stderr carries the coverage report.
+	if !strings.Contains(out.String(), "describe(\"validateDonationAmount\"") {
+		t.Errorf("expected a describe block, got:\n%s", out.String())
+	}
+	if !strings.Contains(errOut.String(), "coverage:") {
+		t.Errorf("expected a coverage summary, got:\n%s", errOut.String())
 	}
 }
 

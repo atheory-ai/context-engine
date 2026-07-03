@@ -83,6 +83,40 @@ func TestGenerateTests_UnsupportedBehaviorReportedNotInvented(t *testing.T) {
 	if !strings.Contains(art.Source, "// unsupported") {
 		t.Errorf("source should note the unsupported expectation:\n%s", art.Source)
 	}
+	// With nothing covered, a pending placeholder keeps the suite non-empty.
+	if !strings.Contains(art.Source, "it.todo(") {
+		t.Errorf("expected an it.todo placeholder for an all-unsupported suite:\n%s", art.Source)
+	}
+}
+
+func TestGenerateTests_NoExpectationsEmitsTodo(t *testing.T) {
+	// A function with no behavior, failure modes, or side effects has nothing to
+	// test — emit a valid, non-empty suite with a pending placeholder.
+	intent := &FunctionIntent{Kind: KindFunctionIntent, Name: "noop", Language: "typescript"}
+	art, err := GenerateTests(intent)
+	if err != nil {
+		t.Fatalf("GenerateTests: %v", err)
+	}
+	if len(art.Coverage) != 0 {
+		t.Errorf("expected empty coverage, got %+v", art.Coverage)
+	}
+	if !strings.Contains(art.Source, "it.todo(") {
+		t.Errorf("expected an it.todo placeholder:\n%s", art.Source)
+	}
+	if strings.Contains(art.Source, "it(") {
+		t.Errorf("should not emit a real test:\n%s", art.Source)
+	}
+}
+
+func TestGenerateTests_RejectsInvalidName(t *testing.T) {
+	// A name that isn't a valid identifier would produce broken import/expect
+	// code, so generation must refuse it rather than emit unsafe source.
+	for _, bad := range []string{"has space", "a;b", "1abc", "a\nb", ""} {
+		intent := &FunctionIntent{Kind: KindFunctionIntent, Name: bad, Language: "typescript"}
+		if _, err := GenerateTests(intent); err == nil {
+			t.Errorf("expected error for invalid name %q", bad)
+		}
+	}
 }
 
 func TestGenerateTests_Deterministic(t *testing.T) {

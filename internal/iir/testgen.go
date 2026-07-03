@@ -75,8 +75,8 @@ func GenerateTests(intent *FunctionIntent) (TestArtifact, error) {
 	if intent == nil || intent.Kind != KindFunctionIntent {
 		return TestArtifact{}, fmt.Errorf("test generation: unsupported IIR node")
 	}
-	if strings.TrimSpace(intent.Name) == "" {
-		return TestArtifact{}, fmt.Errorf("test generation: FunctionIntent has no name")
+	if !validGeneratableName(intent.Name) {
+		return TestArtifact{}, fmt.Errorf("test generation: %q is not a valid TypeScript identifier", intent.Name)
 	}
 
 	coverage := planCoverage(intent)
@@ -90,18 +90,26 @@ func GenerateTests(intent *FunctionIntent) (TestArtifact, error) {
 	for _, c := range coverage {
 		if !c.Covered {
 			// Report the gap in-source too, so a reader sees what was skipped.
-			fmt.Fprintf(&b, "%s// unsupported (%s): %s — %s\n", testIndent, c.Kind, c.NodeID, c.Reason)
+			// Node ids and reasons are collapsed to one line so intent-derived
+			// text can't inject extra comment lines.
+			fmt.Fprintf(&b, "%s// unsupported (%s): %s — %s\n", testIndent, c.Kind, commentLine(c.NodeID), commentLine(c.Reason))
 			continue
 		}
 		if wrote {
 			b.WriteByte('\n')
 		}
-		fmt.Fprintf(&b, "%s// iir: %s\n", testIndent, c.NodeID)
+		fmt.Fprintf(&b, "%s// iir: %s\n", testIndent, commentLine(c.NodeID))
 		fmt.Fprintf(&b, "%sit(%s, () => {\n", testIndent, jsString(c.TestName))
 		fmt.Fprintf(&b, "%s%s// TODO: %s\n", testIndent, testIndent, todoFor(c.Kind))
 		fmt.Fprintf(&b, "%s%sexpect(%s).toBeDefined();\n", testIndent, testIndent, intent.Name)
 		fmt.Fprintf(&b, "%s});\n", testIndent)
 		wrote = true
+	}
+
+	// Avoid emitting an empty suite (which Jest/Vitest treat as a failure): when
+	// no expectation produced a case, leave a pending placeholder.
+	if !wrote {
+		fmt.Fprintf(&b, "%sit.todo(%s);\n", testIndent, jsString("no testable expectations declared in IIR"))
 	}
 
 	b.WriteString("});\n")
@@ -182,4 +190,10 @@ func todoFor(kind TestCoverageKind) string {
 // jsString renders a Go string as a JavaScript double-quoted string literal.
 func jsString(s string) string {
 	return strconv.Quote(s)
+}
+
+// commentLine collapses text to a single line so it is safe to embed in a `//`
+// comment without injecting extra lines.
+func commentLine(s string) string {
+	return normalizeWhitespace(s)
 }

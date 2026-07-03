@@ -61,7 +61,7 @@ func runIirGenTests(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	out := cmd.OutOrStderr()
+	out := cmd.ErrOrStderr()
 	covered := 0
 	for _, c := range artifact.Coverage {
 		if c.Covered {
@@ -131,7 +131,7 @@ func runIirGenerate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	out := cmd.OutOrStderr()
+	out := cmd.ErrOrStderr()
 	fmt.Fprintf(out, "\n--- round-trip: %s ---\n", report.Status)
 	for _, m := range report.Mismatches {
 		if m.Severity == iir.SeverityError {
