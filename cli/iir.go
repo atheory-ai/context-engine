@@ -20,8 +20,69 @@ The verify command reads intended IIR, parses a source file, extracts the
 actual IIR, compares them, applies rules, and prints a verification report.`,
 	}
 
-	cmd.AddCommand(newIirVerifyCmd(), newIirGenerateCmd(), newIirGenTestsCmd())
+	cmd.AddCommand(newIirVerifyCmd(), newIirGenerateCmd(), newIirGenTestsCmd(), newIirRepairCmd())
 	return cmd
+}
+
+func newIirRepairCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "repair <intent-file> <source-file>",
+		Short: "Iteratively repair source until it matches declared IIR",
+		Long: `Run the repair loop: verify the source against the intent and, while it
+fails, apply the built-in deterministic repair (regenerate from intent) and
+re-verify, up to --max attempts.
+
+The repaired source is printed to stdout; a convergence summary goes to stderr.
+Exits non-zero if verification does not converge.`,
+		Args: cobra.ExactArgs(2),
+		RunE: runIirRepair,
+	}
+
+	cmd.Flags().Int("max", 3, "maximum repair attempts")
+	cmd.Flags().String("rules", "",
+		"path to a rule pack (YAML/JSON) layered over the built-in defaults; "+
+			"when omitted, a project iir.rules.yaml is auto-discovered")
+	return cmd
+}
+
+func runIirRepair(cmd *cobra.Command, args []string) error {
+	intentPath, sourcePath := args[0], args[1]
+	maxAttempts, _ := cmd.Flags().GetInt("max")
+	rulesPath, _ := cmd.Flags().GetString("rules")
+
+	intent, err := iir.LoadIntentFile(intentPath)
+	if err != nil {
+		return err
+	}
+	source, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return fmt.Errorf("read source file %s: %w", sourcePath, err)
+	}
+	pack, _, err := resolveRulePack(rulesPath)
+	if err != nil {
+		return err
+	}
+
+	result, err := iir.RepairLoop(context.Background(), intent, string(source), pack,
+		iir.RegenerateStage{}, iir.RepairOptions{MaxIterations: maxAttempts})
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprint(cmd.OutOrStdout(), result.FinalSource)
+
+	errOut := cmd.ErrOrStderr()
+	verdict := "converged"
+	if !result.Converged {
+		verdict = "did not converge"
+	}
+	fmt.Fprintf(errOut, "\n--- repair: %s after %d iteration(s), final status %s ---\n",
+		verdict, len(result.Iterations), result.FinalReport.Status)
+
+	if !result.Converged {
+		return errSilent
+	}
+	return nil
 }
 
 func newIirGenTestsCmd() *cobra.Command {
