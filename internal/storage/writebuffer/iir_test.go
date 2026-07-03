@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/atheory-ai/context-engine/internal/storage/queries"
 	"github.com/atheory-ai/context-engine/internal/storage/writebuffer"
 )
 
@@ -19,7 +20,7 @@ func TestIIRUpsert_WritesAndReplaces(t *testing.T) {
 			Type:      writebuffer.OpUpsertIIR,
 			ProjectID: "proj1",
 			Payload: writebuffer.IIRUpsert{
-				ID: id, ProjectID: "proj1", NodeID: "node1", Kind: "extracted",
+				ID: id, ProjectID: "proj1", NodeID: "node1", Kind: queries.IIRKindExtracted,
 				Language: "typescript", IIR: payload, SourceHash: "h1", RunID: "run1",
 				CreatedAt: 1, UpdatedAt: updatedAt,
 			},

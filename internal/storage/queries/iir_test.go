@@ -47,6 +47,17 @@ func TestIIRID_Deterministic(t *testing.T) {
 	}
 }
 
+func TestIIR_KindCheckConstraint(t *testing.T) {
+	d := migratedGraph(t)
+	_, err := d.Exec(`
+		INSERT INTO iir (id, project_id, node_id, kind, language, iir, created_at, updated_at)
+		VALUES ('x', 'p', 'n', 'bogus', 'typescript', '{}', 1, 1)
+	`)
+	if err == nil {
+		t.Error("expected the kind CHECK constraint to reject 'bogus'")
+	}
+}
+
 func TestGetIIR_RoundTrip(t *testing.T) {
 	d := migratedGraph(t)
 	ctx := context.Background()

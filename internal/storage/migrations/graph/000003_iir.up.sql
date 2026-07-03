@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS iir (
     id          TEXT    NOT NULL PRIMARY KEY,
     project_id  TEXT    NOT NULL,
     node_id     TEXT    NOT NULL,        -- the function symbol node
-    kind        TEXT    NOT NULL,        -- extracted | intended
+    kind        TEXT    NOT NULL CHECK (kind IN ('extracted', 'intended')),
     language    TEXT    NOT NULL,
     iir         TEXT    NOT NULL,        -- FunctionIntent JSON
     source_hash TEXT,                    -- staleness vs file_hashes
