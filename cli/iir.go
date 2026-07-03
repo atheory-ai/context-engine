@@ -92,18 +92,19 @@ func resolveRulePack(rulesPath string) (iir.RulePack, string, error) {
 	if rulesPath != "" {
 		override, err := iir.LoadRulePackFile(rulesPath)
 		if err != nil {
-			return iir.RulePack{}, "", err
+			// LoadRulePackFile already prefixes the path; add the flag context.
+			return iir.RulePack{}, "", fmt.Errorf("invalid --rules pack: %w", err)
 		}
 		return iir.MergeRulePacks(base, override), rulesPath + " (layered on defaults)", nil
 	}
 
 	cwd, err := os.Getwd()
 	if err != nil {
-		return iir.RulePack{}, "", err
+		return iir.RulePack{}, "", fmt.Errorf("resolve working directory: %w", err)
 	}
 	override, path, found, err := iir.DiscoverProjectRulePack(cwd)
 	if err != nil {
-		return iir.RulePack{}, "", err
+		return iir.RulePack{}, "", fmt.Errorf("discover project rule pack: %w", err)
 	}
 	if found {
 		return iir.MergeRulePacks(base, override), path + " (layered on defaults)", nil
