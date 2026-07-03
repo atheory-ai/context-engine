@@ -3,10 +3,41 @@ package iir
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// projectRulePackNames are the conventional filenames for a project rule pack,
+// checked in priority order.
+var projectRulePackNames = []string{"iir.rules.yaml", "iir.rules.yml", "iir.rules.json"}
+
+// DiscoverProjectRulePack searches startDir and its ancestors for a project
+// rule pack file. It returns the loaded pack and its path when found. found is
+// false with a nil error when no project pack exists — the caller then relies on
+// the built-in defaults. A pack that exists but fails to load returns found=true
+// with the error, so a broken project pack surfaces rather than being ignored.
+func DiscoverProjectRulePack(startDir string) (pack RulePack, path string, found bool, err error) {
+	dir, err := filepath.Abs(startDir)
+	if err != nil {
+		return RulePack{}, "", false, err
+	}
+	for {
+		for _, name := range projectRulePackNames {
+			candidate := filepath.Join(dir, name)
+			if _, statErr := os.Stat(candidate); statErr == nil {
+				loaded, loadErr := LoadRulePackFile(candidate)
+				return loaded, candidate, true, loadErr
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return RulePack{}, "", false, nil
+		}
+		dir = parent
+	}
+}
 
 // RuleStatus is the outcome of evaluating a rule against an IIR node.
 type RuleStatus string
@@ -58,11 +89,12 @@ type RuleResult struct {
 	Repair   string     `json:"repair,omitempty"`
 }
 
-// DefaultRulePack is the built-in defensive rule set used when no rule pack is
-// supplied. It encodes the Slice 1 expectations as executable rules rather than
-// prompt guidance.
+// DefaultRulePack is the built-in defensive rule set. It is always applied as
+// the base layer; project rule packs are layered on top (see MergeRulePacks).
+// Rules are encoded as executable objects rather than prompt guidance.
 func DefaultRulePack() RulePack {
 	trueVal := true
+	resultType := "ResultType"
 	return RulePack{Rules: []Rule{
 		{
 			ID:       "function-explicit-return-type",
@@ -77,7 +109,37 @@ func DefaultRulePack() RulePack {
 			Severity: SeverityError,
 			Require:  RuleRequire{SideEffectsDeclared: &trueVal},
 		},
+		{
+			ID:       "expected-failures-use-result",
+			Target:   KindFunctionIntent,
+			Severity: SeverityWarning,
+			When:     RuleWhen{HasFailureModes: &trueVal},
+			Require:  RuleRequire{FailureStrategy: &resultType},
+		},
 	}}
+}
+
+// MergeRulePacks layers override rules onto a base pack. A rule in override with
+// the same id as one in base replaces it in place (preserving base ordering);
+// override rules with new ids are appended. This lets a project extend or tune
+// the built-in defaults without restating them.
+func MergeRulePacks(base, override RulePack) RulePack {
+	merged := make([]Rule, len(base.Rules))
+	copy(merged, base.Rules)
+
+	index := make(map[string]int, len(merged))
+	for i, r := range merged {
+		index[r.ID] = i
+	}
+	for _, r := range override.Rules {
+		if i, ok := index[r.ID]; ok {
+			merged[i] = r
+			continue
+		}
+		index[r.ID] = len(merged)
+		merged = append(merged, r)
+	}
+	return RulePack{Rules: merged}
 }
 
 // LoadRulePackFile reads and validates a rule pack from a YAML or JSON file.

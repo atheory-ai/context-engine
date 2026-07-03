@@ -38,7 +38,9 @@ Exits non-zero when verification fails.`,
 	}
 
 	cmd.Flags().Bool("json", false, "output the verification report as JSON")
-	cmd.Flags().String("rules", "", "path to a rule pack (YAML/JSON); defaults to built-in rules")
+	cmd.Flags().String("rules", "",
+		"path to a rule pack (YAML/JSON) layered over the built-in defaults; "+
+			"when omitted, a project iir.rules.yaml is auto-discovered")
 	return cmd
 }
 
@@ -57,12 +59,9 @@ func runIirVerify(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("read source file %s: %w", sourcePath, err)
 	}
 
-	pack := iir.DefaultRulePack()
-	if rulesPath != "" {
-		pack, err = iir.LoadRulePackFile(rulesPath)
-		if err != nil {
-			return err
-		}
+	pack, rulesSource, err := resolveRulePack(rulesPath)
+	if err != nil {
+		return err
 	}
 
 	report, err := iir.VerifySource(context.Background(), intent, source, pack)
@@ -75,13 +74,41 @@ func runIirVerify(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	} else {
-		printReportHuman(cmd, report)
+		printReportHuman(cmd, report, rulesSource)
 	}
 
 	if report.Status != iir.StatusPassed {
 		return errSilent
 	}
 	return nil
+}
+
+// resolveRulePack builds the effective rule pack: the built-in defaults with an
+// explicit (--rules) or auto-discovered project rule pack layered on top. The
+// returned string labels the rules source for human output.
+func resolveRulePack(rulesPath string) (iir.RulePack, string, error) {
+	base := iir.DefaultRulePack()
+
+	if rulesPath != "" {
+		override, err := iir.LoadRulePackFile(rulesPath)
+		if err != nil {
+			return iir.RulePack{}, "", err
+		}
+		return iir.MergeRulePacks(base, override), rulesPath + " (layered on defaults)", nil
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return iir.RulePack{}, "", err
+	}
+	override, path, found, err := iir.DiscoverProjectRulePack(cwd)
+	if err != nil {
+		return iir.RulePack{}, "", err
+	}
+	if found {
+		return iir.MergeRulePacks(base, override), path + " (layered on defaults)", nil
+	}
+	return base, "built-in defaults", nil
 }
 
 func printReportJSON(cmd *cobra.Command, report *iir.Report) error {
@@ -93,10 +120,11 @@ func printReportJSON(cmd *cobra.Command, report *iir.Report) error {
 	return nil
 }
 
-func printReportHuman(cmd *cobra.Command, report *iir.Report) {
+func printReportHuman(cmd *cobra.Command, report *iir.Report, rulesSource string) {
 	out := cmd.OutOrStdout()
 	fmt.Fprintf(out, "IIR verification: %s\n", report.Status)
 	fmt.Fprintf(out, "  function: %s\n", report.Intended.Name)
+	fmt.Fprintf(out, "  rules: %s\n", rulesSource)
 
 	if len(report.Matches) > 0 {
 		fmt.Fprintf(out, "\n  matches (%d):\n", len(report.Matches))

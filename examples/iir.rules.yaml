@@ -1,0 +1,32 @@
+# Example IIR rule pack.
+#
+# Rules attach durable, executable code preferences to IIR nodes — replacing
+# prompt-based style guidance for semantic expectations. They are layered over
+# the built-in defaults: a rule here with the same `id` as a built-in replaces
+# it (letting you tune severity), and new ids are added.
+#
+# To have `ce iir verify` pick these up automatically, place a file named
+# `iir.rules.yaml` (or .yml/.json) in your project; it is discovered from the
+# working directory upward. Or pass it explicitly with `--rules`.
+#
+# For the MVP only FunctionIntent is a valid `target`.
+rules:
+  # Tune a built-in: downgrade the missing-return-type rule to a warning by
+  # reusing its id.
+  - id: function-explicit-return-type
+    target: FunctionIntent
+    severity: warning
+    when:
+      visibility: public
+    require:
+      explicitReturnType: true
+
+  # Add a team rule: functions that declare failure modes must surface them
+  # through a Result type rather than throwing.
+  - id: expected-failures-use-result
+    target: FunctionIntent
+    severity: error
+    when:
+      hasFailureModes: true
+    require:
+      failureStrategy: ResultType

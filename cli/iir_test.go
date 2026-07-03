@@ -89,3 +89,60 @@ func TestIirVerify_MissingIntentFileIsLoudError(t *testing.T) {
 		t.Errorf("expected a loud (non-silent) error for missing intent file, got %v", err)
 	}
 }
+
+// A function that declares failure modes but returns them (not via a Result
+// type) triggers only a warning under the default pack, so verify passes.
+const testFailureModeIntent = `
+kind: FunctionIntent
+name: f
+language: typescript
+returns:
+  type: void
+failureModes:
+  - bad_input
+sideEffects: []
+`
+
+const testThrowSource = `export function f(): void { throw new Error("bad_input"); }`
+
+// A project rule pack that promotes the failure-strategy rule to an error.
+const testProjectPack = `
+rules:
+  - id: expected-failures-use-result
+    target: FunctionIntent
+    severity: error
+    when:
+      hasFailureModes: true
+    require:
+      failureStrategy: ResultType
+`
+
+func TestIirVerify_DiscoversAndLayersProjectRulePack(t *testing.T) {
+	dir := t.TempDir()
+	intent := filepath.Join(dir, "intent.yaml")
+	src := filepath.Join(dir, "throws.ts")
+	if err := os.WriteFile(intent, []byte(testFailureModeIntent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(src, []byte(testThrowSource), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Run with the temp dir as cwd so auto-discovery searches it.
+	t.Chdir(dir)
+
+	// Without a project pack, the built-in failure-strategy rule is a warning →
+	// verification passes.
+	if err := runVerify(t, intent, src); err != nil {
+		t.Fatalf("expected pass with default rules, got %v", err)
+	}
+
+	// Drop a project pack that promotes the rule to an error; discovery must
+	// pick it up and layer it, flipping the outcome to a failure.
+	if err := os.WriteFile(filepath.Join(dir, "iir.rules.yaml"), []byte(testProjectPack), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := runVerify(t, intent, src)
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("expected failure after project pack promotes the rule, got %v", err)
+	}
+}

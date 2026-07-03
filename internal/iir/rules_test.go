@@ -1,6 +1,10 @@
 package iir
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func resultByID(results []RuleResult, id string) *RuleResult {
 	for i := range results {
@@ -9,6 +13,15 @@ func resultByID(results []RuleResult, id string) *RuleResult {
 		}
 	}
 	return nil
+}
+
+func hasRuleID(rules []Rule, id string) bool {
+	for _, r := range rules {
+		if r.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func TestDefaultRules_PassForCompliantFunction(t *testing.T) {
@@ -119,6 +132,87 @@ func TestRules_ExplicitReturnTypeFalseIsHonored(t *testing.T) {
 	}
 	if r := resultByID(EvaluateRules(pack, intent), "no-explicit-return"); r == nil || r.Status != RuleFailed {
 		t.Errorf("expected false requirement to fail an explicit-return function, got %+v", r)
+	}
+}
+
+func TestDefaultRulePack_IncludesFailureStrategyRule(t *testing.T) {
+	if !hasRuleID(DefaultRulePack().Rules, "expected-failures-use-result") {
+		t.Error("default pack should include expected-failures-use-result")
+	}
+}
+
+func TestMergeRulePacks_OverridesByIDAndAppends(t *testing.T) {
+	base := RulePack{Rules: []Rule{
+		{ID: "a", Target: KindFunctionIntent, Severity: SeverityError},
+		{ID: "b", Target: KindFunctionIntent, Severity: SeverityError},
+	}}
+	override := RulePack{Rules: []Rule{
+		{ID: "b", Target: KindFunctionIntent, Severity: SeverityWarning}, // tune existing
+		{ID: "c", Target: KindFunctionIntent, Severity: SeverityInfo},    // add new
+	}}
+	merged := MergeRulePacks(base, override)
+
+	if len(merged.Rules) != 3 {
+		t.Fatalf("merged rules = %d, want 3", len(merged.Rules))
+	}
+	// Base order preserved, override applied in place, new rule appended.
+	if merged.Rules[0].ID != "a" || merged.Rules[1].ID != "b" || merged.Rules[2].ID != "c" {
+		t.Errorf("unexpected order: %s,%s,%s", merged.Rules[0].ID, merged.Rules[1].ID, merged.Rules[2].ID)
+	}
+	if merged.Rules[1].Severity != SeverityWarning {
+		t.Errorf("overridden rule b severity = %s, want warning", merged.Rules[1].Severity)
+	}
+	// Merge must not mutate the base pack.
+	if base.Rules[1].Severity != SeverityError {
+		t.Error("MergeRulePacks mutated the base pack")
+	}
+}
+
+func TestDiscoverProjectRulePack_WalksUp(t *testing.T) {
+	root := t.TempDir()
+	sub := filepath.Join(root, "a", "b")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	doc := "rules:\n  - id: x\n    target: FunctionIntent\n    severity: warning\n"
+	if err := os.WriteFile(filepath.Join(root, "iir.rules.yaml"), []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	pack, path, found, err := DiscoverProjectRulePack(sub)
+	if err != nil || !found {
+		t.Fatalf("found=%v err=%v, want found with no error", found, err)
+	}
+	if filepath.Base(path) != "iir.rules.yaml" {
+		t.Errorf("path = %s, want .../iir.rules.yaml", path)
+	}
+	if len(pack.Rules) != 1 || pack.Rules[0].ID != "x" {
+		t.Errorf("unexpected pack: %+v", pack)
+	}
+}
+
+func TestDiscoverProjectRulePack_NotFound(t *testing.T) {
+	_, _, found, err := DiscoverProjectRulePack(t.TempDir())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if found {
+		t.Error("expected no project rule pack in an empty temp dir")
+	}
+}
+
+func TestDiscoverProjectRulePack_InvalidSurfacesError(t *testing.T) {
+	dir := t.TempDir()
+	// An empty rules list is invalid; discovery must surface it, not ignore it.
+	if err := os.WriteFile(filepath.Join(dir, "iir.rules.yaml"), []byte("rules: []"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, _, found, err := DiscoverProjectRulePack(dir)
+	if !found {
+		t.Error("expected found=true for an existing (if invalid) pack")
+	}
+	if err == nil {
+		t.Error("expected an error surfacing the invalid pack")
 	}
 }
 
