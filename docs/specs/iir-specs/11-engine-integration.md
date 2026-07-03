@@ -113,6 +113,11 @@ The existing `Analyzer` interface is `(nodes) → edges`; IIR needs `(content,
 nodes) → iir records`. So this hook is generalized to a Go-native, node-data pass
 — a small, reusable extension beyond IIR.
 
+Correlation key: `(file_path, function name)`. `file_path` is a known node
+property convention; the name is the node `label`. Where a file has same-named
+functions (overloads), disambiguate by start position (see Key risk — the
+position data is available host-side).
+
 ### D4 — Plugins extend IIR through merged rule packs (tier 1)
 
 "Flavours of code writing" splits into two tiers:
@@ -152,14 +157,35 @@ One core capability, thin adapters. The core already exists
 - **NL → IIR**: the shaping step uses `internal/llm` (router exists). Only this
   hop is model-backed; everything downstream is the deterministic pipeline.
 
-## Key risk
+## Key risk — investigated, downgraded
 
-The one thing not verifiable from this repo: **what a function node carries in
-its properties** (does it include a line/span? what is its `canonical_id`?),
-since TS nodes are produced by an external WASM plugin (built from the SDK repo).
-This determines whether name-matching suffices or D3 needs location to
-disambiguate overloaded/duplicate names. **First implementation task: inspect a
-real indexed TS function node.**
+Original concern: node correlation depends on the external TS plugin's node
+schema, which isn't visible from this repo. Investigation findings:
+
+- **Node properties are plugin pass-through.** `wasm_language.go:Extract`
+  unmarshals the plugin's output straight into `core.Node`; the host imposes no
+  location contract. `file_path` is a known convention (`filecontext.go`); a
+  line/span is *not* host-guaranteed. No in-repo fixture captures a real TS node,
+  and the built `typescript.wasm` is absent in dev checkouts (placeholder only).
+- **But position data provably exists in the pipeline.** The serialized tree
+  (`parser/serialize.go`, `SyntaxNode`) carries `StartByte`/`EndByte` and
+  `StartPosition`/`EndPosition` (row/col) for every node — available host-side at
+  extraction time to both the plugin and our IIR pass.
+
+So this is a design choice, not a blocker. Correlate by `(file_path, name)`, and
+resolve same-name collisions one of two ways:
+
+1. **Plugin-contract (preferred):** document that IIR-capable language plugins
+   include `start_byte` (or `start_line`) in function-node properties. Trivial —
+   the tree already exposes it — and we control the SDK. Correlation becomes
+   `(file_path, name, start_byte)`, bulletproof.
+2. **Host-side fallback:** when a node lacks a position, match by name; treat a
+   same-name collision within a file as ambiguous (log + skip correlation for
+   that function). Rare at TS module scope.
+
+Residual unknown (not blocking): the exact `label` / `canonical_id` the *current*
+`typescript.wasm` emits — confirm when the plugin/SDK is available; the design
+above only assumes `file_path` + name, which any reasonable symbol node carries.
 
 ## Out of scope
 
@@ -173,9 +199,10 @@ real indexed TS function node.**
 1. **IIR storage** — `iir` table migration, `queries/iir.go`, `OpUpsertIIR` in
    the write buffer. (No behavior change; storage only.)
 2. **Index-time extraction** — generalize the post-extraction hook to a
-   Go-native pass; run the built-in TS IIR extractor; correlate to nodes; write
-   `extracted` IIR. Config/capability gated (`iir.enabled`, TS only). *Blocked on
-   the node-schema check.*
+   Go-native pass; run the built-in TS IIR extractor; correlate to nodes by
+   `(file_path, name)`; write `extracted` IIR. Config/capability gated
+   (`iir.enabled`, TS only). Not blocked (see Key risk); the `start_byte` node
+   contract is a small SDK follow-up for overload disambiguation.
 3. **Plugin rule contributions** — extend `PluginManifest.Capabilities` to carry
    IIR rule packs; host aggregates + merges over defaults; extraction/verify use
    the merged set.
