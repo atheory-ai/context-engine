@@ -298,12 +298,16 @@ func extractFailureModes(body *sitter.Node, src []byte) []string {
 
 // extractBehavior captures simple conditional branches as behavior clauses, one
 // per `if` statement in source order. The when-clause is the condition
-// expression; the then-clause summarizes the branch's first return/throw. This
-// is intentionally shallow — it gives the comparator a behavior count and a
-// human-readable summary, not a full control-flow model.
+// expression; the then-clause summarizes the branch's first return/throw.
+//
+// It is intentionally shallow — a behavior count and human-readable summary,
+// not a control-flow model. Two deliberate boundaries: branches inside nested
+// closures belong to those functions, not this one, so the walk does not
+// descend into nested function scopes; and a bare `else` fallback (no condition
+// of its own) is not counted, so a simple if/else yields one clause, not two.
 func extractBehavior(body *sitter.Node, src []byte) []BehaviorClause {
 	out := []BehaviorClause{}
-	walk(body, func(n *sitter.Node) {
+	walkWithinFunction(body, func(n *sitter.Node) {
 		if n.Type() != "if_statement" {
 			return
 		}
@@ -313,6 +317,33 @@ func extractBehavior(body *sitter.Node, src []byte) []BehaviorClause {
 		})
 	})
 	return out
+}
+
+// nestedFunctionTypes introduce a new function scope. The behavior walk stops at
+// these so an outer function's branch count excludes branches inside closures.
+var nestedFunctionTypes = map[string]bool{
+	"function_declaration":           true,
+	"function_expression":            true,
+	"arrow_function":                 true,
+	"method_definition":              true,
+	"generator_function":             true,
+	"generator_function_declaration": true,
+}
+
+// walkWithinFunction is a pre-order walk that does not descend into nested
+// function scopes, keeping traversal within the current function body.
+func walkWithinFunction(node *sitter.Node, fn func(*sitter.Node)) {
+	if node == nil {
+		return
+	}
+	fn(node)
+	for i := 0; i < int(node.NamedChildCount()); i++ {
+		child := node.NamedChild(i)
+		if nestedFunctionTypes[child.Type()] {
+			continue
+		}
+		walkWithinFunction(child, fn)
+	}
 }
 
 // conditionText returns the condition expression, stripping the wrapping

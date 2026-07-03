@@ -183,6 +183,25 @@ func TestExtract_BehaviorMultipleInOrder(t *testing.T) {
 	}
 }
 
+func TestExtract_BehaviorIgnoresNestedFunctions(t *testing.T) {
+	// The `if` inside the filter callback belongs to that closure, not to f, so
+	// only the outer branch is counted.
+	src := `export function f(xs: number[]): number[] {
+  if (xs.length === 0) { return []; }
+  return xs.filter((x) => {
+    if (x > 0) { return true; }
+    return false;
+  });
+}`
+	got := extract(t, src, "f")
+	if len(got.Behavior) != 1 {
+		t.Fatalf("expected only the outer branch, got %d: %+v", len(got.Behavior), got.Behavior)
+	}
+	if got.Behavior[0].When != "xs.length === 0" {
+		t.Errorf("when = %q, want %q", got.Behavior[0].When, "xs.length === 0")
+	}
+}
+
 func TestExtract_NoBranchesEmptyBehavior(t *testing.T) {
 	got := extract(t, `export function f(x: number): number { return x * 2; }`, "f")
 	if len(got.Behavior) != 0 {
