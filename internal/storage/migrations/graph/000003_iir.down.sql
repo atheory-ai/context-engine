@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS idx_iir_kind;
+DROP INDEX IF EXISTS idx_iir_node;
+DROP TABLE IF EXISTS iir;

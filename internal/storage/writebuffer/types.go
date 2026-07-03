@@ -15,6 +15,7 @@ const (
 	OpUpdateActivation OpType = "update_activation"
 	OpUpdateWeight     OpType = "update_weight"
 	OpUpsertConcept    OpType = "upsert_concept"
+	OpUpsertIIR        OpType = "upsert_iir"
 	OpRecordEnrichment OpType = "record_enrichment"
 )
 
@@ -83,6 +84,21 @@ type ConceptUpsert struct {
 	Synonyms   string // JSON array
 	Source     string
 	PluginID   string
+	CreatedAt  int64
+	UpdatedAt  int64
+}
+
+// IIRUpsert inserts or updates an IIR row (one per function node + kind).
+// Idempotent by design — the same ID always produces the same result.
+type IIRUpsert struct {
+	ID         string
+	ProjectID  string
+	NodeID     string
+	Kind       string // extracted | intended
+	Language   string
+	IIR        string // FunctionIntent JSON
+	SourceHash string
+	RunID      string
 	CreatedAt  int64
 	UpdatedAt  int64
 }
