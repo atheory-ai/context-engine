@@ -1,0 +1,133 @@
+package cli
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+
+	"github.com/atheory-ai/context-engine/internal/iir"
+	"github.com/spf13/cobra"
+)
+
+func newIirCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "iir",
+		Short: "Intermediate Intent Representation — verify code against declared intent",
+		Long: `IIR is a structured representation of what code is intended to do.
+
+The verify command reads intended IIR, parses a source file, extracts the
+actual IIR, compares them, applies rules, and prints a verification report.`,
+	}
+
+	cmd.AddCommand(newIirVerifyCmd())
+	return cmd
+}
+
+func newIirVerifyCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "verify <intent-file> <source-file>",
+		Short: "Verify that a source function matches declared IIR",
+		Long: `Verify a single function against its intended IIR.
+
+Reads intended IIR (YAML or JSON), parses the TypeScript source, extracts the
+actual IIR, compares them, evaluates rules, and prints a verification report.
+Exits non-zero when verification fails.`,
+		Args: cobra.ExactArgs(2),
+		RunE: runIirVerify,
+	}
+
+	cmd.Flags().Bool("json", false, "output the verification report as JSON")
+	cmd.Flags().String("rules", "", "path to a rule pack (YAML/JSON); defaults to built-in rules")
+	return cmd
+}
+
+func runIirVerify(cmd *cobra.Command, args []string) error {
+	intentPath, sourcePath := args[0], args[1]
+	asJSON, _ := cmd.Flags().GetBool("json")
+	rulesPath, _ := cmd.Flags().GetString("rules")
+
+	intent, err := iir.LoadIntentFile(intentPath)
+	if err != nil {
+		return err
+	}
+
+	source, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return fmt.Errorf("read source file %s: %w", sourcePath, err)
+	}
+
+	pack := iir.DefaultRulePack()
+	if rulesPath != "" {
+		pack, err = iir.LoadRulePackFile(rulesPath)
+		if err != nil {
+			return err
+		}
+	}
+
+	report, err := iir.VerifySource(context.Background(), intent, source, pack)
+	if err != nil {
+		return err
+	}
+
+	if asJSON {
+		if err := printReportJSON(cmd, report); err != nil {
+			return err
+		}
+	} else {
+		printReportHuman(cmd, report)
+	}
+
+	if report.Status != iir.StatusPassed {
+		return errSilent
+	}
+	return nil
+}
+
+func printReportJSON(cmd *cobra.Command, report *iir.Report) error {
+	enc := json.NewEncoder(cmd.OutOrStdout())
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(report); err != nil {
+		return fmt.Errorf("encode report: %w", err)
+	}
+	return nil
+}
+
+func printReportHuman(cmd *cobra.Command, report *iir.Report) {
+	out := cmd.OutOrStdout()
+	fmt.Fprintf(out, "IIR verification: %s\n", report.Status)
+	fmt.Fprintf(out, "  function: %s\n", report.Intended.Name)
+
+	if len(report.Matches) > 0 {
+		fmt.Fprintf(out, "\n  matches (%d):\n", len(report.Matches))
+		for _, m := range report.Matches {
+			fmt.Fprintf(out, "    ✓ %s\n", m.Message)
+		}
+	}
+
+	if len(report.Mismatches) > 0 {
+		fmt.Fprintf(out, "\n  mismatches (%d):\n", len(report.Mismatches))
+		for _, m := range report.Mismatches {
+			fmt.Fprintf(out, "    [%s] %s: %s\n", m.Severity, m.Kind, m.Message)
+		}
+	}
+
+	reported := false
+	for _, r := range report.RuleResults {
+		if r.Status == iir.RuleSkipped || r.Status == iir.RulePassed {
+			continue
+		}
+		if !reported {
+			fmt.Fprintf(out, "\n  rules:\n")
+			reported = true
+		}
+		fmt.Fprintf(out, "    [%s] %s: %s\n", r.Severity, r.ID, r.Message)
+	}
+
+	if len(report.RepairTargets) > 0 {
+		fmt.Fprintf(out, "\n  repair targets:\n")
+		for _, t := range report.RepairTargets {
+			fmt.Fprintf(out, "    - %s\n", t)
+		}
+	}
+}

@@ -20,6 +20,11 @@ persistent knowledge graph of your codebase and reasons over it.`,
 	SilenceErrors: true,
 }
 
+// errSilent is returned by commands that have already reported their result to
+// the user (e.g. by printing a report) and only need a non-zero exit code
+// without an additional "Error:" line.
+var errSilent = errors.New("")
+
 // Execute is called from main.go.
 func Execute() error {
 	err := rootCmd.Execute()
@@ -30,6 +35,10 @@ func Execute() error {
 	var firstRun *config.FirstRunError
 	if errors.As(err, &firstRun) {
 		printFirstRunGuide()
+		return err
+	}
+
+	if errors.Is(err, errSilent) {
 		return err
 	}
 
@@ -70,6 +79,7 @@ func init() {
 		newCacheCmd(),
 		newVersionCmd(),
 		newCompletionCmd(),
+		newIirCmd(),
 	)
 }
 
