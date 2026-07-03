@@ -16,11 +16,12 @@ A plugin contributes one or more of:
 - **extractors** — turn source into IIR nodes
 - **comparators** — diff intended IIR against extracted IIR
 - **emitters** — generate source from IIR (see Slice 6)
+- **test emitters** — generate tests from IIR (see Slice 7)
 - **rule packs** — durable, executable code expectations (see Slice 2)
 
-Analyzers, additional IIR node types, test emitters, and renderers are named in
-the spec as future contribution types; the current interfaces cover the full
-loop — extract → compare → rules, and generate.
+Analyzers, additional IIR node types, and renderers are named in the spec as
+future contribution types; the current interfaces cover the full loop —
+extract → compare → rules, generate code, and generate tests.
 
 ## Interfaces
 
@@ -48,15 +49,22 @@ type Emitter interface {
     Emit(intent *FunctionIntent) (string, error)
 }
 
+type TestEmitter interface {
+    ID() string
+    Supports(intent *FunctionIntent) bool
+    EmitTests(intent *FunctionIntent) (TestArtifact, error)
+}
+
 type Plugin struct {
     ID          string
     Name        string
     Version     string
     Languages   []string
-    Extractors  []Extractor
-    Comparators []Comparator
-    Emitters    []Emitter
-    RulePacks   []PluginRulePack // each carries the owning PluginID
+    Extractors   []Extractor
+    Comparators  []Comparator
+    Emitters     []Emitter
+    TestEmitters []TestEmitter
+    RulePacks    []PluginRulePack // each carries the owning PluginID
 }
 ```
 
@@ -70,7 +78,8 @@ them through those interfaces:
 - `BuiltinExtractor()` → the `Extractor` used by `VerifySource`
 - `BuiltinComparator()` → the `Comparator` used by `Verify`
 - `BuiltinEmitter()` → the `Emitter` behind `iir generate` / `GenerateFunction`
-- `BuiltinPlugin()` → the manifest bundling all three, plus the default rule
+- `BuiltinTestEmitter()` → the `TestEmitter` behind `iir gen-tests` / `GenerateTests`
+- `BuiltinPlugin()` → the manifest bundling all four, plus the default rule
   pack associated with the `builtin` plugin id
 
 This is the guarantee Slice 5 exists to establish: whatever a plugin can do,
@@ -87,6 +96,7 @@ reg.Register(myPlugin)                 // add more
 ext, ok := reg.ExtractorFor(input)     // last-registered supporting extractor
 cmp, ok := reg.ComparatorFor(a, b)     // last-registered supporting comparator
 em, ok := reg.EmitterFor(intent)       // last-registered supporting emitter
+te, ok := reg.TestEmitterFor(intent)   // last-registered supporting test emitter
 packs := reg.RulePacks()               // all packs, each tagged with its PluginID
 ```
 

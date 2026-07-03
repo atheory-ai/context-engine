@@ -196,6 +196,15 @@ func TestGenerate_RejectsNonFunctionIntent(t *testing.T) {
 	}
 }
 
+func TestGenerate_RejectsInvalidName(t *testing.T) {
+	for _, bad := range []string{"has space", "a;b()", "1abc", "a\nb", ""} {
+		intent := &FunctionIntent{Kind: KindFunctionIntent, Name: bad, Language: "typescript"}
+		if _, err := GenerateFunction(intent); err == nil {
+			t.Errorf("expected error for invalid name %q", bad)
+		}
+	}
+}
+
 func TestBuiltinEmitter_SupportsAndEmits(t *testing.T) {
 	intent := &FunctionIntent{Kind: KindFunctionIntent, Language: "typescript", Name: "f"}
 	em := BuiltinEmitter()
