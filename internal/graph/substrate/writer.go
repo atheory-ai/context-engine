@@ -73,6 +73,28 @@ func (w *Writer) UpsertEdge(_ context.Context, edge core.Edge) error {
 	})
 }
 
+// UpsertIIR queues an IIR insert/update via the write buffer. The row id is
+// derived deterministically from (project, node, kind) so re-extraction upserts
+// in place.
+func (w *Writer) UpsertIIR(_ context.Context, r core.IIRRecord) error {
+	return w.buffer.Send(writebuffer.WriteOp{
+		Type:      writebuffer.OpUpsertIIR,
+		ProjectID: string(r.ProjectID),
+		Payload: writebuffer.IIRUpsert{
+			ID:         queries.IIRID(string(r.ProjectID), string(r.NodeID), r.Kind),
+			ProjectID:  string(r.ProjectID),
+			NodeID:     string(r.NodeID),
+			Kind:       r.Kind,
+			Language:   r.Language,
+			IIR:        r.Payload,
+			SourceHash: r.SourceHash,
+			RunID:      r.RunID,
+			CreatedAt:  r.CreatedAt,
+			UpdatedAt:  r.UpdatedAt,
+		},
+	})
+}
+
 // UpdateActivation queues an activation update for a node.
 func (w *Writer) UpdateActivation(_ context.Context, nodeID core.NodeID, activation float64) error {
 	return w.buffer.Send(writebuffer.WriteOp{

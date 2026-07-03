@@ -45,6 +45,21 @@ type Edge struct {
 	CreatedAt   int64
 }
 
+// IIRRecord is a stored Intermediate Intent Representation for one function
+// node. Payload is opaque JSON here — internal/iir owns the model. This is the
+// substrate-facing shape that keeps core the dependency floor.
+type IIRRecord struct {
+	ProjectID  ProjectID
+	NodeID     NodeID
+	Kind       string // extracted | intended
+	Language   string
+	Payload    string // FunctionIntent JSON
+	SourceHash string
+	RunID      string
+	CreatedAt  int64
+	UpdatedAt  int64
+}
+
 // Anchor is a resolved substrate reference.
 // The Strategizer produces AnchorRefs (symbolic).
 // The activation layer resolves them to Anchors (concrete nodes + edges).

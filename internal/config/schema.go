@@ -9,6 +9,7 @@ type Config struct {
 	LLM      LLMConfig
 	Engine   EngineConfig
 	Indexer  IndexerConfig
+	IIR      IIRConfig
 	Plugins  []PluginEntry
 	Tracing  TracingConfig
 	Server   ServerConfig
@@ -44,6 +45,15 @@ type EngineConfig struct {
 	KLimit              int     `mapstructure:"k_limit"`
 	ContextSafetyMargin float64 `mapstructure:"context_safety_margin"`
 	DefaultRole         string  `mapstructure:"default_role"`
+}
+
+// IIRConfig controls Intermediate Intent Representation extraction at index time.
+type IIRConfig struct {
+	// Enabled turns on per-function IIR extraction during indexing. Because the
+	// indexer skips unchanged files (by content hash), enabling this on an
+	// already-indexed project only extracts IIR as files change — run
+	// `ce index --full` to backfill existing files.
+	Enabled bool `mapstructure:"enabled"`
 }
 
 // IndexerConfig controls file discovery and indexing behaviour.

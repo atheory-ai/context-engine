@@ -253,6 +253,7 @@ func (idx *Indexer) processFile(
 	edgesOut := 0
 	successfulPlugins := 0
 	extractErrors := 0
+	var fileSymbolNodes []core.Node // collected for the IIR pass
 	for _, p := range matchingPlugins {
 		langHandler := p.Language()
 		if langHandler == nil {
@@ -277,6 +278,9 @@ func (idx *Indexer) processFile(
 				continue
 			}
 			nodesOut++
+			if node.Type == nodeTypeSymbol {
+				fileSymbolNodes = append(fileSymbolNodes, node)
+			}
 		}
 
 		for _, edge := range remapped.Edges {
@@ -307,6 +311,11 @@ func (idx *Indexer) processFile(
 
 	if successfulPlugins == 0 && extractErrors > 0 {
 		return 0, 0, fmt.Errorf("extract failed for all matching plugins")
+	}
+
+	// Extract IIR from the file and attach it to its function nodes.
+	if idx.cfg.IIR.Enabled {
+		idx.extractFileIIR(ctx, projectID, result.RelPath, hash, content, fileSymbolNodes, now)
 	}
 
 	// Persist the file hash for future incremental runs.

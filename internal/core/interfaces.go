@@ -257,6 +257,9 @@ type SubstrateWriter interface {
 	UpsertNode(ctx context.Context, node Node) error
 	UpsertEdge(ctx context.Context, edge Edge) error
 
+	// IIR upsert — extracted/intended intent per function node (write buffer)
+	UpsertIIR(ctx context.Context, record IIRRecord) error
+
 	// Activation updates (high frequency — write buffer deduplicates)
 	UpdateActivation(ctx context.Context, nodeID NodeID, activation float64) error
 
