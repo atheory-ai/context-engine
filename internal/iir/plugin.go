@@ -66,6 +66,7 @@ type Plugin struct {
 	Languages   []string
 	Extractors  []Extractor
 	Comparators []Comparator
+	Emitters    []Emitter
 	RulePacks   []PluginRulePack
 }
 
@@ -135,6 +136,7 @@ func BuiltinPlugin() Plugin {
 		Languages:   []string{"typescript"},
 		Extractors:  []Extractor{BuiltinExtractor()},
 		Comparators: []Comparator{BuiltinComparator()},
+		Emitters:    []Emitter{BuiltinEmitter()},
 		RulePacks:   []PluginRulePack{{PluginID: builtinPluginID, Pack: DefaultRulePack()}},
 	}
 }
@@ -163,30 +165,41 @@ func (r *Registry) Register(p Plugin) { r.plugins = append(r.plugins, p) }
 // Plugins returns the registered plugins in registration order.
 func (r *Registry) Plugins() []Plugin { return r.plugins }
 
-// ExtractorFor returns the last-registered extractor that supports the input.
-func (r *Registry) ExtractorFor(input ExtractionInput) (Extractor, bool) {
-	for i := len(r.plugins) - 1; i >= 0; i-- {
-		exts := r.plugins[i].Extractors
-		for j := len(exts) - 1; j >= 0; j-- {
-			if exts[j].Supports(input) {
-				return exts[j], true
+// lastMatch returns the last capability for which ok reports true, scanning
+// plugins in reverse registration order and each plugin's slice in reverse, so
+// later registrations take precedence.
+func lastMatch[T any](plugins []Plugin, pick func(Plugin) []T, ok func(T) bool) (T, bool) {
+	for i := len(plugins) - 1; i >= 0; i-- {
+		items := pick(plugins[i])
+		for j := len(items) - 1; j >= 0; j-- {
+			if ok(items[j]) {
+				return items[j], true
 			}
 		}
 	}
-	return nil, false
+	var zero T
+	return zero, false
+}
+
+// ExtractorFor returns the last-registered extractor that supports the input.
+func (r *Registry) ExtractorFor(input ExtractionInput) (Extractor, bool) {
+	return lastMatch(r.plugins,
+		func(p Plugin) []Extractor { return p.Extractors },
+		func(e Extractor) bool { return e.Supports(input) })
 }
 
 // ComparatorFor returns the last-registered comparator that supports the pair.
 func (r *Registry) ComparatorFor(intended, extracted *FunctionIntent) (Comparator, bool) {
-	for i := len(r.plugins) - 1; i >= 0; i-- {
-		cmps := r.plugins[i].Comparators
-		for j := len(cmps) - 1; j >= 0; j-- {
-			if cmps[j].Supports(intended, extracted) {
-				return cmps[j], true
-			}
-		}
-	}
-	return nil, false
+	return lastMatch(r.plugins,
+		func(p Plugin) []Comparator { return p.Comparators },
+		func(c Comparator) bool { return c.Supports(intended, extracted) })
+}
+
+// EmitterFor returns the last-registered emitter that supports the intent.
+func (r *Registry) EmitterFor(intent *FunctionIntent) (Emitter, bool) {
+	return lastMatch(r.plugins,
+		func(p Plugin) []Emitter { return p.Emitters },
+		func(e Emitter) bool { return e.Supports(intent) })
 }
 
 // RulePacks returns every registered rule pack with its owning plugin id, in
