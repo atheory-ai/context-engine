@@ -46,6 +46,18 @@ func TestBuiltinComparator_Supports(t *testing.T) {
 	if cmp.Supports(nil, baseIntent()) {
 		t.Error("nil intended should be unsupported")
 	}
+	if cmp.Supports(baseIntent(), &FunctionIntent{Kind: ""}) {
+		t.Error("extracted node without FunctionIntent kind should be unsupported")
+	}
+}
+
+func TestVerifySource_UnsupportedLanguageErrors(t *testing.T) {
+	intent := baseIntent()
+	intent.Language = "go" // no extractor supports it
+	_, err := VerifySource(context.Background(), intent, []byte(`func f() {}`), DefaultRulePack())
+	if err == nil {
+		t.Error("expected an error when no extractor supports the language")
+	}
 }
 
 func TestBuiltinComparator_CompareMatchesFreeFunction(t *testing.T) {

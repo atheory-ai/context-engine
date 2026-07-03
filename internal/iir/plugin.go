@@ -104,7 +104,8 @@ type functionComparator struct{}
 func (functionComparator) ID() string { return "builtin.function" }
 
 func (functionComparator) Supports(intended, extracted *FunctionIntent) bool {
-	return intended != nil && extracted != nil && intended.Kind == KindFunctionIntent
+	return intended != nil && extracted != nil &&
+		intended.Kind == KindFunctionIntent && extracted.Kind == KindFunctionIntent
 }
 
 func (functionComparator) Compare(intended, extracted *FunctionIntent) ComparisonResult {

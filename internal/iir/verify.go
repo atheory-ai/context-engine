@@ -64,6 +64,11 @@ func VerifySource(ctx context.Context, intended *FunctionIntent, source []byte, 
 	if err != nil {
 		return nil, err
 	}
+	// Gate the comparator too, symmetric with the extractor check above, so an
+	// unsupported pair fails clearly rather than reaching Compare.
+	if !BuiltinComparator().Supports(intended, result.Function) {
+		return nil, fmt.Errorf("no comparator supports the extracted %s intent", intended.Language)
+	}
 	return Verify(intended, result.Function, pack), nil
 }
 
