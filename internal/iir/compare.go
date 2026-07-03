@@ -218,7 +218,7 @@ func compareInputs(intended, extracted *FunctionIntent, matches *[]Match, mismat
 			continue
 		}
 		*matches = append(*matches, Match{
-			Kind:    typeMatchKind(want.Type, got.Type),
+			Kind:    inputMatchKind(want.Type, got.Type),
 			Path:    path,
 			Message: fmt.Sprintf("input %q matches", want.Name),
 		})
@@ -282,6 +282,16 @@ func typeMatchKind(a, b string) MatchKind {
 		return MatchExact
 	}
 	return MatchEquivalent
+}
+
+// inputMatchKind classifies an input match. When either type is unknown the
+// types were never actually compared, so the agreement is on name alone — an
+// exact match, not an equivalence claim.
+func inputMatchKind(want, got string) MatchKind {
+	if want == TypeUnknown || got == TypeUnknown {
+		return MatchExact
+	}
+	return typeMatchKind(want, got)
 }
 
 func compareSideEffects(intended, extracted *FunctionIntent, matches *[]Match, mismatches *[]Mismatch) {

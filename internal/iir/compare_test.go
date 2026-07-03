@@ -187,6 +187,31 @@ func TestCompare_BehaviorCountMismatch(t *testing.T) {
 	}
 }
 
+func TestCompare_ExtraBehaviorIsInfo(t *testing.T) {
+	intended := baseIntent()
+	intended.Behavior = []BehaviorClause{{When: "a", Then: "b"}}
+	extracted := baseIntent()
+	extracted.Behavior = []BehaviorClause{{When: "a", Then: "b"}, {When: "c", Then: "d"}}
+	_, mismatches := Compare(intended, extracted)
+	m := findMismatch(mismatches, MismatchExtraBehavior)
+	if m == nil || m.Severity != SeverityInfo {
+		t.Errorf("expected info extra_behavior, got %+v", mismatches)
+	}
+}
+
+func TestCompare_UnknownInputTypeIsExactNotEquivalent(t *testing.T) {
+	// When a type is unknown it was never compared, so the match must be exact
+	// (name agreement), not falsely labeled acceptable_equivalent.
+	intended := baseIntent() // input "a" has type "number"
+	extracted := baseIntent()
+	extracted.Inputs[0].Type = TypeUnknown
+	matches, _ := Compare(intended, extracted)
+	m := findMatch(matches, "FunctionIntent.inputs[0]")
+	if m == nil || m.Kind != MatchExact {
+		t.Errorf("unknown input type should be exact match, got %+v", m)
+	}
+}
+
 func TestCompare_DeclaredButUndetectedEffectIsWarning(t *testing.T) {
 	intended := baseIntent()
 	intended.SideEffects = []string{"db.save"}
