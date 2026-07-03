@@ -1,6 +1,9 @@
 package iir
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 // Status is the overall verdict of a verification run.
 type Status string
@@ -27,33 +30,46 @@ type Report struct {
 // against the extracted intent, and assembles a report. Verification fails when
 // any mismatch or rule result is at error severity.
 func Verify(intended, extracted *FunctionIntent, pack RulePack) *Report {
-	matches, mismatches := Compare(intended, extracted)
+	// Route through the built-in comparator so the core uses the same plugin
+	// interface future comparators will.
+	comparison := BuiltinComparator().Compare(intended, extracted)
 	ruleResults := EvaluateRules(pack, extracted)
 
 	report := &Report{
 		Status:        StatusPassed,
 		Intended:      intended,
 		Extracted:     extracted,
-		Matches:       matches,
-		Mismatches:    mismatches,
+		Matches:       comparison.Matches,
+		Mismatches:    comparison.Mismatches,
 		RuleResults:   ruleResults,
-		RepairTargets: collectRepairTargets(mismatches, ruleResults),
+		RepairTargets: collectRepairTargets(comparison.Mismatches, ruleResults),
 	}
 
-	if hasFailure(mismatches, ruleResults) {
+	if hasFailure(comparison.Mismatches, ruleResults) {
 		report.Status = StatusFailed
 	}
 	return report
 }
 
 // VerifySource is the end-to-end helper: extract the intended function from
-// source, then verify. It is the path the CLI uses.
+// source, then verify. It is the path the CLI uses. Extraction goes through the
+// built-in extractor via the same plugin interface future extractors will.
 func VerifySource(ctx context.Context, intended *FunctionIntent, source []byte, pack RulePack) (*Report, error) {
-	extracted, err := ExtractFunction(ctx, source, intended.Name)
+	extractor := BuiltinExtractor()
+	input := ExtractionInput{Language: intended.Language, Source: source, Target: intended.Name}
+	if !extractor.Supports(input) {
+		return nil, fmt.Errorf("no extractor supports language %q", intended.Language)
+	}
+	result, err := extractor.Extract(ctx, input)
 	if err != nil {
 		return nil, err
 	}
-	return Verify(intended, extracted, pack), nil
+	// Gate the comparator too, symmetric with the extractor check above, so an
+	// unsupported pair fails clearly rather than reaching Compare.
+	if !BuiltinComparator().Supports(intended, result.Function) {
+		return nil, fmt.Errorf("no comparator supports the extracted %s intent", intended.Language)
+	}
+	return Verify(intended, result.Function, pack), nil
 }
 
 func hasFailure(mismatches []Mismatch, ruleResults []RuleResult) bool {
