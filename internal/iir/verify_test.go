@@ -142,6 +142,38 @@ func TestVerify_ExampleFiles(t *testing.T) {
 	}
 }
 
+// End-to-end: behavior extraction feeds the comparator, so a source with fewer
+// branches than the intent declares surfaces a missing_behavior mismatch.
+func TestVerifySource_MissingBehaviorFromExtraction(t *testing.T) {
+	intent := mustLoad(t, `
+kind: FunctionIntent
+name: f
+language: typescript
+inputs:
+  - name: x
+    type: number
+returns:
+  type: string
+sideEffects: []
+behavior:
+  - when: x is negative
+    then: return neg
+  - when: x is zero
+    then: return zero
+`)
+	src := `export function f(x: number): string {
+  if (x < 0) { return "neg"; }
+  return "pos";
+}`
+	report, err := VerifySource(context.Background(), intent, []byte(src), DefaultRulePack())
+	if err != nil {
+		t.Fatalf("VerifySource: %v", err)
+	}
+	if findMismatch(report.Mismatches, MismatchMissingBehavior) == nil {
+		t.Errorf("expected missing_behavior from extraction, got %+v", report.Mismatches)
+	}
+}
+
 func mustLoad(t *testing.T, doc string) *FunctionIntent {
 	t.Helper()
 	intent, err := LoadIntent([]byte(doc))

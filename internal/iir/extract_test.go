@@ -146,6 +146,86 @@ func TestExtract_ThrownFailureModes(t *testing.T) {
 	}
 }
 
+func TestExtract_BehaviorFromIf(t *testing.T) {
+	src := `export function f(x: number): number {
+  if (x < 0) {
+    throw new Error("negative");
+  }
+  return x;
+}`
+	got := extract(t, src, "f")
+	if len(got.Behavior) != 1 {
+		t.Fatalf("behavior = %+v, want 1 clause", got.Behavior)
+	}
+	if got.Behavior[0].When != "x < 0" {
+		t.Errorf("when = %q, want %q", got.Behavior[0].When, "x < 0")
+	}
+	if got.Behavior[0].Then != `throw new Error("negative")` {
+		t.Errorf("then = %q", got.Behavior[0].Then)
+	}
+}
+
+func TestExtract_BehaviorMultipleInOrder(t *testing.T) {
+	src := `export function f(x: number): string {
+  if (x < 0) { return "neg"; }
+  if (x === 0) { return "zero"; }
+  return "pos";
+}`
+	got := extract(t, src, "f")
+	if len(got.Behavior) != 2 {
+		t.Fatalf("want 2 behavior clauses, got %+v", got.Behavior)
+	}
+	if got.Behavior[0].When != "x < 0" || got.Behavior[1].When != "x === 0" {
+		t.Errorf("wrong order/conditions: %+v", got.Behavior)
+	}
+	if got.Behavior[0].Then != `return "neg"` {
+		t.Errorf("then = %q, want %q", got.Behavior[0].Then, `return "neg"`)
+	}
+}
+
+func TestExtract_BehaviorIgnoresNestedFunctions(t *testing.T) {
+	// The `if` inside the filter callback belongs to that closure, not to f, so
+	// only the outer branch is counted.
+	src := `export function f(xs: number[]): number[] {
+  if (xs.length === 0) { return []; }
+  return xs.filter((x) => {
+    if (x > 0) { return true; }
+    return false;
+  });
+}`
+	got := extract(t, src, "f")
+	if len(got.Behavior) != 1 {
+		t.Fatalf("expected only the outer branch, got %d: %+v", len(got.Behavior), got.Behavior)
+	}
+	if got.Behavior[0].When != "xs.length === 0" {
+		t.Errorf("when = %q, want %q", got.Behavior[0].When, "xs.length === 0")
+	}
+}
+
+func TestExtract_NoBranchesEmptyBehavior(t *testing.T) {
+	got := extract(t, `export function f(x: number): number { return x * 2; }`, "f")
+	if len(got.Behavior) != 0 {
+		t.Errorf("expected no behavior clauses, got %+v", got.Behavior)
+	}
+	if got.Behavior == nil {
+		t.Error("behavior should be an empty slice, not nil")
+	}
+}
+
+func TestExtract_MultilineConditionNormalized(t *testing.T) {
+	src := `export function f(a: number, b: number): number {
+  if (a > 0 &&
+      b > 0) {
+    return a + b;
+  }
+  return 0;
+}`
+	got := extract(t, src, "f")
+	if len(got.Behavior) != 1 || got.Behavior[0].When != "a > 0 && b > 0" {
+		t.Errorf("multiline condition not normalized: %+v", got.Behavior)
+	}
+}
+
 func TestExtract_NoFunctionsErrors(t *testing.T) {
 	if _, err := ExtractFunction(context.Background(), []byte(`const x = 1;`), "f"); err == nil {
 		t.Error("expected error when no functions present")

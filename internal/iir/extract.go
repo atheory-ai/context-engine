@@ -157,7 +157,7 @@ func buildIntent(fn funcCandidate, src []byte, imports map[string]bool) *Functio
 		Visibility:   visibility,
 		Inputs:       extractParams(fn.params, src),
 		Returns:      extractReturn(fn.returnType, src),
-		Behavior:     []BehaviorClause{},
+		Behavior:     extractBehavior(fn.body, src),
 		SideEffects:  extractSideEffects(fn.body, src, imports),
 		FailureModes: extractFailureModes(fn.body, src),
 		Constraints:  []string{},
@@ -294,6 +294,103 @@ func extractFailureModes(body *sitter.Node, src []byte) []string {
 		}
 	})
 	return sortedKeys(seen)
+}
+
+// extractBehavior captures simple conditional branches as behavior clauses, one
+// per `if` statement in source order. The when-clause is the condition
+// expression; the then-clause summarizes the branch's first return/throw.
+//
+// It is intentionally shallow — a behavior count and human-readable summary,
+// not a control-flow model. Two deliberate boundaries: branches inside nested
+// closures belong to those functions, not this one, so the walk does not
+// descend into nested function scopes; and a bare `else` fallback (no condition
+// of its own) is not counted, so a simple if/else yields one clause, not two.
+func extractBehavior(body *sitter.Node, src []byte) []BehaviorClause {
+	out := []BehaviorClause{}
+	walkWithinFunction(body, func(n *sitter.Node) {
+		if n.Type() != "if_statement" {
+			return
+		}
+		out = append(out, BehaviorClause{
+			When: conditionText(n.ChildByFieldName("condition"), src),
+			Then: summarizeConsequence(n.ChildByFieldName("consequence"), src),
+		})
+	})
+	return out
+}
+
+// nestedFunctionTypes introduce a new function scope. The behavior walk stops at
+// these so an outer function's branch count excludes branches inside closures.
+var nestedFunctionTypes = map[string]bool{
+	"function_declaration":           true,
+	"function_expression":            true,
+	"arrow_function":                 true,
+	"method_definition":              true,
+	"generator_function":             true,
+	"generator_function_declaration": true,
+}
+
+// walkWithinFunction is a pre-order walk that does not descend into nested
+// function scopes, keeping traversal within the current function body.
+func walkWithinFunction(node *sitter.Node, fn func(*sitter.Node)) {
+	if node == nil {
+		return
+	}
+	fn(node)
+	for i := 0; i < int(node.NamedChildCount()); i++ {
+		child := node.NamedChild(i)
+		if nestedFunctionTypes[child.Type()] {
+			continue
+		}
+		walkWithinFunction(child, fn)
+	}
+}
+
+// conditionText returns the condition expression, stripping the wrapping
+// parentheses of an `if (...)`.
+func conditionText(cond *sitter.Node, src []byte) string {
+	if cond == nil {
+		return ""
+	}
+	if cond.Type() == "parenthesized_expression" && cond.NamedChildCount() > 0 {
+		return normalizeWhitespace(cond.NamedChild(0).Content(src))
+	}
+	return normalizeWhitespace(cond.Content(src))
+}
+
+// summarizeConsequence describes what a branch does: the first return or throw
+// it contains, else its first statement.
+func summarizeConsequence(cons *sitter.Node, src []byte) string {
+	if cons == nil {
+		return ""
+	}
+	if cons.Type() != "statement_block" {
+		return trimStatement(normalizeWhitespace(cons.Content(src)))
+	}
+	var first *sitter.Node
+	for i := 0; i < int(cons.NamedChildCount()); i++ {
+		c := cons.NamedChild(i)
+		if first == nil {
+			first = c
+		}
+		if c.Type() == "return_statement" || c.Type() == "throw_statement" {
+			return trimStatement(normalizeWhitespace(c.Content(src)))
+		}
+	}
+	if first != nil {
+		return trimStatement(normalizeWhitespace(first.Content(src)))
+	}
+	return ""
+}
+
+// normalizeWhitespace collapses runs of whitespace to single spaces so a
+// multi-line condition renders as a stable one-line string.
+func normalizeWhitespace(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func trimStatement(s string) string {
+	return strings.TrimSuffix(s, ";")
 }
 
 // calleeParts returns the called method name, the root object identifier, and
