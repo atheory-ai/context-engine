@@ -116,6 +116,77 @@ func TestCompare_UndeclaredSideEffect(t *testing.T) {
 	}
 }
 
+func findMatch(ms []Match, path string) *Match {
+	for i := range ms {
+		if ms[i].Path == path {
+			return &ms[i]
+		}
+	}
+	return nil
+}
+
+func TestCompare_ChangedPublicContract(t *testing.T) {
+	extracted := baseIntent()
+	extracted.Visibility = VisibilityPrivate // intent is public
+	_, mismatches := Compare(baseIntent(), extracted)
+	m := findMismatch(mismatches, MismatchChangedContract)
+	if m == nil || m.Severity != SeverityError {
+		t.Fatalf("expected error changed_public_contract, got %+v", mismatches)
+	}
+	if m.RepairTarget == "" {
+		t.Error("contract change must carry a repair target")
+	}
+}
+
+func TestCompare_ExactMatchKind(t *testing.T) {
+	matches, _ := Compare(baseIntent(), baseIntent())
+	m := findMatch(matches, "FunctionIntent.returns.type")
+	if m == nil || m.Kind != MatchExact {
+		t.Errorf("expected exact_match for identical return type, got %+v", m)
+	}
+}
+
+func TestCompare_AcceptableEquivalentType(t *testing.T) {
+	intended := baseIntent()
+	intended.Returns.Type = "Map<string, number>"
+	extracted := baseIntent()
+	extracted.Returns.Type = "Map<string,number>" // formatting differs only
+	matches, mismatches := Compare(intended, extracted)
+	if len(mismatches) != 0 {
+		t.Fatalf("formatting-only diff must not mismatch: %+v", mismatches)
+	}
+	m := findMatch(matches, "FunctionIntent.returns.type")
+	if m == nil || m.Kind != MatchEquivalent {
+		t.Errorf("expected acceptable_equivalent for whitespace-only diff, got %+v", m)
+	}
+}
+
+func TestCompare_BehaviorUnsupportedWhenNotExtracted(t *testing.T) {
+	intended := baseIntent()
+	intended.Behavior = []BehaviorClause{{When: "x", Then: "y"}}
+	extracted := baseIntent() // no behavior extracted
+	_, mismatches := Compare(intended, extracted)
+	m := findMismatch(mismatches, MismatchUnsupported)
+	if m == nil {
+		t.Fatalf("expected unsupported_comparison for unverifiable behavior, got %+v", mismatches)
+	}
+	// Unsupported must not fail verification.
+	if m.Severity != SeverityInfo {
+		t.Errorf("unsupported comparison severity = %s, want info", m.Severity)
+	}
+}
+
+func TestCompare_BehaviorCountMismatch(t *testing.T) {
+	intended := baseIntent()
+	intended.Behavior = []BehaviorClause{{When: "a", Then: "b"}, {When: "c", Then: "d"}}
+	extracted := baseIntent()
+	extracted.Behavior = []BehaviorClause{{When: "a", Then: "b"}}
+	_, mismatches := Compare(intended, extracted)
+	if findMismatch(mismatches, MismatchMissingBehavior) == nil {
+		t.Errorf("expected missing_behavior, got %+v", mismatches)
+	}
+}
+
 func TestCompare_DeclaredButUndetectedEffectIsWarning(t *testing.T) {
 	intended := baseIntent()
 	intended.SideEffects = []string{"db.save"}
