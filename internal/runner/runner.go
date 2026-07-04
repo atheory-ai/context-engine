@@ -510,6 +510,12 @@ func (e *Engine) Channels() *core.AppChannels {
 	return e.channels
 }
 
+// LLMProvider returns the engine's model provider, for capabilities that call
+// the model outside the cognitive loop (e.g. IIR shaping).
+func (e *Engine) LLMProvider() core.LLMProvider {
+	return e.llmRouter
+}
+
 // ActiveProjectPath returns the file system path of the active project.
 // Returns empty string if no project path is recorded in meta.db.
 func (e *Engine) ActiveProjectPath() string {

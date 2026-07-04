@@ -5,8 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
+	"strings"
 
+	"github.com/atheory-ai/context-engine/internal/config"
 	"github.com/atheory-ai/context-engine/internal/iir"
+	"github.com/atheory-ai/context-engine/internal/iir/shaper"
+	"github.com/atheory-ai/context-engine/internal/runner"
 	"github.com/spf13/cobra"
 )
 
@@ -20,8 +25,86 @@ The verify command reads intended IIR, parses a source file, extracts the
 actual IIR, compares them, applies rules, and prints a verification report.`,
 	}
 
-	cmd.AddCommand(newIirVerifyCmd(), newIirGenerateCmd(), newIirGenTestsCmd(), newIirRepairCmd())
+	cmd.AddCommand(newIirVerifyCmd(), newIirGenerateCmd(), newIirGenTestsCmd(), newIirRepairCmd(), newIirShapeCmd())
 	return cmd
+}
+
+func newIirShapeCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "shape <description>",
+		Short: "Turn a natural-language description into IIR (uses the model)",
+		Long: `Shape a natural-language function description into a validated
+FunctionIntent using the configured LLM.
+
+The model produces a candidate intent; it is validated deterministically before
+anything acts on it (a bad response is fed back and retried). This is the only
+IIR command that calls a model.
+
+Prints the shaped IIR as JSON. With --generate, emits TypeScript source from it;
+with --verify, additionally re-extracts and verifies the generated source
+against the shaped intent (the full NL -> IIR -> code -> verified loop).`,
+		Args: cobra.MinimumNArgs(1),
+		RunE: runIirShape,
+	}
+
+	cmd.Flags().Bool("generate", false, "generate TypeScript source from the shaped IIR")
+	cmd.Flags().Bool("verify", false, "verify the generated source against the shaped IIR (implies --generate)")
+	return cmd
+}
+
+func runIirShape(cmd *cobra.Command, args []string) error {
+	description := strings.Join(args, " ")
+	doGenerate, _ := cmd.Flags().GetBool("generate")
+	doVerify, _ := cmd.Flags().GetBool("verify")
+	if doVerify {
+		doGenerate = true
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+
+	engine, err := runner.New(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("engine init: %w", err)
+	}
+	defer engine.Close(context.Background())
+
+	intent, err := shaper.New(engine.LLMProvider()).Shape(ctx, description)
+	if err != nil {
+		return err
+	}
+
+	out := cmd.OutOrStdout()
+	if !doGenerate {
+		enc := json.NewEncoder(out)
+		enc.SetIndent("", "  ")
+		return enc.Encode(intent)
+	}
+
+	source, err := iir.GenerateFunction(intent)
+	if err != nil {
+		return err
+	}
+	fmt.Fprint(out, source)
+
+	if !doVerify {
+		return nil
+	}
+
+	report, err := iir.VerifySource(ctx, intent, []byte(source), iir.DefaultRulePack())
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "\n--- shape round-trip: %s ---\n", report.Status)
+	if report.Status != iir.StatusPassed {
+		return errSilent
+	}
+	return nil
 }
 
 func newIirRepairCmd() *cobra.Command {
