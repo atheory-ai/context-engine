@@ -23,6 +23,27 @@ Analyzers, additional IIR node types, and renderers are named in the spec as
 future contribution types; the current interfaces cover the full loop —
 extract → compare → rules, generate code, and generate tests.
 
+## Calling IIR from a WASM plugin (`ce.iir_*` host functions)
+
+Per the engine-integration RFC, IIR is a **host capability** — it runs in the
+Go host, and WASM plugins call it through `ce.iir_*` host functions (registered
+in `internal/plugins/runtime/host.go`, namespace `ce`). All arguments and
+results are passed as pointers to UTF-8 strings across the Extism boundary:
+
+| Host function | Args | Returns |
+|---|---|---|
+| `ce.iir_extract` | `language`, `source`, `target` | `FunctionIntent` JSON |
+| `ce.iir_verify` | `intent` JSON, `source` | verification `Report` JSON |
+| `ce.iir_generate` | `intent` JSON | TypeScript source |
+| `ce.iir_gen_tests` | `intent` JSON | `TestArtifact` JSON |
+
+These are pure computations over `internal/iir` — no substrate or config access,
+so they are available during indexing and query time alike. Errors are returned
+**in-band** as a JSON object `{"error": "..."}` rather than trapping the plugin;
+a caller checks for the `error` key. Intent JSON is parsed with the JSON-native
+`ParseIntentJSON` (tolerant of a marshaled `FunctionIntent`), so an extracted
+intent round-trips straight back into verify/generate.
+
 ## Interfaces
 
 The Go interfaces live in `internal/iir/plugin.go`. They mirror the
