@@ -123,6 +123,30 @@ func DefaultRulePack() RulePack {
 // own address instead of sharing one local.
 func ptrTo[T any](v T) *T { return &v }
 
+// EffectiveRulePack returns the built-in defaults with plugin-contributed rule
+// packs layered on top. A pack that fails to load is skipped and its error
+// collected (non-fatal) so one bad plugin can't break the others.
+func EffectiveRulePack(pluginPacks [][]byte) (RulePack, []error) {
+	return MergePluginRulePacks(DefaultRulePack(), pluginPacks)
+}
+
+// MergePluginRulePacks layers plugin-contributed rule packs (raw YAML/JSON, in
+// order) over base, with override-by-id semantics. Load failures are collected
+// and skipped, not returned as a hard error.
+func MergePluginRulePacks(base RulePack, pluginPacks [][]byte) (RulePack, []error) {
+	var errs []error
+	effective := base
+	for _, raw := range pluginPacks {
+		pack, err := LoadRulePack(raw)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		effective = MergeRulePacks(effective, pack)
+	}
+	return effective, errs
+}
+
 // MergeRulePacks layers override rules onto a base pack. A rule in override with
 // the same id as one in base replaces it in place (preserving base ordering);
 // override rules with new ids are appended. This lets a project extend or tune

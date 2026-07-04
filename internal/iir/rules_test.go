@@ -135,6 +135,44 @@ func TestRules_ExplicitReturnTypeFalseIsHonored(t *testing.T) {
 	}
 }
 
+func ruleByID(rules []Rule, id string) *Rule {
+	for i := range rules {
+		if rules[i].ID == id {
+			return &rules[i]
+		}
+	}
+	return nil
+}
+
+func TestMergePluginRulePacks_LayersAndCollectsErrors(t *testing.T) {
+	// A plugin can tune a built-in (override by id) and add its own rule.
+	override := []byte(`{"rules":[{"id":"function-explicit-return-type","target":"FunctionIntent","severity":"warning","when":{"visibility":"public"},"require":{"explicitReturnType":true}}]}`)
+	teamRule := []byte(`{"rules":[{"id":"team-no-throws","target":"FunctionIntent","severity":"error"}]}`)
+	broken := []byte(`{"rules":[]}`) // empty → invalid, must be skipped
+
+	merged, errs := MergePluginRulePacks(DefaultRulePack(), [][]byte{override, broken, teamRule})
+
+	if len(errs) != 1 {
+		t.Errorf("expected 1 load error (the empty pack), got %d: %v", len(errs), errs)
+	}
+	if r := ruleByID(merged.Rules, "function-explicit-return-type"); r == nil || r.Severity != SeverityWarning {
+		t.Errorf("plugin override of a built-in not applied: %+v", r)
+	}
+	if !hasRuleID(merged.Rules, "team-no-throws") {
+		t.Error("plugin's own rule was not added")
+	}
+}
+
+func TestEffectiveRulePack_DefaultsWhenNoPlugins(t *testing.T) {
+	pack, errs := EffectiveRulePack(nil)
+	if len(errs) != 0 {
+		t.Errorf("unexpected errors: %v", errs)
+	}
+	if len(pack.Rules) != len(DefaultRulePack().Rules) {
+		t.Errorf("no plugins should yield exactly the defaults, got %d rules", len(pack.Rules))
+	}
+}
+
 func TestDefaultRulePack_IncludesFailureStrategyRule(t *testing.T) {
 	if !hasRuleID(DefaultRulePack().Rules, "expected-failures-use-result") {
 		t.Error("default pack should include expected-failures-use-result")
