@@ -1,9 +1,10 @@
 # Slice 8+ (RFC): IIR Engine Integration
 
-Status: proposed. This RFC turns the standalone IIR capability (slices 1–7 plus
-the Phase 6 repair loop) into a first-class part of Context Engine: extracted at
-index time, stored in the substrate, extensible through the plugin SDK, and
-callable from every surface.
+Status: implemented (slices 1–6 merged/in-review as of 2026-07-04). This RFC
+turns the standalone IIR capability (slices 1–7 plus the Phase 6 repair loop)
+into a first-class part of Context Engine: extracted at index time, stored in the
+substrate, extensible through the plugin SDK, and callable from every surface.
+The final slice (NL → IIR) is specced in `12-nl-to-iir.md`.
 
 ## Context
 
