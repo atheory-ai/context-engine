@@ -155,6 +155,19 @@ func New(ctx context.Context, cfg *config.Config) (*Engine, error) {
 	return e, nil
 }
 
+// NewLLMProvider builds a standalone model provider from config, without opening
+// databases, starting the write buffer, or loading plugins. It is for model use
+// outside the engine (e.g. IIR shaping, which needs no substrate). Returns nil
+// if no router could be built, so callers' nil checks are not defeated by a
+// typed-nil interface.
+func NewLLMProvider(cfg *config.Config) core.LLMProvider {
+	r := buildLLMRouter(cfg)
+	if r == nil {
+		return nil
+	}
+	return r
+}
+
 // buildLLMRouter constructs the LLM router from config.
 // Checks CE_LLM_API_KEY and ANTHROPIC_API_KEY env vars as fallbacks.
 func buildLLMRouter(cfg *config.Config) *llm.Router {
@@ -508,12 +521,6 @@ func (e *Engine) Index(ctx context.Context, rootDir string, full bool) (indexer.
 // The caller reads from these to render output.
 func (e *Engine) Channels() *core.AppChannels {
 	return e.channels
-}
-
-// LLMProvider returns the engine's model provider, for capabilities that call
-// the model outside the cognitive loop (e.g. IIR shaping).
-func (e *Engine) LLMProvider() core.LLMProvider {
-	return e.llmRouter
 }
 
 // ActiveProjectPath returns the file system path of the active project.

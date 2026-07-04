@@ -11,11 +11,12 @@ func TestExtractJSON(t *testing.T) {
 		in   string
 		want string
 	}{
-		"fenced json":     {"pre\n```json\n{\"a\":1}\n```\npost", `{"a":1}`},
-		"bare fence":      {"```\n{\"a\":1}\n```", `{"a":1}`},
-		"no fence":        {"here it is: {\"a\":1} done", `{"a":1}`},
-		"nested braces":   {"```json\n{\"a\":{\"b\":2}}\n```", `{"a":{"b":2}}`},
-		"brace in string": {`{"name":"a{b}c"}`, `{"name":"a{b}c"}`},
+		"fenced json":        {"pre\n```json\n{\"a\":1}\n```\npost", `{"a":1}`},
+		"bare fence":         {"```\n{\"a\":1}\n```", `{"a":1}`},
+		"no fence":           {"here it is: {\"a\":1} done", `{"a":1}`},
+		"nested braces":      {"```json\n{\"a\":{\"b\":2}}\n```", `{"a":{"b":2}}`},
+		"brace in string":    {`{"name":"a{b}c"}`, `{"name":"a{b}c"}`},
+		"non-json fence 1st": {"```text\nnote\n```\n```json\n{\"a\":1}\n```", `{"a":1}`},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {

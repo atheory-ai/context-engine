@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 
 	"github.com/atheory-ai/context-engine/internal/config"
 	"github.com/atheory-ai/context-engine/internal/iir"
@@ -28,6 +29,10 @@ actual IIR, compares them, applies rules, and prints a verification report.`,
 	cmd.AddCommand(newIirVerifyCmd(), newIirGenerateCmd(), newIirGenTestsCmd(), newIirRepairCmd(), newIirShapeCmd())
 	return cmd
 }
+
+// shapeTimeout bounds the whole shaping operation (up to two model calls) so an
+// unresponsive model can't hang the command indefinitely.
+const shapeTimeout = 2 * time.Minute
 
 func newIirShapeCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -65,16 +70,16 @@ func runIirShape(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Shaping is engine-free — it only needs a model provider, not the
+	// substrate/DBs/plugins a full engine bootstraps.
+	provider := runner.NewLLMProvider(cfg)
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
+	ctx, timeoutCancel := context.WithTimeout(ctx, shapeTimeout)
+	defer timeoutCancel()
 
-	engine, err := runner.New(ctx, cfg)
-	if err != nil {
-		return fmt.Errorf("engine init: %w", err)
-	}
-	defer engine.Close(context.Background())
-
-	intent, err := shaper.New(engine.LLMProvider()).Shape(ctx, description)
+	intent, err := shaper.New(provider).Shape(ctx, description)
 	if err != nil {
 		return err
 	}
@@ -101,6 +106,11 @@ func runIirShape(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "\n--- shape round-trip: %s ---\n", report.Status)
+	for _, m := range report.Mismatches {
+		if m.Severity == iir.SeverityError {
+			fmt.Fprintf(cmd.ErrOrStderr(), "  [%s] %s: %s\n", m.Severity, m.Kind, m.Message)
+		}
+	}
 	if report.Status != iir.StatusPassed {
 		return errSilent
 	}

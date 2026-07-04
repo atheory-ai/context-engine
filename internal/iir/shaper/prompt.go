@@ -46,12 +46,15 @@ func userPrompt(description string, prevErr error) string {
 	)
 }
 
-// extractJSON pulls the JSON object from a model response. It prefers a fenced
-// ```json block, falls back to a bare ``` block, then to the first balanced
-// {...} span. Returns an error if no JSON object is present.
+// extractJSON pulls the JSON object from a model response. It scans each ```
+// code fence in order for a JSON object (so a non-JSON fence preceding the real
+// one — e.g. a ```text note — is skipped), then falls back to the first balanced
+// {...} span anywhere in the response. Returns an error if none is present.
 func extractJSON(response string) ([]byte, error) {
-	if b, ok := fencedBlock(response); ok {
-		response = b
+	for _, block := range fencedBlocks(response) {
+		if obj, ok := firstJSONObject(block); ok {
+			return []byte(obj), nil
+		}
 	}
 	if obj, ok := firstJSONObject(response); ok {
 		return []byte(obj), nil
@@ -59,22 +62,27 @@ func extractJSON(response string) ([]byte, error) {
 	return nil, errors.New("no JSON object found in model response")
 }
 
-// fencedBlock returns the contents of the first ``` code fence (``` or ```json).
-func fencedBlock(s string) (string, bool) {
-	start := strings.Index(s, "```")
-	if start < 0 {
-		return "", false
+// fencedBlocks returns the contents of every ``` code fence in order, dropping
+// an optional language tag on each opening fence line (e.g. "json").
+func fencedBlocks(s string) []string {
+	var blocks []string
+	for {
+		start := strings.Index(s, "```")
+		if start < 0 {
+			break
+		}
+		rest := s[start+3:]
+		if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
+			rest = rest[nl+1:]
+		}
+		end := strings.Index(rest, "```")
+		if end < 0 {
+			break
+		}
+		blocks = append(blocks, rest[:end])
+		s = rest[end+3:]
 	}
-	rest := s[start+3:]
-	// Drop an optional language tag on the opening fence line (e.g. "json").
-	if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
-		rest = rest[nl+1:]
-	}
-	end := strings.Index(rest, "```")
-	if end < 0 {
-		return "", false
-	}
-	return rest[:end], true
+	return blocks
 }
 
 // firstJSONObject returns the first brace-balanced {...} span in s, ignoring
