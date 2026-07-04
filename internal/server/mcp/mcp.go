@@ -59,6 +59,7 @@ func (s *Server) registerTools() {
 	tools.RegisterStatus(s)
 	tools.RegisterSearch(s)
 	tools.RegisterDirectTools(s)
+	tools.RegisterIIR(s)
 }
 
 // Shutdown gracefully stops the SSE HTTP server (if running).
