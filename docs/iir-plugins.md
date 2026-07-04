@@ -61,8 +61,9 @@ can turn intent into verified code without a plugin:
 
 Request bodies carry the `intent` (a `FunctionIntent` object) and, for verify, a
 `source` string. These handlers are engine-free — pure `internal/iir`
-computation — so they run without an indexed project. The CLI equivalents are
-`ce iir verify|generate|gen-tests`.
+computation — so they run without an indexed project. Request bodies are
+size-capped (413 when exceeded), matching the `ce.iir_*` host payload cap. The
+CLI equivalents are `ce iir verify|generate|gen-tests`.
 
 ## Interfaces
 

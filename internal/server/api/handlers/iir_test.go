@@ -85,6 +85,16 @@ func TestIIRGenTests_ReturnsArtifact(t *testing.T) {
 	}
 }
 
+func TestIIRHandlers_OversizedBodyRejected(t *testing.T) {
+	// A body over the cap is rejected with 413 before parsing.
+	huge := `{"intent":{"kind":"FunctionIntent","name":"f","language":"typescript","junk":"` +
+		strings.Repeat("a", maxIIRBodyBytes+1) + `"}}`
+	rec := postJSON(t, IIRGenerate(), huge)
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("status = %d, want 413", rec.Code)
+	}
+}
+
 func TestIIRHandlers_BadRequests(t *testing.T) {
 	cases := []struct {
 		name string
