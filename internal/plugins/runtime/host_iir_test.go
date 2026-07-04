@@ -1,6 +1,31 @@
 package runtime
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestValidateExtractLanguage(t *testing.T) {
+	for _, ok := range []string{"", "typescript"} {
+		if err := validateExtractLanguage(ok); err != nil {
+			t.Errorf("validateExtractLanguage(%q) = %v, want nil", ok, err)
+		}
+	}
+	for _, bad := range []string{"go", "python", "rust"} {
+		if err := validateExtractLanguage(bad); err == nil {
+			t.Errorf("validateExtractLanguage(%q) = nil, want error", bad)
+		}
+	}
+}
+
+func TestCheckPayloadSize(t *testing.T) {
+	if err := checkPayloadSize("source", strings.Repeat("a", 1024)); err != nil {
+		t.Errorf("small payload rejected: %v", err)
+	}
+	if err := checkPayloadSize("source", strings.Repeat("a", maxIIRPayloadBytes+1)); err == nil {
+		t.Error("oversized payload accepted, want error")
+	}
+}
 
 func TestBuildHostFunctions_RegistersIIRUnderCeNamespace(t *testing.T) {
 	funcs := buildHostFunctions(HostDeps{})

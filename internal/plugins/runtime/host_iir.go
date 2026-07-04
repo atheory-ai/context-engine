@@ -3,11 +3,37 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	extism "github.com/extism/go-sdk"
 
 	"github.com/atheory-ai/context-engine/internal/iir"
 )
+
+// maxIIRPayloadBytes bounds plugin-supplied source/intent strings before they
+// reach tree-sitter parsing, so a buggy or hostile plugin can't feed the host
+// an unbounded payload on every call. 4 MiB is far above any real function.
+const maxIIRPayloadBytes = 4 << 20
+
+// checkPayloadSize returns an error if a plugin-supplied string exceeds the cap.
+func checkPayloadSize(name, s string) error {
+	if len(s) > maxIIRPayloadBytes {
+		return fmt.Errorf("%s exceeds %d bytes", name, maxIIRPayloadBytes)
+	}
+	return nil
+}
+
+// validateExtractLanguage checks the language a plugin asked to extract. Empty
+// defaults to the only supported language; anything else is rejected with a
+// clear message rather than silently parsed as TypeScript.
+func validateExtractLanguage(lang string) error {
+	switch lang {
+	case "", "typescript":
+		return nil
+	default:
+		return fmt.Errorf("unsupported language %q (only \"typescript\")", lang)
+	}
+}
 
 // This file exposes the IIR capability to WASM plugins as ce.iir_* host
 // functions (RFC docs/specs/iir-specs/11: "IIR is a host capability plugins
@@ -51,8 +77,17 @@ func makeHostIIRExtract() extism.HostFunction {
 	return extism.NewHostFunctionWithStack(
 		"iir_extract",
 		func(ctx context.Context, p *extism.CurrentPlugin, stack []uint64) {
+			language, _ := p.ReadString(stack[0])
 			source, _ := p.ReadString(stack[1])
 			target, _ := p.ReadString(stack[2])
+			if err := validateExtractLanguage(language); err != nil {
+				writeErr(p, stack, err.Error())
+				return
+			}
+			if err := checkPayloadSize("source", source); err != nil {
+				writeErr(p, stack, err.Error())
+				return
+			}
 			intent, err := iir.ExtractFunction(ctx, []byte(source), target)
 			if err != nil {
 				writeErr(p, stack, err.Error())
@@ -74,6 +109,14 @@ func makeHostIIRVerify() extism.HostFunction {
 		func(ctx context.Context, p *extism.CurrentPlugin, stack []uint64) {
 			intentJSON, _ := p.ReadString(stack[0])
 			source, _ := p.ReadString(stack[1])
+			if err := checkPayloadSize("intent", intentJSON); err != nil {
+				writeErr(p, stack, err.Error())
+				return
+			}
+			if err := checkPayloadSize("source", source); err != nil {
+				writeErr(p, stack, err.Error())
+				return
+			}
 			intent, err := iir.ParseIntentJSON([]byte(intentJSON))
 			if err != nil {
 				writeErr(p, stack, err.Error())
@@ -99,6 +142,10 @@ func makeHostIIRGenerate() extism.HostFunction {
 		"iir_generate",
 		func(ctx context.Context, p *extism.CurrentPlugin, stack []uint64) {
 			intentJSON, _ := p.ReadString(stack[0])
+			if err := checkPayloadSize("intent", intentJSON); err != nil {
+				writeErr(p, stack, err.Error())
+				return
+			}
 			intent, err := iir.ParseIntentJSON([]byte(intentJSON))
 			if err != nil {
 				writeErr(p, stack, err.Error())
@@ -124,6 +171,10 @@ func makeHostIIRGenTests() extism.HostFunction {
 		"iir_gen_tests",
 		func(ctx context.Context, p *extism.CurrentPlugin, stack []uint64) {
 			intentJSON, _ := p.ReadString(stack[0])
+			if err := checkPayloadSize("intent", intentJSON); err != nil {
+				writeErr(p, stack, err.Error())
+				return
+			}
 			intent, err := iir.ParseIntentJSON([]byte(intentJSON))
 			if err != nil {
 				writeErr(p, stack, err.Error())

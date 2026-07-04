@@ -44,6 +44,10 @@ a caller checks for the `error` key. Intent JSON is parsed with the JSON-native
 `ParseIntentJSON` (tolerant of a marshaled `FunctionIntent`), so an extracted
 intent round-trips straight back into verify/generate.
 
+`ce.iir_extract` rejects any `language` other than `typescript` (empty defaults
+to it). Plugin-supplied `source`/`intent` payloads are size-capped before
+parsing, so a runaway plugin can't feed the host unbounded input.
+
 ## Interfaces
 
 The Go interfaces live in `internal/iir/plugin.go`. They mirror the
