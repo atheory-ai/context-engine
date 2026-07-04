@@ -39,6 +39,8 @@ func buildHostFunctions(deps HostDeps) []extism.HostFunction {
 		makeHostNodeID(),
 		makeHostEdgeID(),
 	}
+	// IIR is a host capability plugins can call (extract/verify/generate/tests).
+	funcs = append(funcs, buildIIRHostFunctions()...)
 	for i := range funcs {
 		funcs[i].SetNamespace("ce")
 	}

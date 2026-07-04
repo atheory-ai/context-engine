@@ -1,6 +1,7 @@
 package iir
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -32,6 +33,22 @@ func LoadIntent(data []byte) (*FunctionIntent, error) {
 		return nil, fmt.Errorf("parse IIR: %w", err)
 	}
 
+	normalizeIntent(&intent)
+	if err := validateIntent(&intent); err != nil {
+		return nil, err
+	}
+	return &intent, nil
+}
+
+// ParseIntentJSON parses intended IIR from JSON and validates its schema. Unlike
+// LoadIntent (YAML, strict about unknown fields), this tolerates the extra keys a
+// json.Marshal of a FunctionIntent emits (e.g. returns.explicit) so extracted
+// IIR round-trips through the JSON host-function boundary.
+func ParseIntentJSON(data []byte) (*FunctionIntent, error) {
+	var intent FunctionIntent
+	if err := json.Unmarshal(data, &intent); err != nil {
+		return nil, fmt.Errorf("parse IIR JSON: %w", err)
+	}
 	normalizeIntent(&intent)
 	if err := validateIntent(&intent); err != nil {
 		return nil, err
