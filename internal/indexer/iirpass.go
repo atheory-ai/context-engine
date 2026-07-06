@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"path/filepath"
 	"strings"
 
@@ -65,47 +66,47 @@ func (idx *Indexer) extractFileIIR(
 	}
 }
 
-// correlateIIR matches each extracted intent to a function symbol node by name
-// and builds an 'extracted' IIRRecord per match. Intents with no matching node
-// (e.g. a name the plugin didn't surface as a symbol) are skipped — a function
-// with no node has nowhere to attach. Pure: no I/O.
+// nameByte keys a symbol node by its name and start byte for exact correlation.
+type nameByte struct {
+	name      string
+	startByte uint32
+}
+
+// correlateIIR matches each extracted function to its structural symbol node and
+// builds an 'extracted' IIRRecord per match. Matching is exact by
+// (name, start_byte) — the plugin and IIR anchor start_byte on the same
+// declaration node — which disambiguates same-named functions (overloads). When
+// no exact byte match is found but the name is unique among symbol nodes, that
+// node is used (tolerates any anchor drift). A same-named function with no exact
+// match is skipped rather than attached to the wrong node. Pure: no I/O.
 func correlateIIR(
 	projectID core.ProjectID,
 	language, sourceHash string,
-	intents []*iir.FunctionIntent,
+	fns []iir.ExtractedFunction,
 	symbolNodes []core.Node,
 	now int64,
 ) ([]core.IIRRecord, error) {
-	// Build a name → node index. A name mapping to more than one symbol node
-	// (overloads, or same-named functions the plugin aggregated) is ambiguous:
-	// without a location we can't tell which node an intent belongs to, so we
-	// mark it and skip rather than risk attaching intent to the wrong symbol.
-	// (Location-based disambiguation is a later SDK follow-up — see the RFC.)
-	nodeByName := make(map[string]core.NodeID, len(symbolNodes))
-	ambiguous := make(map[string]bool)
+	byNameByte := make(map[nameByte]core.NodeID)
+	byName := make(map[string][]core.NodeID)
 	for _, n := range symbolNodes {
 		if n.Type != nodeTypeSymbol {
 			continue
 		}
-		if _, seen := nodeByName[n.Label]; seen {
-			ambiguous[n.Label] = true
-			continue
+		byName[n.Label] = append(byName[n.Label], n.ID)
+		if sb, ok := nodeStartByte(n); ok {
+			byNameByte[nameByte{n.Label, sb}] = n.ID
 		}
-		nodeByName[n.Label] = n.ID
 	}
 
-	out := make([]core.IIRRecord, 0, len(intents))
-	for _, fi := range intents {
-		if ambiguous[fi.Name] {
-			continue
-		}
-		nodeID, ok := nodeByName[fi.Name]
+	out := make([]core.IIRRecord, 0, len(fns))
+	for _, f := range fns {
+		nodeID, ok := resolveSymbolNode(f, byNameByte, byName)
 		if !ok {
 			continue
 		}
-		payload, err := json.Marshal(fi)
+		payload, err := json.Marshal(f.Intent)
 		if err != nil {
-			return nil, fmt.Errorf("marshal intent %q: %w", fi.Name, err)
+			return nil, fmt.Errorf("marshal intent %q: %w", f.Intent.Name, err)
 		}
 		out = append(out, core.IIRRecord{
 			ProjectID:  projectID,
@@ -119,4 +120,37 @@ func correlateIIR(
 		})
 	}
 	return out, nil
+}
+
+// resolveSymbolNode picks the node for an extracted function: exact
+// (name, start_byte) first, then a unique-name fallback; ambiguous otherwise.
+func resolveSymbolNode(
+	f iir.ExtractedFunction,
+	byNameByte map[nameByte]core.NodeID,
+	byName map[string][]core.NodeID,
+) (core.NodeID, bool) {
+	if id, ok := byNameByte[nameByte{f.Intent.Name, f.StartByte}]; ok {
+		return id, true
+	}
+	if ids := byName[f.Intent.Name]; len(ids) == 1 {
+		return ids[0], true
+	}
+	return "", false
+}
+
+// nodeStartByte reads a symbol node's start_byte property. It arrives as a JSON
+// number (float64) across the plugin boundary; uint32 covers an in-process
+// producer. A negative or out-of-range value is rejected.
+func nodeStartByte(n core.Node) (uint32, bool) {
+	switch v := n.Properties["start_byte"].(type) {
+	case float64:
+		if v < 0 || v > math.MaxUint32 {
+			return 0, false
+		}
+		return uint32(v), true
+	case uint32:
+		return v, true
+	default:
+		return 0, false
+	}
 }

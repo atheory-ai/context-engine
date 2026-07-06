@@ -3,6 +3,7 @@ package iir
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -282,16 +283,32 @@ func TestExtractAllFromNode_ReusesParse(t *testing.T) {
 		t.Fatalf("ExtractAllFromNode: %v", err)
 	}
 	names := make([]string, len(got))
-	for i, fi := range got {
-		names[i] = fi.Name
+	for i, f := range got {
+		names[i] = f.Intent.Name
 	}
 	if !reflect.DeepEqual(names, []string{"a", "b"}) {
 		t.Errorf("names = %v, want [a b]", names)
 	}
-	// Extracting from a shared node must match the re-parsing ExtractAll.
-	viaParse, _ := ExtractAll(context.Background(), src)
-	if !reflect.DeepEqual(got, viaParse) {
-		t.Error("ExtractAllFromNode diverged from ExtractAll")
+	// Start bytes are captured for correlation and point at the declaration
+	// node (here the `function` keyword, since both are function declarations).
+	if !strings.HasPrefix(string(src[got[0].StartByte:]), "function a") {
+		t.Errorf("a start byte %d does not point at its declaration", got[0].StartByte)
+	}
+	if !strings.HasPrefix(string(src[got[1].StartByte:]), "function b") {
+		t.Errorf("b start byte %d does not point at its declaration", got[1].StartByte)
+	}
+	// The intents must match the re-parsing ExtractAll.
+	viaParse, err := ExtractAll(context.Background(), src)
+	if err != nil {
+		t.Fatalf("ExtractAll: %v", err)
+	}
+	if len(viaParse) != len(got) {
+		t.Fatalf("length mismatch: ExtractAllFromNode=%d ExtractAll=%d", len(got), len(viaParse))
+	}
+	for i := range got {
+		if !reflect.DeepEqual(got[i].Intent, viaParse[i]) {
+			t.Errorf("intent %d diverged between ExtractAllFromNode and ExtractAll", i)
+		}
 	}
 }
 
