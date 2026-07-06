@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"path/filepath"
 	"strings"
 
@@ -137,15 +138,15 @@ func resolveSymbolNode(
 	return "", false
 }
 
-// nodeStartByte reads a symbol node's start_byte property (a JSON number, so it
-// arrives as float64 across the plugin boundary), coercing to uint32.
+// nodeStartByte reads a symbol node's start_byte property. It arrives as a JSON
+// number (float64) across the plugin boundary; uint32 covers an in-process
+// producer. A negative or out-of-range value is rejected.
 func nodeStartByte(n core.Node) (uint32, bool) {
 	switch v := n.Properties["start_byte"].(type) {
 	case float64:
-		return uint32(v), true
-	case int:
-		return uint32(v), true
-	case int64:
+		if v < 0 || v > math.MaxUint32 {
+			return 0, false
+		}
 		return uint32(v), true
 	case uint32:
 		return v, true
