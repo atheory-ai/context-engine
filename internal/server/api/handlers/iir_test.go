@@ -6,7 +6,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/atheory-ai/context-engine/internal/iir"
 )
+
+// defaultRules is the rule-pack provider used by most handler tests.
+func defaultRules() iir.RulePack { return iir.DefaultRulePack() }
 
 const validIntentJSON = `{
 	"kind": "FunctionIntent",
@@ -53,7 +58,7 @@ func TestIIRVerify_RoundTripsGeneratedSource(t *testing.T) {
 		"intent": json.RawMessage(validIntentJSON),
 		"source": gen.Source,
 	})
-	rec := postJSON(t, IIRVerify(), string(body))
+	rec := postJSON(t, IIRVerify(defaultRules), string(body))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -95,6 +100,27 @@ func TestIIRHandlers_OversizedBodyRejected(t *testing.T) {
 	}
 }
 
+func TestIIRVerify_UsesProvidedRulePack(t *testing.T) {
+	// A provider returning a pack with a uniquely-named rule proves the handler
+	// evaluates the supplied pack (plugin-merged) rather than only the defaults.
+	withPluginRule := func() iir.RulePack {
+		return iir.RulePack{Rules: []iir.Rule{{
+			ID: "team-plugin-rule", Target: iir.KindFunctionIntent, Severity: iir.SeverityWarning,
+		}}}
+	}
+	body, _ := json.Marshal(map[string]any{
+		"intent": json.RawMessage(validIntentJSON),
+		"source": `export function validateDonationAmount(amount: Money, campaign: Campaign): ValidationResult<Money> { return ok(amount); }`,
+	})
+	rec := postJSON(t, IIRVerify(withPluginRule), string(body))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"team-plugin-rule"`) {
+		t.Errorf("report should reflect the provided rule pack, got: %s", rec.Body.String())
+	}
+}
+
 func TestIIRHandlers_BadRequests(t *testing.T) {
 	cases := []struct {
 		name string
@@ -103,7 +129,7 @@ func TestIIRHandlers_BadRequests(t *testing.T) {
 	}{
 		{"malformed json", IIRGenerate(), `{not json`},
 		{"invalid intent", IIRGenerate(), `{"intent": {"kind": "FunctionIntent"}}`}, // missing name/language
-		{"empty body", IIRVerify(), ``},
+		{"empty body", IIRVerify(defaultRules), ``},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/atheory-ai/context-engine/internal/iir"
 )
 
 const mcpIntentJSON = `{
@@ -37,7 +39,7 @@ func TestHandleIIRVerify_RoundTrips(t *testing.T) {
 		"intent": json.RawMessage(mcpIntentJSON),
 		"source": source,
 	})
-	res, err := handleIIRVerify()(context.Background(), args)
+	res, err := handleIIRVerify(iir.DefaultRulePack)(context.Background(), args)
 	if err != nil {
 		t.Fatalf("handler error: %v", err)
 	}
@@ -46,6 +48,30 @@ func TestHandleIIRVerify_RoundTrips(t *testing.T) {
 	}
 	if !strings.Contains(res.Content[0].Text, `"status": "passed"`) {
 		t.Errorf("expected passed report, got: %s", res.Content[0].Text)
+	}
+}
+
+func TestHandleIIRVerify_UsesProvidedRulePack(t *testing.T) {
+	// A uniquely-named rule in the provided pack must appear in the report,
+	// proving the handler uses the supplied (plugin-merged) pack.
+	withPluginRule := func() iir.RulePack {
+		return iir.RulePack{Rules: []iir.Rule{{
+			ID: "team-plugin-rule", Target: iir.KindFunctionIntent, Severity: iir.SeverityWarning,
+		}}}
+	}
+	args, _ := json.Marshal(map[string]any{
+		"intent": json.RawMessage(mcpIntentJSON),
+		"source": `export function f(x: number): number { return x; }`,
+	})
+	res, err := handleIIRVerify(withPluginRule)(context.Background(), args)
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("verify returned error: %+v", res.Content)
+	}
+	if !strings.Contains(res.Content[0].Text, `"team-plugin-rule"`) {
+		t.Errorf("report should reflect the provided rule pack, got: %s", res.Content[0].Text)
 	}
 }
 

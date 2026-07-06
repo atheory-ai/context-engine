@@ -53,15 +53,22 @@ Returns test source plus a coverage report over the IIR's behaviors, failure mod
 	}`),
 }
 
-// RegisterIIR registers the ce_iir_* MCP tools. IIR needs no engine, so the
-// Registrar's Engine() is unused here.
+// RegisterIIR registers the ce_iir_* MCP tools. Generate/gen-tests need no
+// engine; verify uses the effective rule pack (defaults + plugin-contributed
+// rules) from the engine.
 func RegisterIIR(s Registrar) {
-	s.RegisterTool(iirVerifyTool, handleIIRVerify())
+	rulePack := func() iir.RulePack {
+		if e := s.Engine(); e != nil {
+			return e.IIRRulePack()
+		}
+		return iir.DefaultRulePack()
+	}
+	s.RegisterTool(iirVerifyTool, handleIIRVerify(rulePack))
 	s.RegisterTool(iirGenerateTool, handleIIRGenerate())
 	s.RegisterTool(iirGenTestsTool, handleIIRGenTests())
 }
 
-func handleIIRVerify() HandlerFunc {
+func handleIIRVerify(rulePack func() iir.RulePack) HandlerFunc {
 	return func(ctx context.Context, args json.RawMessage) (protocol.CallToolResult, error) {
 		var params struct {
 			Intent json.RawMessage `json:"intent"`
@@ -74,7 +81,7 @@ func handleIIRVerify() HandlerFunc {
 		if err != nil {
 			return errorResult(err.Error()), nil
 		}
-		report, err := iir.VerifySource(ctx, intent, []byte(params.Source), iir.DefaultRulePack())
+		report, err := iir.VerifySource(ctx, intent, []byte(params.Source), rulePack())
 		if err != nil {
 			return errorResult(err.Error()), nil
 		}
