@@ -67,6 +67,9 @@ func TestHandleIIRVerify_UsesProvidedRulePack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handler error: %v", err)
 	}
+	if res.IsError {
+		t.Fatalf("verify returned error: %+v", res.Content)
+	}
 	if !strings.Contains(res.Content[0].Text, `"team-plugin-rule"`) {
 		t.Errorf("report should reflect the provided rule pack, got: %s", res.Content[0].Text)
 	}
