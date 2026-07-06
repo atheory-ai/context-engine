@@ -298,7 +298,13 @@ func TestExtractAllFromNode_ReusesParse(t *testing.T) {
 		t.Errorf("b start byte %d does not point at its declaration", got[1].StartByte)
 	}
 	// The intents must match the re-parsing ExtractAll.
-	viaParse, _ := ExtractAll(context.Background(), src)
+	viaParse, err := ExtractAll(context.Background(), src)
+	if err != nil {
+		t.Fatalf("ExtractAll: %v", err)
+	}
+	if len(viaParse) != len(got) {
+		t.Fatalf("length mismatch: ExtractAllFromNode=%d ExtractAll=%d", len(got), len(viaParse))
+	}
 	for i := range got {
 		if !reflect.DeepEqual(got[i].Intent, viaParse[i]) {
 			t.Errorf("intent %d diverged between ExtractAllFromNode and ExtractAll", i)
