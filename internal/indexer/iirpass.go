@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	sitter "github.com/smacker/go-tree-sitter"
+
 	"github.com/atheory-ai/context-engine/internal/core"
 	"github.com/atheory-ai/context-engine/internal/iir"
 	"github.com/atheory-ai/context-engine/internal/storage/queries"
@@ -35,6 +37,7 @@ func (idx *Indexer) extractFileIIR(
 	projectID core.ProjectID,
 	relPath, sourceHash string,
 	content []byte,
+	tree *sitter.Tree,
 	symbolNodes []core.Node,
 	now int64,
 ) {
@@ -42,7 +45,10 @@ func (idx *Indexer) extractFileIIR(
 	if !ok {
 		return
 	}
-	intents, err := iir.ExtractAll(ctx, content)
+	if tree == nil {
+		return // no grammar parse to reuse
+	}
+	intents, err := iir.ExtractAllFromNode(tree.RootNode(), content)
 	if err != nil {
 		idx.emitWarning(fmt.Sprintf("iir extract %s: %v", relPath, err))
 		return

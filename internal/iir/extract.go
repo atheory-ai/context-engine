@@ -65,7 +65,17 @@ func ExtractAll(ctx context.Context, source []byte) ([]*FunctionIntent, error) {
 	}
 	defer tree.Close()
 
-	root := tree.RootNode()
+	return ExtractAllFromNode(tree.RootNode(), source)
+}
+
+// ExtractAllFromNode extracts a FunctionIntent per top-level function from an
+// already-parsed tree-sitter root node, so the indexer can reuse the parse it
+// already did rather than re-parsing. source is the file bytes the node spans;
+// the node must not be closed while this runs.
+func ExtractAllFromNode(root *sitter.Node, source []byte) ([]*FunctionIntent, error) {
+	if root == nil {
+		return nil, fmt.Errorf("nil root node")
+	}
 	if root.HasError() {
 		return nil, fmt.Errorf("source has syntax errors; cannot extract intent")
 	}

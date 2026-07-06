@@ -4,6 +4,9 @@ import (
 	"context"
 	"reflect"
 	"testing"
+
+	sitter "github.com/smacker/go-tree-sitter"
+	ts "github.com/smacker/go-tree-sitter/typescript/typescript"
 )
 
 func extract(t *testing.T, src, name string) *FunctionIntent {
@@ -261,6 +264,40 @@ func TestExtractAll_NoFunctionsIsEmptyNotError(t *testing.T) {
 func TestExtractAll_MalformedErrors(t *testing.T) {
 	if _, err := ExtractAll(context.Background(), []byte(`export function f( {`)); err == nil {
 		t.Error("expected error for malformed source")
+	}
+}
+
+func TestExtractAllFromNode_ReusesParse(t *testing.T) {
+	src := []byte("export function a(x: number): number { return x; }\nfunction b(): void {}")
+	p := sitter.NewParser()
+	p.SetLanguage(ts.GetLanguage())
+	tree, err := p.ParseCtx(context.Background(), nil, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tree.Close()
+
+	got, err := ExtractAllFromNode(tree.RootNode(), src)
+	if err != nil {
+		t.Fatalf("ExtractAllFromNode: %v", err)
+	}
+	names := make([]string, len(got))
+	for i, fi := range got {
+		names[i] = fi.Name
+	}
+	if !reflect.DeepEqual(names, []string{"a", "b"}) {
+		t.Errorf("names = %v, want [a b]", names)
+	}
+	// Extracting from a shared node must match the re-parsing ExtractAll.
+	viaParse, _ := ExtractAll(context.Background(), src)
+	if !reflect.DeepEqual(got, viaParse) {
+		t.Error("ExtractAllFromNode diverged from ExtractAll")
+	}
+}
+
+func TestExtractAllFromNode_NilRoot(t *testing.T) {
+	if _, err := ExtractAllFromNode(nil, nil); err == nil {
+		t.Error("expected error for nil root")
 	}
 }
 
