@@ -243,10 +243,20 @@ func (idx *Indexer) processFile(
 		return -1, 0, nil // no plugin handles this extension
 	}
 
-	// Parse the file with tree-sitter; treeJSON is nil if no grammar available.
-	treeJSON, err := idx.parser.Parse(ctx, result.RelPath, content)
+	// Parse the file with tree-sitter ONCE. The same tree feeds both the plugin
+	// (serialized) and in-process IIR extraction. tree/treeJSON are nil if no
+	// grammar is available.
+	tree, grammar, err := idx.parser.ParseTree(ctx, result.RelPath, content)
 	if err != nil {
 		return 0, 0, fmt.Errorf("parse: %w", err)
+	}
+	var treeJSON []byte
+	if tree != nil {
+		defer tree.Close()
+		treeJSON, err = parser.SerializeTree(tree, content, grammar.Name)
+		if err != nil {
+			return 0, 0, fmt.Errorf("serialize tree: %w", err)
+		}
 	}
 
 	nodesOut := 0
@@ -313,9 +323,10 @@ func (idx *Indexer) processFile(
 		return 0, 0, fmt.Errorf("extract failed for all matching plugins")
 	}
 
-	// Extract IIR from the file and attach it to its function nodes.
+	// Extract IIR from the file and attach it to its function nodes, reusing the
+	// tree already parsed above.
 	if idx.cfg.IIR.Enabled {
-		idx.extractFileIIR(ctx, projectID, result.RelPath, hash, content, fileSymbolNodes, now)
+		idx.extractFileIIR(ctx, projectID, result.RelPath, hash, content, tree, fileSymbolNodes, now)
 	}
 
 	// Persist the file hash for future incremental runs.
