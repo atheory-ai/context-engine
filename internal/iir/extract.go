@@ -65,14 +65,30 @@ func ExtractAll(ctx context.Context, source []byte) ([]*FunctionIntent, error) {
 	}
 	defer tree.Close()
 
-	return ExtractAllFromNode(tree.RootNode(), source)
+	fns, err := ExtractAllFromNode(tree.RootNode(), source)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*FunctionIntent, len(fns))
+	for i, f := range fns {
+		out[i] = f.Intent
+	}
+	return out, nil
 }
 
-// ExtractAllFromNode extracts a FunctionIntent per top-level function from an
+// ExtractedFunction pairs an extracted FunctionIntent with the start byte of its
+// declaration node, so a consumer can correlate it to the structural symbol node
+// the language plugin emitted for the same function.
+type ExtractedFunction struct {
+	Intent    *FunctionIntent
+	StartByte uint32
+}
+
+// ExtractAllFromNode extracts an ExtractedFunction per top-level function from an
 // already-parsed tree-sitter root node, so the indexer can reuse the parse it
 // already did rather than re-parsing. source is the file bytes the node spans;
 // the node must not be closed while this runs.
-func ExtractAllFromNode(root *sitter.Node, source []byte) ([]*FunctionIntent, error) {
+func ExtractAllFromNode(root *sitter.Node, source []byte) ([]ExtractedFunction, error) {
 	if root == nil {
 		return nil, fmt.Errorf("nil root node")
 	}
@@ -82,9 +98,12 @@ func ExtractAllFromNode(root *sitter.Node, source []byte) ([]*FunctionIntent, er
 
 	funcs := collectFunctions(root, source)
 	imports := collectImports(root, source)
-	out := make([]*FunctionIntent, 0, len(funcs))
+	out := make([]ExtractedFunction, 0, len(funcs))
 	for _, fn := range funcs {
-		out = append(out, buildIntent(fn, source, imports))
+		out = append(out, ExtractedFunction{
+			Intent:    buildIntent(fn, source, imports),
+			StartByte: fn.startByte,
+		})
 	}
 	return out, nil
 }
@@ -93,6 +112,7 @@ func ExtractAllFromNode(root *sitter.Node, source []byte) ([]*FunctionIntent, er
 type funcCandidate struct {
 	name       string
 	exported   bool
+	startByte  uint32       // start byte of the declaration node, for node correlation
 	params     *sitter.Node // formal_parameters
 	returnType *sitter.Node // type_annotation, or nil when absent
 	body       *sitter.Node // statement_block or arrow-function expression
@@ -153,6 +173,7 @@ func fromFunctionDeclaration(node *sitter.Node, src []byte, exported bool) []fun
 	return []funcCandidate{{
 		name:       name,
 		exported:   exported,
+		startByte:  node.StartByte(),
 		params:     node.ChildByFieldName("parameters"),
 		returnType: node.ChildByFieldName("return_type"),
 		body:       node.ChildByFieldName("body"),
@@ -171,8 +192,11 @@ func fromVariableDeclaration(node *sitter.Node, src []byte, exported bool) []fun
 			continue
 		}
 		out = append(out, funcCandidate{
-			name:       nodeFieldText(declr, "name", src),
-			exported:   exported,
+			name:     nodeFieldText(declr, "name", src),
+			exported: exported,
+			// Anchor on the declaration statement (the plugin uses the same
+			// node for its symbol's start_byte), so correlation matches exactly.
+			startByte:  node.StartByte(),
 			params:     arrowParams(value),
 			returnType: value.ChildByFieldName("return_type"),
 			body:       value.ChildByFieldName("body"),

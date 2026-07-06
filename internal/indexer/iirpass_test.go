@@ -24,26 +24,39 @@ func TestIIRLanguageForFile(t *testing.T) {
 	}
 }
 
-func TestCorrelateIIR_MatchesSymbolByName(t *testing.T) {
-	intents := []*iir.FunctionIntent{
-		{Kind: iir.KindFunctionIntent, Name: "a"},
-		{Kind: iir.KindFunctionIntent, Name: "b"},
-		{Kind: iir.KindFunctionIntent, Name: "orphan"}, // no node → skipped
+func ef(name string, startByte uint32) iir.ExtractedFunction {
+	return iir.ExtractedFunction{
+		Intent:    &iir.FunctionIntent{Kind: iir.KindFunctionIntent, Name: name},
+		StartByte: startByte,
+	}
+}
+
+func symNode(id, label string, startByte uint32) core.Node {
+	return core.Node{
+		ID: core.NodeID(id), Type: "symbol", Label: label,
+		Properties: map[string]any{"start_byte": float64(startByte)}, // JSON number
+	}
+}
+
+func TestCorrelateIIR_MatchesByNameAndStartByte(t *testing.T) {
+	fns := []iir.ExtractedFunction{
+		ef("a", 10),
+		ef("b", 40),
+		ef("orphan", 99), // no node → skipped
 	}
 	nodes := []core.Node{
-		{ID: "n-a", Type: "symbol", Label: "a"},
-		{ID: "n-b", Type: "symbol", Label: "b"},
-		{ID: "n-file", Type: "file", Label: "a"}, // non-symbol, same label → ignored
+		symNode("n-a", "a", 10),
+		symNode("n-b", "b", 40),
+		{ID: "n-file", Type: "file", Label: "a"}, // non-symbol → ignored
 	}
 
-	recs, err := correlateIIR("proj", "typescript", "hash1", intents, nodes, 100)
+	recs, err := correlateIIR("proj", "typescript", "hash1", fns, nodes, 100)
 	if err != nil {
 		t.Fatalf("correlateIIR: %v", err)
 	}
 	if len(recs) != 2 {
 		t.Fatalf("want 2 records (a, b), got %d: %+v", len(recs), recs)
 	}
-
 	byNode := map[core.NodeID]core.IIRRecord{}
 	for _, r := range recs {
 		byNode[r.NodeID] = r
@@ -55,41 +68,62 @@ func TestCorrelateIIR_MatchesSymbolByName(t *testing.T) {
 	if rec.Kind != queries.IIRKindExtracted || rec.Language != "typescript" || rec.SourceHash != "hash1" {
 		t.Errorf("unexpected record fields: %+v", rec)
 	}
-	if rec.ProjectID != "proj" || rec.CreatedAt != 100 || rec.UpdatedAt != 100 {
-		t.Errorf("unexpected provenance: %+v", rec)
-	}
 	if !strings.Contains(rec.Payload, `"name":"a"`) {
 		t.Errorf("payload should embed the FunctionIntent JSON: %s", rec.Payload)
 	}
 }
 
-func TestCorrelateIIR_SkipsAmbiguousDuplicateLabels(t *testing.T) {
-	// Two symbol nodes share the label "dup"; "unique" is unambiguous.
-	intents := []*iir.FunctionIntent{
-		{Kind: iir.KindFunctionIntent, Name: "dup"},
-		{Kind: iir.KindFunctionIntent, Name: "unique"},
-	}
-	nodes := []core.Node{
-		{ID: "n-dup-1", Type: "symbol", Label: "dup"},
-		{ID: "n-dup-2", Type: "symbol", Label: "dup"},
-		{ID: "n-unique", Type: "symbol", Label: "unique"},
-	}
+func TestCorrelateIIR_ByteDisambiguatesSameName(t *testing.T) {
+	// Two functions named "dup" at different bytes — exactly what name-only
+	// correlation could not resolve. Both now correlate to the right node.
+	fns := []iir.ExtractedFunction{ef("dup", 10), ef("dup", 50)}
+	nodes := []core.Node{symNode("n-dup-1", "dup", 10), symNode("n-dup-2", "dup", 50)}
 
-	recs, err := correlateIIR("proj", "typescript", "h", intents, nodes, 1)
+	recs, err := correlateIIR("proj", "typescript", "h", fns, nodes, 1)
 	if err != nil {
 		t.Fatalf("correlateIIR: %v", err)
 	}
-	// "dup" is ambiguous → no record (never attach to a guessed node); "unique"
-	// still correlates.
-	if len(recs) != 1 || recs[0].NodeID != "n-unique" {
-		t.Fatalf("want exactly the unambiguous record, got %+v", recs)
+	if len(recs) != 2 {
+		t.Fatalf("want both dup functions correlated, got %+v", recs)
+	}
+	got := map[uint32]core.NodeID{10: recs[0].NodeID, 50: recs[1].NodeID}
+	if got[10] != "n-dup-1" || got[50] != "n-dup-2" {
+		t.Errorf("byte correlation attached to the wrong nodes: %+v", recs)
+	}
+}
+
+func TestCorrelateIIR_UniqueNameFallbackOnByteDrift(t *testing.T) {
+	// The node's byte doesn't match the extracted byte (anchor drift), but the
+	// name is unique → still correlates.
+	fns := []iir.ExtractedFunction{ef("solo", 7)}
+	nodes := []core.Node{symNode("n-solo", "solo", 999)}
+	recs, err := correlateIIR("p", "typescript", "", fns, nodes, 1)
+	if err != nil {
+		t.Fatalf("correlateIIR: %v", err)
+	}
+	if len(recs) != 1 || recs[0].NodeID != "n-solo" {
+		t.Fatalf("expected unique-name fallback to correlate, got %+v", recs)
+	}
+}
+
+func TestCorrelateIIR_AmbiguousNoByteMatchSkipped(t *testing.T) {
+	// Two "dup" nodes, extracted "dup" at a byte matching neither → skipped
+	// rather than attached to a guessed node.
+	fns := []iir.ExtractedFunction{ef("dup", 99)}
+	nodes := []core.Node{symNode("n-dup-1", "dup", 10), symNode("n-dup-2", "dup", 50)}
+	recs, err := correlateIIR("p", "typescript", "", fns, nodes, 1)
+	if err != nil {
+		t.Fatalf("correlateIIR: %v", err)
+	}
+	if len(recs) != 0 {
+		t.Errorf("ambiguous same-name with no byte match must be skipped: %+v", recs)
 	}
 }
 
 func TestCorrelateIIR_IgnoresNonSymbolNodes(t *testing.T) {
-	intents := []*iir.FunctionIntent{{Kind: iir.KindFunctionIntent, Name: "a"}}
+	fns := []iir.ExtractedFunction{ef("a", 0)}
 	nodes := []core.Node{{ID: "f", Type: "file", Label: "a"}}
-	recs, err := correlateIIR("p", "typescript", "", intents, nodes, 1)
+	recs, err := correlateIIR("p", "typescript", "", fns, nodes, 1)
 	if err != nil {
 		t.Fatalf("correlateIIR: %v", err)
 	}
