@@ -48,7 +48,10 @@ type iirIntentRequest struct {
 }
 
 // IIRVerify handles POST /api/v1/iir/verify — verify source against intended IIR.
-func IIRVerify() http.HandlerFunc {
+// rulePack supplies the effective rule pack (built-in defaults merged with any
+// plugin-contributed rules); it is evaluated per request so newly loaded plugins
+// take effect.
+func IIRVerify(rulePack func() iir.RulePack) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req iirVerifyRequest
 		if !readJSONBody(w, r, &req) {
@@ -59,7 +62,7 @@ func IIRVerify() http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		report, err := iir.VerifySource(r.Context(), intent, []byte(req.Source), iir.DefaultRulePack())
+		report, err := iir.VerifySource(r.Context(), intent, []byte(req.Source), rulePack())
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return

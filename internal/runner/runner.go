@@ -19,6 +19,7 @@ import (
 	"github.com/atheory-ai/context-engine/internal/config"
 	"github.com/atheory-ai/context-engine/internal/core"
 	"github.com/atheory-ai/context-engine/internal/graph/substrate"
+	"github.com/atheory-ai/context-engine/internal/iir"
 	"github.com/atheory-ai/context-engine/internal/indexer"
 	"github.com/atheory-ai/context-engine/internal/llm"
 	"github.com/atheory-ai/context-engine/internal/llm/anthropic"
@@ -521,6 +522,22 @@ func (e *Engine) Index(ctx context.Context, rootDir string, full bool) (indexer.
 // The caller reads from these to render output.
 func (e *Engine) Channels() *core.AppChannels {
 	return e.channels
+}
+
+// IIRRulePack returns the effective IIR rule pack: the built-in defaults with
+// any plugin-contributed rule packs merged over them (loaded plugins declare
+// their rule "flavours" in their manifest). A plugin pack that fails to load is
+// skipped with a warning. Consumed by the verify surfaces (MCP/API).
+func (e *Engine) IIRRulePack() iir.RulePack {
+	pack, errs := iir.EffectiveRulePack(e.plugins.IIRRulePackJSONs())
+	for _, err := range errs {
+		e.channels.Emit(core.Emission{
+			Source:  "iir",
+			Channel: core.ChanWarning,
+			Content: fmt.Sprintf("plugin IIR rule pack: %v", err),
+		})
+	}
+	return pack
 }
 
 // ActiveProjectPath returns the file system path of the active project.
