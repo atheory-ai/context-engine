@@ -129,7 +129,7 @@ func New(ctx context.Context, cfg *config.Config) (*Engine, error) {
 
 	// Load default plugins first (lowest priority — user plugins can override).
 	defaultsDir := filepath.Join(cfg.DataDir, "plugins", "defaults")
-	for _, name := range []string{"go-language.wasm", "typescript.wasm", "python.wasm", "php.wasm", "wordpress-conventions.wasm", "woocommerce-conventions.wasm"} {
+	for _, name := range defaultPluginNames {
 		path := filepath.Join(defaultsDir, name)
 		if _, err := os.Stat(path); err != nil {
 			continue // not yet built (development) — skip
@@ -538,6 +538,46 @@ func (e *Engine) IIRRulePack() iir.RulePack {
 		})
 	}
 	return pack
+}
+
+// defaultPluginNames are the built-in plugin wasm files loaded from
+// <dataDir>/plugins/defaults, lowest priority (user plugins override).
+var defaultPluginNames = []string{
+	"go-language.wasm", "typescript.wasm", "python.wasm", "php.wasm",
+	"wordpress-conventions.wasm", "woocommerce-conventions.wasm",
+}
+
+// PluginRulePacks loads the configured plugins and returns their contributed IIR
+// rule-pack JSON, plus a cleanup func to unload them. It is best-effort and
+// standalone: it does not open the substrate or DBs, so lightweight surfaces
+// (the CLI verify commands) can pick up plugin "flavours" without a full engine.
+// If the plugin runtime can't be initialized (e.g. no data dir), it returns nil
+// packs and a no-op cleanup so callers fall back to the built-in defaults.
+func PluginRulePacks(ctx context.Context, cfg *config.Config, ch *core.AppChannels) (packs [][]byte, cleanup func()) {
+	noop := func() {}
+	reg := plugins.NewRegistry()
+	if err := reg.Initialize(cfg.DataDir, ch); err != nil {
+		return nil, noop
+	}
+
+	defaultsDir := filepath.Join(cfg.DataDir, "plugins", "defaults")
+	for _, name := range defaultPluginNames {
+		path := filepath.Join(defaultsDir, name)
+		if _, err := os.Stat(path); err != nil {
+			continue // not built/installed — skip
+		}
+		if err := reg.Load(ctx, path, nil); err != nil {
+			ch.Emit(core.Emission{Source: "iir", Channel: core.ChanWarning,
+				Content: fmt.Sprintf("default plugin %s: %v", name, err)})
+		}
+	}
+	for _, entry := range cfg.Plugins {
+		if err := reg.Load(ctx, entry.Path, entry.Config); err != nil {
+			ch.Emit(core.Emission{Source: "iir", Channel: core.ChanWarning,
+				Content: fmt.Sprintf("plugin %s: %v", entry.Path, err)})
+		}
+	}
+	return reg.IIRRulePackJSONs(), reg.UnloadAll
 }
 
 // ActiveProjectPath returns the file system path of the active project.

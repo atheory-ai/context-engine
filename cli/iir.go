@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/atheory-ai/context-engine/internal/config"
+	"github.com/atheory-ai/context-engine/internal/core"
 	"github.com/atheory-ai/context-engine/internal/iir"
 	"github.com/atheory-ai/context-engine/internal/iir/shaper"
 	"github.com/atheory-ai/context-engine/internal/runner"
@@ -151,7 +152,7 @@ func runIirRepair(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("read source file %s: %w", sourcePath, err)
 	}
-	pack, _, err := resolveRulePack(rulesPath)
+	pack, _, err := resolveRulePack(cmd.Context(), rulesPath)
 	if err != nil {
 		return err
 	}
@@ -276,7 +277,7 @@ func runIirGenerate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	pack, _, err := resolveRulePack(rulesPath)
+	pack, _, err := resolveRulePack(cmd.Context(), rulesPath)
 	if err != nil {
 		return err
 	}
@@ -333,7 +334,7 @@ func runIirVerify(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("read source file %s: %w", sourcePath, err)
 	}
 
-	pack, rulesSource, err := resolveRulePack(rulesPath)
+	pack, rulesSource, err := resolveRulePack(cmd.Context(), rulesPath)
 	if err != nil {
 		return err
 	}
@@ -357,11 +358,12 @@ func runIirVerify(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// resolveRulePack builds the effective rule pack: the built-in defaults with an
-// explicit (--rules) or auto-discovered project rule pack layered on top. The
-// returned string labels the rules source for human output.
-func resolveRulePack(rulesPath string) (iir.RulePack, string, error) {
-	base := iir.DefaultRulePack()
+// resolveRulePack builds the effective rule pack: the built-in defaults plus any
+// plugin-contributed rule packs (best-effort, when a project/data-dir is
+// configured), with an explicit (--rules) or auto-discovered project rule pack
+// layered on top. The returned string labels the rules source for human output.
+func resolveRulePack(ctx context.Context, rulesPath string) (iir.RulePack, string, error) {
+	base, baseLabel := defaultsWithPlugins(ctx)
 
 	if rulesPath != "" {
 		override, err := iir.LoadRulePackFile(rulesPath)
@@ -369,7 +371,7 @@ func resolveRulePack(rulesPath string) (iir.RulePack, string, error) {
 			// LoadRulePackFile already prefixes the path; add the flag context.
 			return iir.RulePack{}, "", fmt.Errorf("invalid --rules pack: %w", err)
 		}
-		return iir.MergeRulePacks(base, override), rulesPath + " (layered on defaults)", nil
+		return iir.MergeRulePacks(base, override), rulesPath + " (layered on " + baseLabel + ")", nil
 	}
 
 	cwd, err := os.Getwd()
@@ -381,9 +383,30 @@ func resolveRulePack(rulesPath string) (iir.RulePack, string, error) {
 		return iir.RulePack{}, "", fmt.Errorf("discover project rule pack: %w", err)
 	}
 	if found {
-		return iir.MergeRulePacks(base, override), path + " (layered on defaults)", nil
+		return iir.MergeRulePacks(base, override), path + " (layered on " + baseLabel + ")", nil
 	}
-	return base, "built-in defaults", nil
+	return base, baseLabel, nil
+}
+
+// defaultsWithPlugins returns the built-in defaults merged with any plugin-
+// contributed rule packs found in the configured project, plus a label for the
+// base. Best-effort: run standalone (no project/data-dir) it yields just the
+// defaults, so verify stays usable outside a project.
+func defaultsWithPlugins(ctx context.Context) (iir.RulePack, string) {
+	cfg, err := config.LoadRaw()
+	if err != nil {
+		return iir.DefaultRulePack(), "built-in defaults"
+	}
+	ch := core.NewAppChannels()
+	packs, cleanup := runner.PluginRulePacks(ctx, cfg, &ch)
+	defer cleanup()
+	if len(packs) == 0 {
+		return iir.DefaultRulePack(), "built-in defaults"
+	}
+	// EffectiveRulePack layers the plugin packs over the defaults; malformed
+	// packs are skipped (their load warnings were already emitted).
+	merged, _ := iir.EffectiveRulePack(packs)
+	return merged, "built-in defaults + plugin rules"
 }
 
 func printReportJSON(cmd *cobra.Command, report *iir.Report) error {
