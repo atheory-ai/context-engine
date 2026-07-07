@@ -72,6 +72,27 @@ type RuleRequire struct {
 	ExplicitReturnType  *bool   `json:"explicitReturnType,omitempty" yaml:"explicitReturnType,omitempty"`
 	SideEffectsDeclared *bool   `json:"sideEffectsDeclared,omitempty" yaml:"sideEffectsDeclared,omitempty"`
 	FailureStrategy     *string `json:"failureStrategy,omitempty" yaml:"failureStrategy,omitempty"`
+	// ForbidConditionShape fails the rule when any behavior clause's normalized
+	// WhenExpr contains a node matching the pattern. This is the first predicate
+	// that reasons over IL *structure* (Expr trees, slice 14), not just
+	// top-level fields — the primitive the conformance layer is built on
+	// (RFC 15). Clauses without a WhenExpr (conditions outside the normalized
+	// grammar) are not matched, so an unstructured condition never trips it.
+	ForbidConditionShape *ExprPattern `json:"forbidConditionShape,omitempty" yaml:"forbidConditionShape,omitempty"`
+}
+
+// ExprPattern is a minimal structural matcher over a normalized Expr tree. A
+// node matches when its operator is in Ops (or Ops is empty, matching any) and —
+// when OperandLiteral is set — at least one of its direct operands is a literal
+// with that text. The match is satisfied if any node in the tree matches, so a
+// pattern describes "this shape appears anywhere in the condition."
+//
+// Deliberately narrow: enough to express real opinions (forbid `== null`,
+// `=== true`, magic-number comparisons) without a general query DSL. Extend the
+// fields on demand rather than up front.
+type ExprPattern struct {
+	Ops            []string `json:"ops,omitempty" yaml:"ops,omitempty"`
+	OperandLiteral *string  `json:"operandLiteral,omitempty" yaml:"operandLiteral,omitempty"`
 }
 
 // RulePack is a named, ordered collection of rules loaded from a file.
@@ -228,6 +249,10 @@ func validateRulePack(pack RulePack) error {
 		if fs := r.Require.FailureStrategy; fs != nil && *fs != "ResultType" {
 			return fmt.Errorf("rule %q: unsupported failureStrategy %q (expected \"ResultType\")", r.ID, *fs)
 		}
+		if p := r.Require.ForbidConditionShape; p != nil && len(p.Ops) == 0 && p.OperandLiteral == nil {
+			return fmt.Errorf("rule %q: forbidConditionShape must set ops and/or operandLiteral "+
+				"(an empty pattern matches every condition)", r.ID)
+		}
 	}
 	return nil
 }
@@ -312,7 +337,77 @@ func checkRequire(req RuleRequire, intent *FunctionIntent) (ok bool, msg, repair
 		return false, "expected failures should be returned via a Result type, not thrown",
 			"Change the return type to a Result/ValidationResult that carries the failure."
 	}
+	if req.ForbidConditionShape != nil {
+		for i, clause := range intent.Behavior {
+			if clause.WhenExpr == nil {
+				continue // condition outside the normalized grammar — not matched
+			}
+			if exprPatternMatches(req.ForbidConditionShape, clause.WhenExpr) {
+				return false,
+					fmt.Sprintf("behavior clause %d condition uses a forbidden shape (%s): %q",
+						i, describeExprPattern(req.ForbidConditionShape), clause.When),
+					"Rewrite the condition to avoid the forbidden shape."
+			}
+		}
+	}
 	return true, "requirements satisfied", ""
+}
+
+// exprPatternMatches reports whether any node in the Expr tree matches the
+// pattern (pre-order). It is the structural counterpart to the scalar require
+// checks above.
+func exprPatternMatches(p *ExprPattern, e *Expr) bool {
+	if e == nil {
+		return false
+	}
+	if exprNodeMatches(p, e) {
+		return true
+	}
+	for _, arg := range e.Args {
+		if exprPatternMatches(p, arg) {
+			return true
+		}
+	}
+	return false
+}
+
+func exprNodeMatches(p *ExprPattern, e *Expr) bool {
+	if len(p.Ops) > 0 && !opIn(e.Op, p.Ops) {
+		return false
+	}
+	if p.OperandLiteral != nil {
+		found := false
+		for _, arg := range e.Args {
+			if arg != nil && arg.Op == "lit" && arg.Text == *p.OperandLiteral {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+func opIn(op string, ops []string) bool {
+	for _, o := range ops {
+		if o == op {
+			return true
+		}
+	}
+	return false
+}
+
+func describeExprPattern(p *ExprPattern) string {
+	parts := make([]string, 0, 2)
+	if len(p.Ops) > 0 {
+		parts = append(parts, "operator in ["+strings.Join(p.Ops, ", ")+"]")
+	}
+	if p.OperandLiteral != nil {
+		parts = append(parts, fmt.Sprintf("operand literal %q", *p.OperandLiteral))
+	}
+	return strings.Join(parts, " with ")
 }
 
 // returnLooksLikeResult is a deterministic heuristic for Result-style returns.

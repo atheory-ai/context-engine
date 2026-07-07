@@ -30,3 +30,17 @@ rules:
       hasFailureModes: true
     require:
       failureStrategy: ResultType
+
+  # Structural rule: match the *shape* of a branch condition, not just top-level
+  # fields. `forbidConditionShape` fails when any behavior clause's condition
+  # contains a node matching the pattern — here, an equality operator compared
+  # against the literal `null`. `ops` and/or `operandLiteral` may be set; at
+  # least one is required. Conditions outside the normalized grammar (calls,
+  # arithmetic, etc.) carry no structured form and are never matched.
+  - id: forbid-null-equality
+    target: FunctionIntent
+    severity: warning
+    require:
+      forbidConditionShape:
+        ops: ["==", "!=", "===", "!=="]
+        operandLiteral: "null"
