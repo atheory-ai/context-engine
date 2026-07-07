@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -152,7 +153,7 @@ func runIirRepair(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("read source file %s: %w", sourcePath, err)
 	}
-	pack, _, err := resolveRulePack(cmd.Context(), rulesPath)
+	pack, _, err := resolveRulePack(cmd.Context(), rulesPath, cmd.ErrOrStderr())
 	if err != nil {
 		return err
 	}
@@ -277,7 +278,7 @@ func runIirGenerate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	pack, _, err := resolveRulePack(cmd.Context(), rulesPath)
+	pack, _, err := resolveRulePack(cmd.Context(), rulesPath, cmd.ErrOrStderr())
 	if err != nil {
 		return err
 	}
@@ -334,7 +335,7 @@ func runIirVerify(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("read source file %s: %w", sourcePath, err)
 	}
 
-	pack, rulesSource, err := resolveRulePack(cmd.Context(), rulesPath)
+	pack, rulesSource, err := resolveRulePack(cmd.Context(), rulesPath, cmd.ErrOrStderr())
 	if err != nil {
 		return err
 	}
@@ -362,8 +363,8 @@ func runIirVerify(cmd *cobra.Command, args []string) error {
 // plugin-contributed rule packs (best-effort, when a project/data-dir is
 // configured), with an explicit (--rules) or auto-discovered project rule pack
 // layered on top. The returned string labels the rules source for human output.
-func resolveRulePack(ctx context.Context, rulesPath string) (iir.RulePack, string, error) {
-	base, baseLabel := defaultsWithPlugins(ctx)
+func resolveRulePack(ctx context.Context, rulesPath string, warnW io.Writer) (iir.RulePack, string, error) {
+	base, baseLabel := defaultsWithPlugins(ctx, warnW)
 
 	if rulesPath != "" {
 		override, err := iir.LoadRulePackFile(rulesPath)
@@ -391,8 +392,10 @@ func resolveRulePack(ctx context.Context, rulesPath string) (iir.RulePack, strin
 // defaultsWithPlugins returns the built-in defaults merged with any plugin-
 // contributed rule packs found in the configured project, plus a label for the
 // base. Best-effort: run standalone (no project/data-dir) it yields just the
-// defaults, so verify stays usable outside a project.
-func defaultsWithPlugins(ctx context.Context) (iir.RulePack, string) {
+// defaults, so verify stays usable outside a project. Plugin load and rule-pack
+// parse failures are surfaced to warnW (not swallowed) so a broken plugin is
+// visible, matching the engine-backed verify path.
+func defaultsWithPlugins(ctx context.Context, warnW io.Writer) (iir.RulePack, string) {
 	cfg, err := config.LoadRaw()
 	if err != nil {
 		return iir.DefaultRulePack(), "built-in defaults"
@@ -400,13 +403,34 @@ func defaultsWithPlugins(ctx context.Context) (iir.RulePack, string) {
 	ch := core.NewAppChannels()
 	packs, cleanup := runner.PluginRulePacks(ctx, cfg, &ch)
 	defer cleanup()
+	drainWarnings(&ch, warnW) // surface plugin init/load failures
+
 	if len(packs) == 0 {
 		return iir.DefaultRulePack(), "built-in defaults"
 	}
-	// EffectiveRulePack layers the plugin packs over the defaults; malformed
-	// packs are skipped (their load warnings were already emitted).
-	merged, _ := iir.EffectiveRulePack(packs)
+	// EffectiveRulePack layers the plugin packs over the defaults; a malformed
+	// pack is skipped and its parse error surfaced (as Engine.IIRRulePack does).
+	merged, errs := iir.EffectiveRulePack(packs)
+	for _, e := range errs {
+		fmt.Fprintf(warnW, "warning: plugin IIR rule pack: %v\n", e)
+	}
 	return merged, "built-in defaults + plugin rules"
+}
+
+// drainWarnings flushes the buffered warning/error emissions collected while
+// loading plugins to warnW. The channels have no consumer in the CLI, so
+// without this a broken plugin would fail silently.
+func drainWarnings(ch *core.AppChannels, warnW io.Writer) {
+	for {
+		select {
+		case e := <-ch.Warning:
+			fmt.Fprintf(warnW, "warning: %s\n", e.Content)
+		case e := <-ch.Error:
+			fmt.Fprintf(warnW, "error: %s\n", e.Content)
+		default:
+			return
+		}
+	}
 }
 
 func printReportJSON(cmd *cobra.Command, report *iir.Report) error {
