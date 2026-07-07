@@ -188,7 +188,8 @@ L1/L2 fragment. The work is deliberately *growing the middle* and building edges
 ## What already exists (reused, not rebuilt)
 
 - **Lift** (Code→AST→IL): index-time extraction (`internal/indexer/iirpass.go`,
-  `iir.ExtractAllFromNode`) for TS/Go/Py.
+  `iir.ExtractAllFromNode`) for TS/Go/Py — **host-side Go today; migrating to
+  plugins** (see "SDK enablement").
 - **IL↔IL compare**: `internal/iir/compare.go` (now content-aware for behavior
   conditions via `whenExpr`, slice 14).
 - **Repair loop**: `RepairLoop` (verify→propose→re-verify) with `RegenerateStage`
@@ -203,6 +204,94 @@ L1/L2 fragment. The work is deliberately *growing the middle* and building edges
 - **Deterministic `GenerateFunction`** demotes from "the backend" to a fallback
   (no LLM available), a test oracle for the lift/emit pair, and the
   `RegenerateStage` baseline.
+
+## SDK enablement: plugins all the way down
+
+For the IL to be *universal*, lift cannot be hardcoded in the host for a
+privileged handful of languages. Today three layers are tangled under "the host
+language," and only two should pluginize:
+
+1. **Grammar / parse** (text → CST): host-side. One parse per file, shared
+   (PRs #26/#27). tree-sitter grammars are a neutral, standardized *asset* — not
+   our opinion — so hosting them centrally and sharing one parse is correct.
+2. **Extraction** (CST → graph nodes/edges): **already plugins** (the ts/go/py
+   SDK plugins).
+3. **IIR lift** (CST → IIR): host-side Go (`internal/iir/extract.go`). This is
+   the privileged path to remove.
+
+**Principle: bundle the neutral assets (grammars), pluginize the opinionated
+logic (extraction, lift, rules).** First-party languages should use the *same*
+plugin API as third-party ones — the forcing function that keeps the API honest
+(VS Code, LSP, Babel, ESLint all converged here). A privileged host path is where
+the public contract rots, and RFC 15 *needs* the plugin contract to be complete
+(plugins own lift + semantic profile + rules), so making the built-ins ride it is
+the proof that it is.
+
+### What moves, what stays
+
+- **Move to plugins:** IIR lift — port the tree-walking in
+  `internal/iir/extract.go` into the ts/go/py SDK plugins, emitted in the *same*
+  `extract` pass. This reinforces the single-parse design: today the host parses
+  once but the plugin walks the tree for extraction *and* host-Go walks it again
+  for lift; after the move the plugin walks once for both and the host stops
+  walking for IIR entirely.
+- **Stays host-side (correctly):** the parse/grammar registry, and the IIR
+  *machinery* — model, `compare`, rules, `verify`, `generate`, `repair`. Only the
+  *lift* portion of `internal/iir` is language logic; the rest is the host
+  capability RFC 11 correctly located centrally.
+- **"Out of the box" becomes a bundling/CI concern.** Ship a curated set of
+  default plugin WASMs baked into the release (partly true already:
+  `$DATA/plugins/defaults/`), version-locked via the release train — exactly how
+  VS Code ships built-in language extensions.
+
+This **dissolves the RFC 11↔15 reconciliation**: there is no "host lift vs plugin
+lift" duality to arbitrate. Lift is uniformly plugin-side; the host built-ins are
+just the first plugins.
+
+### SDK contract changes
+
+Grounded in the current SDK (`packages/plugin-sdk`), where `PluginDefinition`
+today exposes only `language/role/analyzers/tools` and has **no IIR surface**:
+
+- **Track A — conformance rules (small, independent, ship first).** Add
+  `iirRules?` to `PluginDefinition` and emit it in the manifest `capabilities`
+  block (`abi.ts`). The host already *reads* `PluginManifest.IIRRules` →
+  `EffectiveRulePack` — this closes the "no SDK producer" gap and lights up a
+  mechanism that is currently dormant. Delivers the "replace decaying `CLAUDE.md`"
+  win in one language, today.
+- **Track B — plugin-produced lift (the strategic core).**
+  - Mirror the IL schema into TS (`FunctionIntent`, `Param`, `Return`,
+    `BehaviorClause`, `Expr`, `Visibility`). Hand-author v1; the host's existing
+    `iir.ParseIntentJSON` is the deterministic gate that rejects drifted
+    emissions, same as hand-authored IIR. Codegen from a single source once the
+    schema settles.
+  - Extend `ExtractionResult` to carry `iir?: FunctionIntent[]`, each tagged with
+    the node id it came from — no second tree walk, no new ABI entry point.
+  - **Bonus correctness win:** the plugin knows which node produced which IIR, so
+    it emits IIR *already attached to its node id* — eliminating the host's
+    `(name, start_byte)` correlation heuristic (Track B2) entirely.
+- **Track C — semantic profile (deferred).** How the language realizes
+  null/truthiness/numeric/error/dispatch — the binding to the shared vocabulary
+  (T5). Needed for *render* (IL→code) and translation, **not** for lift or
+  conformance. Do not let it block A/B.
+- **Track D — foreign nodes (incremental).** Start by skipping unmodeled
+  constructs; add the foreign-node variant (carry the AST subtree) later to reach
+  the totality guarantee (T1/T5).
+
+### Migration: parity-gated strangler fig
+
+Removing the Go extractors also removes the host-side fast fallback, so *every*
+language — including ts/go/py — goes through plugin lift. That makes this a
+migration to complete, not an optional enhancement. De-risk it with machinery we
+already have:
+
+1. Build the Track B lift contract.
+2. Port ts/go/py lift into the plugins.
+3. Run **both** host-Go lift and plugin lift and **use `compare.go` to prove IIR
+   parity** on the fixture corpus — dogfooding our own IL↔IL verifier to validate
+   the migration; require equality before switching.
+4. Flip default to plugin lift, Go lift behind a flag.
+5. Delete the Go extractors once parity holds across the corpus.
 
 ## Where the real effort moves (honest)
 
@@ -221,17 +310,22 @@ L1/L2 fragment. The work is deliberately *growing the middle* and building edges
 
 ## Sequencing
 
-1. **Single-language conformance first.** Deliver value in one language, on
-   machinery that already exists (rule packs), with no frontend/backend matrix,
-   against the pain people feel today (decaying prose rules). First concrete
-   primitive: the deferred **structural rule predicate** — matching over IL trees
-   (generalizing `whenExpr` structural comparison to whole-node/function shape) —
-   which slice 14 made a prerequisite and this RFC makes foundational.
-2. **IL→code via LLM + verify-via-lift**, single language: the fidelity loop on
-   `RegenerateStage`, plus IL normalization to control false rejects.
-3. **Cross-language translation** downstream — the *same* loop with the target
+1. **Single-language conformance first (SDK Track A).** Deliver value in one
+   language, on machinery that already exists (rule packs), with no
+   frontend/backend matrix, against the pain people feel today (decaying prose
+   rules). First concrete primitive: the deferred **structural rule predicate** —
+   matching over IL trees (generalizing `whenExpr` structural comparison to
+   whole-node/function shape) — which slice 14 made a prerequisite and this RFC
+   makes foundational. Requires the small SDK `iirRules` surface.
+2. **Plugin-produced lift + built-ins migration (SDK Track B).** Move lift into
+   the plugins and retire the host Go extractors via the parity-gated strangler
+   fig. This is what makes lift *universal* and dissolves the host/plugin duality.
+3. **IL→code via LLM + verify-via-lift**, single language: the fidelity loop on
+   `RegenerateStage`, plus IL normalization to control false rejects. Needs the
+   semantic profile (SDK Track C).
+4. **Cross-language translation** downstream — the *same* loop with the target
    language's frontend as the oracle. No new mechanism; it falls out of the
-   substrate once (1) and (2) exist and a second frontend is mature.
+   substrate once the above exist and a second frontend is mature.
 
 ## Non-goals (for now)
 
