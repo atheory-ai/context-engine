@@ -373,9 +373,11 @@ func extractBehavior(body *sitter.Node, src []byte) []BehaviorClause {
 		if n.Type() != "if_statement" {
 			return
 		}
+		cond := n.ChildByFieldName("condition")
 		out = append(out, BehaviorClause{
-			When: conditionText(n.ChildByFieldName("condition"), src),
-			Then: summarizeConsequence(n.ChildByFieldName("consequence"), src),
+			When:     conditionText(cond, src),
+			Then:     summarizeConsequence(n.ChildByFieldName("consequence"), src),
+			WhenExpr: normalizeCondition(cond, src),
 		})
 	})
 	return out
@@ -418,6 +420,109 @@ func conditionText(cond *sitter.Node, src []byte) string {
 		return normalizeWhitespace(cond.NamedChild(0).Content(src))
 	}
 	return normalizeWhitespace(cond.Content(src))
+}
+
+// comparisonOps and logicalBinaryOps are the binary operators the v1 normalized
+// grammar recognizes. Any other operator yields no structured expression.
+var comparisonOps = map[string]bool{
+	"<": true, "<=": true, ">": true, ">=": true,
+	"==": true, "!=": true, "===": true, "!==": true,
+}
+
+var logicalBinaryOps = map[string]bool{"&&": true, "||": true}
+
+// normalizeCondition produces a normalized Expr for a condition node, or nil
+// when the condition falls outside the bounded v1 grammar. The grammar covers
+// comparison/equality and logical binary operators, logical negation, static
+// member/identifier access paths, and literals — the common shape of an `if`
+// condition. Anything else (calls, ternaries, arithmetic, optional chaining,
+// computed access) returns nil, the signal to fall back to raw-string behavior.
+// Operands are left as opaque dotted paths; this structures expression shape,
+// not resolved symbols or types.
+func normalizeCondition(node *sitter.Node, src []byte) *Expr {
+	if node == nil {
+		return nil
+	}
+	switch node.Type() {
+	case "parenthesized_expression":
+		if node.NamedChildCount() == 0 {
+			return nil
+		}
+		return normalizeCondition(node.NamedChild(0), src)
+	case "binary_expression":
+		op := fieldContent(node, "operator", src)
+		if !comparisonOps[op] && !logicalBinaryOps[op] {
+			return nil
+		}
+		left := normalizeCondition(node.ChildByFieldName("left"), src)
+		right := normalizeCondition(node.ChildByFieldName("right"), src)
+		if left == nil || right == nil {
+			return nil
+		}
+		return &Expr{Op: op, Args: []*Expr{left, right}}
+	case "unary_expression":
+		op := fieldContent(node, "operator", src)
+		// A leading `-` on a numeric literal is negative-number notation, not a
+		// runtime arithmetic op (unlike binary `+`/`-`, which stay out of
+		// grammar), so fold it into the literal. `-x` on a non-literal is still
+		// out of grammar.
+		if op == "-" {
+			if arg := node.ChildByFieldName("argument"); arg != nil && arg.Type() == "number" {
+				return &Expr{Op: "lit", Text: "-" + normalizeWhitespace(arg.Content(src))}
+			}
+			return nil
+		}
+		if op != "!" {
+			return nil
+		}
+		arg := normalizeCondition(node.ChildByFieldName("argument"), src)
+		if arg == nil {
+			return nil
+		}
+		return &Expr{Op: "!", Args: []*Expr{arg}}
+	case "identifier", "member_expression":
+		if path := memberPath(node, src); path != "" {
+			return &Expr{Op: "path", Text: path}
+		}
+		return nil
+	case "number", "string":
+		return &Expr{Op: "lit", Text: normalizeWhitespace(node.Content(src))}
+	case "true", "false", "null":
+		return &Expr{Op: "lit", Text: node.Type()}
+	default:
+		return nil
+	}
+}
+
+// memberPath renders an identifier or a static member-access chain as a dotted
+// path (e.g. "campaign.minimumDonation.cents"). It returns "" for anything that
+// is not a pure static chain — computed access, calls, etc. — signaling the
+// operand is outside the v1 grammar.
+func memberPath(node *sitter.Node, src []byte) string {
+	if node == nil {
+		return ""
+	}
+	switch node.Type() {
+	case "identifier", "property_identifier", "this":
+		return node.Content(src)
+	case "member_expression":
+		obj := memberPath(node.ChildByFieldName("object"), src)
+		prop := node.ChildByFieldName("property")
+		if obj == "" || prop == nil || prop.Type() != "property_identifier" {
+			return ""
+		}
+		return obj + "." + prop.Content(src)
+	default:
+		return ""
+	}
+}
+
+func fieldContent(node *sitter.Node, field string, src []byte) string {
+	c := node.ChildByFieldName(field)
+	if c == nil {
+		return ""
+	}
+	return c.Content(src)
 }
 
 // summarizeConsequence describes what a branch does: the first return or throw

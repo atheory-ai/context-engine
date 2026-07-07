@@ -81,9 +81,46 @@ type Return struct {
 }
 
 // BehaviorClause is a single when/then expectation.
+//
+// When is always the raw, human-readable condition text (ground truth). WhenExpr
+// is an optional normalized form of that same condition — a deterministic AST
+// walk, no model — present only when the condition fits the bounded grammar
+// (see normalizeCondition). It is additive: absent WhenExpr means comparison
+// falls back to the raw count-based behavior, losing nothing.
 type BehaviorClause struct {
-	When string `json:"when" yaml:"when"`
-	Then string `json:"then" yaml:"then"`
+	When     string `json:"when" yaml:"when"`
+	Then     string `json:"then" yaml:"then"`
+	WhenExpr *Expr  `json:"whenExpr,omitempty" yaml:"whenExpr,omitempty"`
+}
+
+// Expr is a normalized expression node: a small, uniform shape that can hold
+// comparisons, logical connectives, and leaves without committing to a
+// binary-only form. Op names the node ("<", "&&", "!", "path", "lit"); Args are
+// operands in source order; Text carries a leaf's payload (a literal value or a
+// canonical dotted access path). Operands are deliberately left as opaque path
+// strings — this structures expression *shape*, not resolved symbols or types.
+type Expr struct {
+	Op   string  `json:"op" yaml:"op"`
+	Args []*Expr `json:"args,omitempty" yaml:"args,omitempty"`
+	Text string  `json:"text,omitempty" yaml:"text,omitempty"`
+}
+
+// Equal reports whether two normalized expressions are structurally identical.
+// Comparison is order-sensitive (operand order is preserved during
+// normalization); commutative canonicalization is intentionally not attempted.
+func (e *Expr) Equal(other *Expr) bool {
+	if e == nil || other == nil {
+		return e == nil && other == nil
+	}
+	if e.Op != other.Op || e.Text != other.Text || len(e.Args) != len(other.Args) {
+		return false
+	}
+	for i := range e.Args {
+		if !e.Args[i].Equal(other.Args[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // IsPublic reports whether the function participates in the public API.

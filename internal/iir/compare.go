@@ -31,6 +31,11 @@ const (
 	MismatchChangedFailureMode MismatchKind = "changed_failure_mode"
 	MismatchMissingBehavior    MismatchKind = "missing_behavior"
 	MismatchExtraBehavior      MismatchKind = "extra_behavior"
+	// MismatchBehaviorContent marks a positionally-aligned behavior clause whose
+	// normalized condition differs in content (e.g. `<` vs `>`) — a divergence
+	// the count-only comparison cannot see. Only raised when both sides expose a
+	// normalized WhenExpr.
+	MismatchBehaviorContent MismatchKind = "mismatched_behavior"
 	// MismatchUnsupported marks an aspect the engine cannot yet verify. It is
 	// reported (never a silent pass) at info severity so it does not fail
 	// verification.
@@ -154,6 +159,31 @@ func compareBehavior(intended, extracted *FunctionIntent, matches *[]Match, mism
 			Actual:       len(extracted.Behavior),
 			RepairTarget: "Declare the additional behavior in the intent or remove it from the source.",
 		})
+		return
+	}
+	// Counts align. Where both sides expose a normalized condition, compare the
+	// structured content positionally — this catches a flipped or altered
+	// condition (e.g. `<` vs `>`) that the count-only check passes silently.
+	// A clause missing WhenExpr on either side falls back to the count match.
+	contentMismatch := false
+	for i := range intended.Behavior {
+		want, got := intended.Behavior[i].WhenExpr, extracted.Behavior[i].WhenExpr
+		if want == nil || got == nil || want.Equal(got) {
+			continue
+		}
+		contentMismatch = true
+		*mismatches = append(*mismatches, Mismatch{
+			Kind:     MismatchBehaviorContent,
+			Severity: SeverityWarning,
+			Path:     fmt.Sprintf("FunctionIntent.behavior[%d].when", i),
+			Message: fmt.Sprintf("behavior clause %d condition differs: intended %q, source %q",
+				i, intended.Behavior[i].When, extracted.Behavior[i].When),
+			Expected:     want,
+			Actual:       got,
+			RepairTarget: "Align the condition in source with the intent, or update the intent to match.",
+		})
+	}
+	if contentMismatch {
 		return
 	}
 	*matches = append(*matches, Match{
