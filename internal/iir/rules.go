@@ -338,6 +338,13 @@ func checkRequire(req RuleRequire, intent *FunctionIntent) (ok bool, msg, repair
 			"Change the return type to a Result/ValidationResult that carries the failure."
 	}
 	if req.ForbidConditionShape != nil {
+		if p := req.ForbidConditionShape; len(p.Ops) == 0 && p.OperandLiteral == nil {
+			// validateRulePack rejects an empty pattern for YAML-loaded rules, but
+			// a Go-authored RulePack bypasses that check. Treat empty as a no-op
+			// rather than matching every condition, so both authoring paths behave
+			// consistently.
+			return true, "requirements satisfied", ""
+		}
 		for i, clause := range intent.Behavior {
 			if clause.WhenExpr == nil {
 				continue // condition outside the normalized grammar — not matched

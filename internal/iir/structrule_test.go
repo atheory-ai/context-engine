@@ -116,6 +116,20 @@ func TestForbidConditionShape_LoadsFromYAML(t *testing.T) {
 	}
 }
 
+// A Go-authored pack bypasses validateRulePack, so an accidentally-empty
+// pattern must be a no-op there rather than forbidding every condition.
+func TestForbidConditionShape_EmptyPatternIsNoOpInGo(t *testing.T) {
+	pack := RulePack{Rules: []Rule{{
+		ID: "empty", Target: KindFunctionIntent, Severity: SeverityError,
+		Require: RuleRequire{ForbidConditionShape: &ExprPattern{}},
+	}}}
+	intent := behaviorIntent("x === null", bin("===", path("x"), lit("null")))
+	r := resultByID(EvaluateRules(pack, intent), "empty")
+	if r == nil || r.Status != RulePassed {
+		t.Fatalf("empty pattern must not match anything, got %+v", r)
+	}
+}
+
 // An all-empty pattern would match every condition — a footgun the loader must
 // reject rather than silently forbid all branches.
 func TestForbidConditionShape_RejectsEmptyPattern(t *testing.T) {
