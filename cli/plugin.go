@@ -9,6 +9,7 @@ import (
 
 	"github.com/atheory-ai/context-engine/internal/config"
 	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/iir"
 	"github.com/atheory-ai/context-engine/internal/plugins/runtime"
 	"github.com/spf13/cobra"
 )
@@ -97,6 +98,10 @@ type pluginValidateResult struct {
 	Errors   []string `json:"errors,omitempty"`
 
 	Capabilities pluginCapabilitiesJSON `json:"capabilities,omitempty"`
+
+	// IIRRules lists the ids of the IIR conformance rules this plugin
+	// contributes, parsed and validated from its manifest.
+	IIRRules []string `json:"iir_rules,omitempty"`
 }
 
 type pluginCapabilitiesJSON struct {
@@ -130,6 +135,9 @@ func runPluginValidate(cmd *cobra.Command, args []string) error {
 		}
 		if len(result.Capabilities.Analyzers) > 0 {
 			fmt.Printf("  Analyzers:         %v\n", result.Capabilities.Analyzers)
+		}
+		if len(result.IIRRules) > 0 {
+			fmt.Printf("  IIR rules:         %v\n", result.IIRRules)
 		}
 		return nil
 	}
@@ -184,7 +192,36 @@ func validateWASMPlugin(ctx context.Context, wasmPath string) pluginValidateResu
 		caps.Analyzers = append(caps.Analyzers, a.Name())
 	}
 	result.Capabilities = caps
+
+	// Report contributed IIR conformance rules, parsing them host-side so a
+	// malformed pack fails validation rather than shipping silently.
+	if c, ok := plugin.(interface{ IIRRulePackJSON() []byte }); ok {
+		if raw := c.IIRRulePackJSON(); len(raw) > 0 {
+			ids, err := pluginIIRRuleIDs(raw)
+			if err != nil {
+				result.Passed = false
+				result.Errors = append(result.Errors, fmt.Sprintf("iir rules: %v", err))
+			} else {
+				result.IIRRules = ids
+			}
+		}
+	}
 	return result
+}
+
+// pluginIIRRuleIDs parses a plugin's contributed IIR rule pack (the manifest's
+// iirRules) with the same loader the engine uses and returns the rule ids, or an
+// error if the pack is malformed.
+func pluginIIRRuleIDs(raw []byte) ([]string, error) {
+	pack, err := iir.LoadRulePack(raw)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(pack.Rules))
+	for _, r := range pack.Rules {
+		ids = append(ids, r.ID)
+	}
+	return ids, nil
 }
 
 // ── extract ───────────────────────────────────────────────────────────────────
