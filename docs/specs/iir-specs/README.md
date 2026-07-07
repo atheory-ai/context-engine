@@ -38,3 +38,9 @@ index time into the substrate, let plugins contribute rule "flavours" via merged
 rule packs, expose `ce.iir_*` host functions, and add the intent→code endpoint on
 every surface. The load-bearing decision there: **IIR is a host capability that
 plugins call and extend, not a plugin itself.**
+
+Proposed follow-up: `14-slice-normalized-when-expr.md` — give behavior
+conditions an optional structured `whenExpr` (deterministic AST walk, additive,
+no model) so verify can compare condition *content* instead of just clause
+counts. Deliberately scoped to same-language comparison, not cross-language
+codegen.
