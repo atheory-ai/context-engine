@@ -7,8 +7,8 @@ import (
 )
 
 // Expr builders keep the expected trees readable.
-func path(s string) *Expr           { return &Expr{Op: "path", Text: s} }
-func lit(s string) *Expr            { return &Expr{Op: "lit", Text: s} }
+func path(s string) *Expr             { return &Expr{Op: "path", Text: s} }
+func lit(s string) *Expr              { return &Expr{Op: "lit", Text: s} }
 func bin(op string, l, r *Expr) *Expr { return &Expr{Op: op, Args: []*Expr{l, r}} }
 
 // whenExpr extracts the single behavior clause's normalized condition, failing
@@ -65,6 +65,7 @@ func TestNormalize_Literals(t *testing.T) {
 		`name !== "hi"`: bin("!==", path("name"), lit(`"hi"`)),
 		`flag === true`: bin("===", path("flag"), lit("true")),
 		`v === null`:    bin("===", path("v"), lit("null")),
+		`a < -1`:        bin("<", path("a"), lit("-1")), // unary-minus folded into the literal
 	}
 	for cond, want := range cases {
 		src := "export function f(): number {\n  if (" + cond + ") { return 1; }\n  return 0;\n}"

@@ -461,7 +461,18 @@ func normalizeCondition(node *sitter.Node, src []byte) *Expr {
 		}
 		return &Expr{Op: op, Args: []*Expr{left, right}}
 	case "unary_expression":
-		if fieldContent(node, "operator", src) != "!" {
+		op := fieldContent(node, "operator", src)
+		// A leading `-` on a numeric literal is negative-number notation, not a
+		// runtime arithmetic op (unlike binary `+`/`-`, which stay out of
+		// grammar), so fold it into the literal. `-x` on a non-literal is still
+		// out of grammar.
+		if op == "-" {
+			if arg := node.ChildByFieldName("argument"); arg != nil && arg.Type() == "number" {
+				return &Expr{Op: "lit", Text: "-" + normalizeWhitespace(arg.Content(src))}
+			}
+			return nil
+		}
+		if op != "!" {
 			return nil
 		}
 		arg := normalizeCondition(node.ChildByFieldName("argument"), src)
