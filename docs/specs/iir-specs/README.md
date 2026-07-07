@@ -39,8 +39,17 @@ rule packs, expose `ce.iir_*` host functions, and add the intent→code endpoint
 every surface. The load-bearing decision there: **IIR is a host capability that
 plugins call and extend, not a plugin itself.**
 
-Proposed follow-up: `14-slice-normalized-when-expr.md` — give behavior
-conditions an optional structured `whenExpr` (deterministic AST walk, additive,
-no model) so verify can compare condition *content* instead of just clause
-counts. Deliberately scoped to same-language comparison, not cross-language
-codegen.
+Merged follow-up: `14-slice-normalized-when-expr.md` — behavior conditions carry
+an optional structured `whenExpr` (deterministic AST walk, additive, no model)
+so verify compares condition *content*, not just clause counts. First structural
+IL primitive.
+
+North-star reframing: `15-universal-il-and-conformance.md` (RFC) — recast IIR as
+a **universal IL**: valid code lifts totally to IL (mechanical), an LLM renders
+IL back to code in any language, and generation is verified by lifting the
+result and comparing at the IL level (no mechanical backends). A separate,
+plugin-contributed **conformance layer** (rules + classifiers over the IL,
+authored once, applied across languages) enforces "how we write it here" —
+mechanically replacing the decaying prose-rules files people hand their LLMs
+today. Sequenced single-language-conformance first; cross-language translation
+falls out of the same loop later.
