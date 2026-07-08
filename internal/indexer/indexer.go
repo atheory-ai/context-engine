@@ -263,7 +263,8 @@ func (idx *Indexer) processFile(
 	edgesOut := 0
 	successfulPlugins := 0
 	extractErrors := 0
-	var fileSymbolNodes []core.Node // collected for the IIR pass
+	var fileSymbolNodes []core.Node       // collected for the IIR pass
+	var filePluginIIR []core.IIRExtracted // plugin-lifted IIR (Track B), if any
 	for _, p := range matchingPlugins {
 		langHandler := p.Language()
 		if langHandler == nil {
@@ -281,6 +282,7 @@ func (idx *Indexer) processFile(
 
 		// Remap node/edge IDs from the plugin's empty project context to the real projectID.
 		remapped := remapIDs(extraction, projectID, p.ID(), now)
+		filePluginIIR = append(filePluginIIR, remapped.IIR...)
 
 		for _, node := range remapped.Nodes {
 			if err := idx.substrate.UpsertNode(ctx, node); err != nil {
@@ -326,7 +328,14 @@ func (idx *Indexer) processFile(
 	// Extract IIR from the file and attach it to its function nodes, reusing the
 	// tree already parsed above.
 	if idx.cfg.IIR.Enabled {
-		idx.extractFileIIR(ctx, projectID, result.RelPath, hash, content, tree, fileSymbolNodes, now)
+		if len(filePluginIIR) > 0 {
+			// Track B: the plugin lifted IIR and attached it to its nodes. Prefer
+			// it over the host's Go extractor (which remains the fallback for
+			// files no plugin lifts).
+			idx.writePluginIIR(ctx, projectID, hash, filePluginIIR, now)
+		} else {
+			idx.extractFileIIR(ctx, projectID, result.RelPath, hash, content, tree, fileSymbolNodes, now)
+		}
 	}
 
 	// Persist the file hash for future incremental runs.
@@ -415,7 +424,21 @@ func remapIDs(
 		}
 	}
 
-	return core.ExtractionResult{Nodes: nodes, Edges: edges}
+	// Remap plugin-lifted IIR onto the real node ids (the plugin attached each
+	// intent to a node it created under the empty-project context).
+	var iirOut []core.IIRExtracted
+	if len(result.IIR) > 0 {
+		iirOut = make([]core.IIRExtracted, 0, len(result.IIR))
+		for _, e := range result.IIR {
+			nodeID, ok := oldToNew[e.NodeID]
+			if !ok {
+				nodeID = e.NodeID // reference outside this extraction — keep as-is
+			}
+			iirOut = append(iirOut, core.IIRExtracted{NodeID: nodeID, Intent: e.Intent})
+		}
+	}
+
+	return core.ExtractionResult{Nodes: nodes, Edges: edges, IIR: iirOut}
 }
 
 func (idx *Indexer) emitProgress(msg string) {
