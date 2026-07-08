@@ -8,7 +8,7 @@ await esbuild.build({
   target:      "node18",
   platform:    "node",
   sourcemap:   true,
-  external:    ["chalk", "cli-table3"],
+  external:    ["chalk"],
   banner: {
     js: "#!/usr/bin/env node",
   },

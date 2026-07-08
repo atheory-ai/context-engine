@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "node build.mjs && chmod +x dist/index.js",
+    "prepack": "pnpm run build",
     "lint": "eslint src build.mjs --ext .ts,.js,.mjs",
     "test": "vitest run --passWithNoTests",
     "clean": "rm -rf dist"

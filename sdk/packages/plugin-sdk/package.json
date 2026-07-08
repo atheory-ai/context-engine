@@ -37,6 +37,7 @@
   ],
   "scripts": {
     "build": "node build.mjs && tsc --emitDeclarationOnly --declaration --declarationMap",
+    "prepack": "pnpm run build",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint src build.mjs --ext .ts,.js,.mjs",
     "clean": "rm -rf dist"

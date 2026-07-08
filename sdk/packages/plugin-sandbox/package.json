@@ -8,19 +8,19 @@
   },
   "scripts": {
     "build": "node build.mjs && chmod +x dist/index.js",
+    "prepack": "pnpm run build",
     "test": "vitest run",
     "lint": "eslint src tests build.mjs --ext .ts,.js,.mjs",
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@atheory-ai/ce-plugin-sdk": "workspace:*"
+    "@atheory-ai/ce-plugin-sdk": "workspace:*",
+    "chalk": "^5.x"
   },
   "devDependencies": {
     "typescript": "*",
     "esbuild": "*",
     "vitest": "*",
-    "chalk": "^5.x",
-    "cli-table3": "^0.6.x",
     "@types/node": "^20.x"
   },
   "license": "Apache-2.0",
