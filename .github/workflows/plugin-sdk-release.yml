@@ -33,8 +33,9 @@ jobs:
           persist-credentials: false
 
       - name: Ensure tag points to main
+        # checkout's fetch-depth: 0 already brings in origin/main; no extra fetch
+        # (which would run unauthenticated under persist-credentials: false).
         run: |
-          git fetch origin main
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
             echo "Release tags must point to a commit on origin/main."
             exit 1
