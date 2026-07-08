@@ -263,7 +263,6 @@ func (idx *Indexer) processFile(
 	edgesOut := 0
 	successfulPlugins := 0
 	extractErrors := 0
-	var fileSymbolNodes []core.Node       // collected for the IIR pass
 	var filePluginIIR []core.IIRExtracted // plugin-lifted IIR (Track B), if any
 	for _, p := range matchingPlugins {
 		langHandler := p.Language()
@@ -290,9 +289,6 @@ func (idx *Indexer) processFile(
 				continue
 			}
 			nodesOut++
-			if node.Type == nodeTypeSymbol {
-				fileSymbolNodes = append(fileSymbolNodes, node)
-			}
 		}
 
 		for _, edge := range remapped.Edges {
@@ -325,17 +321,11 @@ func (idx *Indexer) processFile(
 		return 0, 0, fmt.Errorf("extract failed for all matching plugins")
 	}
 
-	// Extract IIR from the file and attach it to its function nodes, reusing the
-	// tree already parsed above.
-	if idx.cfg.IIR.Enabled {
-		if len(filePluginIIR) > 0 {
-			// Track B: the plugin lifted IIR and attached it to its nodes. Prefer
-			// it over the host's Go extractor (which remains the fallback for
-			// files no plugin lifts).
-			idx.writePluginIIR(ctx, projectID, hash, filePluginIIR, now)
-		} else {
-			idx.extractFileIIR(ctx, projectID, result.RelPath, hash, content, tree, fileSymbolNodes, now)
-		}
+	// Store the IIR the language plugin lifted and attached to its nodes. The
+	// host no longer runs its own extractor at index time — IIR is owned entirely
+	// by plugins (Track B); files no plugin lifts simply get no IIR.
+	if idx.cfg.IIR.Enabled && len(filePluginIIR) > 0 {
+		idx.writePluginIIR(ctx, projectID, hash, filePluginIIR, now)
 	}
 
 	// Persist the file hash for future incremental runs.
