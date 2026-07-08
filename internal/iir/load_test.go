@@ -64,10 +64,9 @@ language: typescript`,
 		"missing name": `
 kind: FunctionIntent
 language: typescript`,
-		"unsupported language": `
+		"missing language": `
 kind: FunctionIntent
-name: f
-language: rust`,
+name: f`,
 		"unknown field": `
 kind: FunctionIntent
 name: f

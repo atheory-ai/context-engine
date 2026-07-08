@@ -86,10 +86,9 @@ func validateIntent(intent *FunctionIntent) error {
 	if strings.TrimSpace(intent.Language) == "" {
 		return fmt.Errorf("invalid IIR: missing 'language'")
 	}
-	if intent.Language != "typescript" {
-		return fmt.Errorf("invalid IIR: unsupported language %q (Slice 1 supports only \"typescript\")",
-			intent.Language)
-	}
+	// Any non-empty language is accepted: under the plugin-owned lift (Track B)
+	// each language plugin binds its own constructs into this shared IIR model,
+	// so the host does not gate on a fixed language set.
 	switch intent.Visibility {
 	case VisibilityPublic, VisibilityPrivate:
 	default:
