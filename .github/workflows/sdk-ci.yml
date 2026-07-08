@@ -1,0 +1,43 @@
+name: SDK CI
+
+# The TypeScript plugin workspace under sdk/. Runs only on sdk/** changes; the
+# Go CI (ci.yml) ignores sdk/**, so the two toolchains don't trigger each other.
+on:
+  pull_request:
+    paths: ['sdk/**']
+  push:
+    branches: [main]
+    paths: ['sdk/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: sdk
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run lint
+        run: pnpm lint
+      - name: Build workspace
+        run: pnpm build
+      - name: Run tests
+        run: pnpm test

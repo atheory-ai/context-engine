@@ -1,0 +1,8 @@
+{
+  "id":          "com.atheory-ai.go-language",
+  "name":        "Go Language Plugin",
+  "version":     "0.1.0",
+  "description": "Go language handler — parses functions, types, interfaces, and imports",
+  "entry":       "./src/index.ts",
+  "output":      "./dist/go-language.wasm"
+}

@@ -7,7 +7,7 @@ VERSION ?= $(BASE_VERSION)
 PACKAGE_VERSION ?= $(VERSION)
 UNIT_PACKAGES = $(shell $(GO) list ./... | grep -v '/test/acceptance$$' | grep -v '/test/coverage$$')
 
-.PHONY: build install test test-unit test-acceptance test-coverage test-race vet fmt fmt-check verify verify-unit clean build-cross release-snapshot release-dry-run-plugins version-sync npm-stage npm-pack npm-publish help
+.PHONY: build install test test-unit test-acceptance test-coverage test-race vet fmt fmt-check verify verify-unit clean build-cross release-snapshot release-dry-run-plugins version-sync npm-stage npm-pack npm-publish help sdk-install sdk-build sdk-test sdk-lint bundle-default-plugins
 
 help:
 	@echo "Available targets:"
@@ -113,3 +113,30 @@ npm-publish: npm-stage
 clean:
 	rm -f $(BINARY)
 	rm -rf dist/
+
+# ── SDK: the TypeScript plugin workspace under sdk/ ──────────────────────────
+# The SDK is a pnpm/TypeScript monorepo (walled off from the Go module by
+# sdk/go.mod). These wrappers let it build and test the same way as the engine.
+SDK_DEFAULT_PLUGINS ?= go-language typescript-language python-language
+
+sdk-install:
+	pnpm --dir sdk install --frozen-lockfile
+
+sdk-build: sdk-install
+	pnpm --dir sdk build
+
+sdk-test: sdk-install
+	pnpm --dir sdk test
+
+sdk-lint: sdk-install
+	pnpm --dir sdk lint
+
+# Build the in-tree default plugins and stage their wasm for embedding into the
+# ce binary (//go:embed internal/indexer/defaults). Grammar/php/woocommerce
+# plugins are sourced separately by the release; this covers the SDK-provided
+# defaults so the CE release no longer needs a hand-copy from a separate repo.
+bundle-default-plugins: sdk-build
+	@for p in $(SDK_DEFAULT_PLUGINS); do \
+		cp sdk/plugins/$$p/dist/*.wasm internal/indexer/defaults/ ; \
+	done
+	@echo "staged SDK default plugin wasm into internal/indexer/defaults/"

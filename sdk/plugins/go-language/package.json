@@ -1,0 +1,22 @@
+{
+  "name": "go-language-plugin",
+  "version": "1.0.0",
+  "description": "Default Go language plugin — functions, methods, types, interfaces, imports",
+  "type": "module",
+  "scripts": {
+    "build":     "wasm-toolkit-build --plugin . --config ../../wasm-toolkit.config.mjs --output dist/go-language.wasm",
+    "build:dev": "tsc --watch",
+    "test":      "vitest run --passWithNoTests",
+    "validate":  "ce plugin validate dist/go-language.wasm",
+    "clean":     "rm -rf dist"
+  },
+  "dependencies": {
+    "@atheory-ai/ce-plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@atheory-ai/wasm-plugin-toolkit": "^0.0.4",
+    "@types/node": "^20.x",
+    "typescript": "*",
+    "vitest":     "*"
+  }
+}

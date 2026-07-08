@@ -1,0 +1,8 @@
+{
+  "id":          "com.atheory-ai.typescript",
+  "name":        "TypeScript & JavaScript",
+  "version":     "1.0.0",
+  "description": "TypeScript/JavaScript language handler — functions, classes, interfaces, imports, React components",
+  "entry":       "./src/index.ts",
+  "output":      "./dist/typescript.wasm"
+}

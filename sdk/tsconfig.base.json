@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target":             "ES2020",
+    "module":             "ESNext",
+    "moduleResolution":   "bundler",
+    "strict":             true,
+    "declaration":        true,
+    "declarationMap":     true,
+    "sourceMap":          true,
+    "esModuleInterop":    true,
+    "noUnusedLocals":     true,
+    "noUnusedParameters": true,
+    "noImplicitReturns":  true,
+    "lib":                ["ES2020"],
+    "types":              []
+  }
+}

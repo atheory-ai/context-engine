@@ -1,0 +1,20 @@
+{
+  "name": "go-language-plugin",
+  "version": "0.1.0",
+  "description": "Go language plugin for Context Engine",
+  "type": "module",
+  "scripts": {
+    "build": "wasm-toolkit-build --plugin . --config ../../wasm-toolkit.config.mjs --output dist/go-language.wasm",
+    "test":  "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@atheory-ai/ce-plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@atheory-ai/wasm-plugin-toolkit": "^0.0.4",
+    "typescript": "*",
+    "vitest":     "*",
+    "@types/node": "^20.x"
+  }
+}

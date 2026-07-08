@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.wasm
+*.d.ts.map
+.DS_Store
+.turbo/
+.next/
+coverage/
+*.tsbuildinfo
+bin/
+.claude/
+.idea/
+.pnpm-store/
+*.log

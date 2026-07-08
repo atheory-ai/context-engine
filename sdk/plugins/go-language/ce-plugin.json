@@ -1,0 +1,8 @@
+{
+  "id":          "com.atheory-ai.go-language",
+  "name":        "Go Language",
+  "version":     "1.0.0",
+  "description": "Go language handler — functions, methods, structs, interfaces, imports, package dependencies",
+  "entry":       "./src/index.ts",
+  "output":      "./dist/go-language.wasm"
+}

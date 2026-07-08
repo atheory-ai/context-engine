@@ -1,0 +1,8 @@
+{
+  "id":          "com.atheory-ai.python",
+  "name":        "Python",
+  "version":     "1.0.0",
+  "description": "Python language handler — functions, classes, methods, imports, decorators, class hierarchy",
+  "entry":       "./src/index.ts",
+  "output":      "./dist/python.wasm"
+}

@@ -1,0 +1,8 @@
+{
+  "id":          "com.example.hello-world",
+  "name":        "Hello World Plugin",
+  "version":     "0.1.0",
+  "description": "Minimal CE plugin — matches .hello files",
+  "entry":       "./src/index.ts",
+  "output":      "./dist/hello-world.wasm"
+}
