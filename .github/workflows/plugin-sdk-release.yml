@@ -7,9 +7,8 @@ on:
     tags:
       - "plugin-sdk-v*"
 
-permissions:
-  contents: write
-  id-token: write
+# Least privilege: permissions are scoped per job, not workflow-wide.
+permissions: {}
 
 concurrency:
   group: plugin-sdk-release-${{ github.ref }}
@@ -22,6 +21,8 @@ defaults:
 jobs:
   verify_release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       version: ${{ steps.release_version.outputs.version }}
     steps:
@@ -33,8 +34,8 @@ jobs:
 
       - name: Ensure tag points to main
         run: |
-          git fetch origin main --depth=1
-          if ! git branch -r --contains "$GITHUB_SHA" | grep -q "origin/main"; then
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
             echo "Release tags must point to a commit on origin/main."
             exit 1
           fi
@@ -86,8 +87,13 @@ jobs:
   publish_npm:
     runs-on: ubuntu-latest
     needs: verify_release
+    permissions:
+      contents: read
+      id-token: write
     environment:
       name: npm-release
+    env:
+      VERSION: ${{ needs.verify_release.outputs.version }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
@@ -104,22 +110,26 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build workspace
         run: pnpm build
+      # Each publish is guarded so a re-run after a partial failure skips the
+      # packages already on npm (npm rejects republishing an existing version).
       - name: Publish plugin-sdk
-        run: pnpm --dir packages/plugin-sdk publish --access public --provenance --no-git-checks
+        run: bash scripts/publish-if-new.sh packages/plugin-sdk @atheory-ai/ce-plugin-sdk "$VERSION"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish plugin-sandbox
-        run: pnpm --dir packages/plugin-sandbox publish --access public --provenance --no-git-checks
+        run: bash scripts/publish-if-new.sh packages/plugin-sandbox @atheory-ai/ce-plugin-sandbox "$VERSION"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish create-ce-plugin
-        run: pnpm --dir packages/create-ce-plugin publish --access public --provenance --no-git-checks
+        run: bash scripts/publish-if-new.sh packages/create-ce-plugin @atheory-ai/create-ce-plugin "$VERSION"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish_release:
     runs-on: ubuntu-latest
     needs: [verify_release, publish_npm]
+    permissions:
+      contents: write
     steps:
       - name: Download release bundle
         uses: actions/download-artifact@v4
