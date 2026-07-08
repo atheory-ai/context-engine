@@ -1,0 +1,63 @@
+{
+  "name": "@atheory-ai/ce-plugin-sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for authoring Context Engine plugins.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    },
+    "./abi": {
+      "import": "./dist/abi.js",
+      "types": "./dist/abi.d.ts"
+    },
+    "./build/abi": {
+      "import": "./dist/build/ce-abi.js",
+      "types": "./dist/build/ce-abi.d.ts"
+    },
+    "./tsconfig.plugin.json": {
+      "default": "./tsconfig.plugin.json"
+    }
+  },
+  "peerDependencies": {
+    "@atheory-ai/wasm-plugin-toolkit": "^0.0.4"
+  },
+  "peerDependenciesMeta": {
+    "@atheory-ai/wasm-plugin-toolkit": { "optional": true }
+  },
+  "files": [
+    "dist",
+    "tsconfig.plugin.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node build.mjs && tsc --emitDeclarationOnly --declaration --declarationMap",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint src build.mjs --ext .ts,.js,.mjs",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/eslint": "^9.6.1",
+    "typescript": "*",
+    "esbuild": "*",
+    "vitest": "*"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/atheory-ai/ce-plugin-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/atheory-ai/ce-plugin-sdk/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atheory-ai/ce-plugin-sdk.git",
+    "directory": "packages/plugin-sdk"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

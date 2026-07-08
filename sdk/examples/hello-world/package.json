@@ -1,0 +1,17 @@
+{
+  "name": "hello-world-plugin",
+  "version": "0.1.0",
+  "description": "Minimal CE plugin example",
+  "type": "module",
+  "scripts": {
+    "build": "wasm-toolkit-build --plugin . --config ../../wasm-toolkit.config.mjs --output dist/hello-world.wasm",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@atheory-ai/ce-plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@atheory-ai/wasm-plugin-toolkit": "^0.0.4",
+    "typescript": "*"
+  }
+}

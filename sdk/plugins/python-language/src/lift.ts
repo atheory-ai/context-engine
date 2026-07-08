@@ -1,0 +1,308 @@
+// Lift a Python function/method into an IIR FunctionIntent, mirroring the TS/Go
+// extractors but bound to Python's grammar (comparison_operator, attribute
+// member access, boolean_operator, True/False/None literals, raise as the
+// failure idiom). Python has no host-side extractor — the plugin is the sole
+// IIR producer and owns the binding into the shared IIR model.
+import type {
+  FunctionIntent, IIRParam, IIRReturn, IIRExpr, IIRBehaviorClause, SyntaxNode,
+} from "@atheory-ai/ce-plugin-sdk"
+import { IIRTypeUnknown, childByField, fieldText, walk } from "@atheory-ai/ce-plugin-sdk"
+
+// collectImports gathers module qualifiers usable as a call root: the first
+// component of an `import a.b`, an `import x as y` alias, and names from
+// `from m import n`.
+export function collectImports(tree: SyntaxNode): Set<string> {
+  const imports = new Set<string>()
+  walk(tree, (n) => {
+    if (n.type === "import_statement") {
+      for (const c of n.children ?? []) addImportName(c, imports)
+    } else if (n.type === "import_from_statement") {
+      const moduleName = childByField(n, "module_name")
+      for (const c of n.children ?? []) {
+        if (c !== moduleName) addImportName(c, imports)
+      }
+    }
+  })
+  return imports
+}
+
+function addImportName(c: SyntaxNode, imports: Set<string>): void {
+  if (c.type === "dotted_name") {
+    const first = (c.children ?? []).find(x => x.type === "identifier")?.text
+    if (first) imports.add(first)
+  } else if (c.type === "aliased_import") {
+    const alias = childByField(c, "alias")?.text
+    if (alias) imports.add(alias)
+  } else if (c.type === "identifier") {
+    imports.add(c.text)
+  }
+}
+
+export function liftPyFunction(
+  name: string, fnNode: SyntaxNode, isPrivate: boolean, isMethod: boolean, imports: Set<string>,
+): FunctionIntent {
+  const body = childByField(fnNode, "body")
+  return {
+    kind:         "FunctionIntent",
+    name,
+    language:     "python",
+    visibility:   isPrivate ? "private" : "public",
+    inputs:       liftParams(childByField(fnNode, "parameters"), isMethod),
+    returns:      liftReturn(childByField(fnNode, "return_type")),
+    behavior:     extractBehavior(body),
+    sideEffects:  extractSideEffects(body, imports),
+    failureModes: extractFailureModes(body),
+    constraints:  [],
+  }
+}
+
+// ── contract fields ─────────────────────────────────────────────────────────
+
+const paramTypes = new Set([
+  "identifier", "typed_parameter", "default_parameter", "typed_default_parameter",
+  "list_splat_pattern", "dictionary_splat_pattern",
+])
+
+function liftParams(params: SyntaxNode | null, isMethod: boolean): IIRParam[] {
+  if (!params) return []
+  const nodes = (params.children ?? []).filter(c => paramTypes.has(c.type))
+  let start = 0
+  if (isMethod && nodes.length > 0) {
+    const first = paramName(nodes[0])
+    if (first === "self" || first === "cls") start = 1
+  }
+  const out: IIRParam[] = []
+  for (let i = start; i < nodes.length; i++) {
+    const name = paramName(nodes[i])
+    if (name) out.push({ name, type: paramType(nodes[i]) })
+  }
+  return out
+}
+
+function paramName(p: SyntaxNode): string {
+  switch (p.type) {
+    case "identifier":
+      return p.text
+    case "typed_parameter": {
+      const inner = (p.children ?? []).find(c =>
+        c.type === "identifier" || c.type === "list_splat_pattern" || c.type === "dictionary_splat_pattern")
+      return inner ? paramName(inner) : ""
+    }
+    case "default_parameter":
+    case "typed_default_parameter":
+      return childByField(p, "name")?.text ?? ""
+    case "list_splat_pattern":
+      return "*" + firstIdentifier(p)
+    case "dictionary_splat_pattern":
+      return "**" + firstIdentifier(p)
+    default:
+      return ""
+  }
+}
+
+function paramType(p: SyntaxNode): string {
+  const t = childByField(p, "type")
+  return t ? normWs(t.text) : IIRTypeUnknown
+}
+
+function firstIdentifier(p: SyntaxNode): string {
+  return (p.children ?? []).find(c => c.type === "identifier")?.text ?? ""
+}
+
+function liftReturn(rt: SyntaxNode | null): IIRReturn {
+  if (!rt) return { type: "", explicit: false }
+  return { type: normWs(rt.text), explicit: true }
+}
+
+// ── behavior (if -> when/then + normalized whenExpr) ────────────────────────
+
+function extractBehavior(body: SyntaxNode | null): IIRBehaviorClause[] {
+  const out: IIRBehaviorClause[] = []
+  if (!body) return out
+  walkWithinFunc(body, (n) => {
+    if (n.type !== "if_statement") return
+    const cond = childByField(n, "condition")
+    const clause: IIRBehaviorClause = {
+      when: cond ? normWs(cond.text) : "",
+      then: summarizeConsequence(childByField(n, "consequence")),
+    }
+    const whenExpr = normalizeCondition(cond)
+    if (whenExpr) clause.whenExpr = whenExpr
+    out.push(clause)
+  })
+  return out
+}
+
+// walkWithinFunc stops at nested function scopes (def / lambda) so a nested
+// function's `if` is not counted as the outer function's behavior.
+function walkWithinFunc(node: SyntaxNode | null, visit: (n: SyntaxNode) => void): void {
+  if (!node) return
+  visit(node)
+  for (const c of node.children ?? []) {
+    if (c.type === "function_definition" || c.type === "lambda") continue
+    walkWithinFunc(c, visit)
+  }
+}
+
+function summarizeConsequence(block: SyntaxNode | null): string {
+  if (!block) return ""
+  if (block.type !== "block") return normWs(block.text)
+  let first: SyntaxNode | undefined
+  for (const c of block.children ?? []) {
+    if (!c.isNamed) continue
+    if (!first) first = c
+    if (c.type === "return_statement" || c.type === "raise_statement") return normWs(c.text)
+  }
+  return first ? normWs(first.text) : ""
+}
+
+// Python comparison tokens map straight to the shared IL, except `is`/`is not`
+// (identity, idiomatic for None checks) which bind to ==/!= so a cross-language
+// null/nil/None rule matches Python too.
+const comparisonMap: Record<string, string> = {
+  "<": "<", "<=": "<=", ">": ">", ">=": ">=", "==": "==", "!=": "!=", "is": "==",
+}
+
+// comparisonOp maps a comparison's operator token(s) to a shared IL operator.
+// `is not` is two tokens and binds to != (so `x is not None` normalizes like a
+// != null/nil check); `not in` and other multi-token forms stay out of grammar.
+function comparisonOp(opTokens: SyntaxNode[]): string | undefined {
+  if (opTokens.length === 1) return comparisonMap[opTokens[0].type]
+  if (opTokens.length === 2 && opTokens[0].type === "is" && opTokens[1].type === "not") return "!="
+  return undefined
+}
+const literalTypes = new Set(["integer", "float", "string", "concatenated_string"])
+const boolNoneTypes = new Set(["true", "false", "none"])
+
+function normalizeCondition(node: SyntaxNode | null): IIRExpr | undefined {
+  if (!node) return undefined
+  if (literalTypes.has(node.type)) return { op: "lit", text: normWs(node.text) }
+  if (boolNoneTypes.has(node.type)) return { op: "lit", text: node.type }
+  switch (node.type) {
+    case "parenthesized_expression": {
+      const inner = (node.children ?? []).find(c => c.isNamed)
+      return inner ? normalizeCondition(inner) : undefined
+    }
+    case "comparison_operator": {
+      const operands = (node.children ?? []).filter(c => c.isNamed)
+      if (operands.length !== 2) return undefined // chained comparison — out of grammar
+      const op = comparisonOp((node.children ?? []).filter(c => !c.isNamed))
+      if (!op) return undefined
+      const left = normalizeCondition(operands[0])
+      const right = normalizeCondition(operands[1])
+      return left && right ? { op, args: [left, right] } : undefined
+    }
+    case "boolean_operator": {
+      const op = fieldText(node, "operator") === "and" ? "&&" : fieldText(node, "operator") === "or" ? "||" : ""
+      if (!op) return undefined
+      const left = normalizeCondition(childByField(node, "left"))
+      const right = normalizeCondition(childByField(node, "right"))
+      return left && right ? { op, args: [left, right] } : undefined
+    }
+    case "not_operator": {
+      const arg = normalizeCondition(childByField(node, "argument"))
+      return arg ? { op: "!", args: [arg] } : undefined
+    }
+    case "unary_operator": {
+      const op = fieldText(node, "operator")
+      const operand = childByField(node, "argument")
+      if (op === "-" && operand && (operand.type === "integer" || operand.type === "float")) {
+        return { op: "lit", text: "-" + normWs(operand.text) }
+      }
+      return undefined
+    }
+    case "identifier":
+      return { op: "path", text: node.text }
+    case "attribute": {
+      const path = memberPath(node)
+      return path ? { op: "path", text: path } : undefined
+    }
+    default:
+      return undefined
+  }
+}
+
+function memberPath(node: SyntaxNode | null): string {
+  if (!node) return ""
+  if (node.type === "identifier") return node.text
+  if (node.type === "attribute") {
+    const obj = memberPath(childByField(node, "object"))
+    const attr = childByField(node, "attribute")?.text
+    return obj && attr ? obj + "." + attr : ""
+  }
+  return ""
+}
+
+// ── side effects + failure modes ────────────────────────────────────────────
+
+const sideEffectVerbs = ["track", "send", "emit", "publish", "save", "create", "update", "delete", "write"]
+
+function extractSideEffects(body: SyntaxNode | null, imports: Set<string>): string[] {
+  const seen = new Set<string>()
+  if (!body) return []
+  walk(body, (n) => {
+    if (n.type !== "call") return
+    const callee = childByField(n, "function")
+    if (!callee) return
+    const { method, root, full } = calleeParts(callee)
+    if (imports.has(root) || matchesSideEffectVerb(method)) seen.add(full)
+  })
+  return [...seen].sort()
+}
+
+function calleeParts(callee: SyntaxNode): { method: string; root: string; full: string } {
+  const full = callee.text
+  if (callee.type === "identifier") return { method: callee.text, root: "", full }
+  if (callee.type === "attribute") {
+    return { method: childByField(callee, "attribute")?.text ?? "", root: leftmostIdentifier(childByField(callee, "object")), full }
+  }
+  return { method: "", root: "", full }
+}
+
+function leftmostIdentifier(node: SyntaxNode | null): string {
+  let cur = node
+  while (cur) {
+    if (cur.type === "identifier") return cur.text
+    if (cur.type === "attribute") { cur = childByField(cur, "object"); continue }
+    return ""
+  }
+  return ""
+}
+
+function matchesSideEffectVerb(method: string): boolean {
+  const lower = method.toLowerCase()
+  return sideEffectVerbs.some(v => lower.includes(v))
+}
+
+// Python's failure idiom is `raise Error("msg")` — capture the string literal.
+function extractFailureModes(body: SyntaxNode | null): string[] {
+  const seen = new Set<string>()
+  if (!body) return []
+  walk(body, (n) => {
+    if (n.type !== "raise_statement") return
+    const lit = firstStringLiteral(n)
+    if (lit) seen.add(lit)
+  })
+  return [...seen].sort()
+}
+
+function firstStringLiteral(node: SyntaxNode): string {
+  let found = ""
+  walk(node, (n) => {
+    if (found) return
+    if (n.type === "string") found = pyStringContent(n)
+  })
+  return found
+}
+
+// A tree-sitter-python `string` node includes its quotes (and optional prefix);
+// pull the inner text so failure tags read like the source literal's content.
+function pyStringContent(node: SyntaxNode): string {
+  const content = (node.children ?? []).find(c => c.type === "string_content")
+  if (content) return content.text
+  return node.text.replace(/^[a-zA-Z]*(['"]{1,3})([\s\S]*)\1$/, "$2")
+}
+
+function normWs(s: string): string {
+  return s.split(/\s+/).filter(Boolean).join(" ")
+}

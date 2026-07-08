@@ -1,0 +1,16 @@
+packages:
+  - "packages/*"
+  - "examples/*"
+  - "plugins/*"
+
+allowBuilds:
+  '@atheory-ai/wasm-plugin-toolkit': true
+  esbuild: true
+
+minimumReleaseAgeExclude:
+  - '@atheory-ai/wasm-plugin-toolkit@0.0.3'
+  - '@atheory-ai/wasm-plugin-toolkit@0.0.4'
+
+onlyBuiltDependencies:
+  - esbuild
+  - '@atheory-ai/wasm-plugin-toolkit'

@@ -34,3 +34,6 @@ Desktop.ini
 
 # Logs
 *.log
+
+# Bundled default plugin wasm (built from sdk/, embedded at release time)
+internal/indexer/defaults/*.wasm
