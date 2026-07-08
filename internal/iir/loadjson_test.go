@@ -19,15 +19,26 @@ func TestParseIntentJSON_Valid(t *testing.T) {
 
 func TestParseIntentJSON_Invalid(t *testing.T) {
 	for name, doc := range map[string]string{
-		"missing name": `{"kind":"FunctionIntent","language":"typescript"}`,
-		"bad language": `{"kind":"FunctionIntent","name":"f","language":"rust"}`,
-		"not json":     `{not json`,
+		"missing name":     `{"kind":"FunctionIntent","language":"typescript"}`,
+		"missing language": `{"kind":"FunctionIntent","name":"f"}`,
+		"not json":         `{not json`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := ParseIntentJSON([]byte(doc)); err == nil {
 				t.Errorf("expected error for %s", name)
 			}
 		})
+	}
+}
+
+// Under the plugin-owned lift (Track B) any non-empty language is accepted — the
+// host does not gate on a fixed language set.
+func TestParseIntentJSON_AcceptsAnyLanguage(t *testing.T) {
+	for _, lang := range []string{"go", "python", "rust"} {
+		doc := `{"kind":"FunctionIntent","name":"f","language":"` + lang + `","returns":{"type":"","explicit":false}}`
+		if _, err := ParseIntentJSON([]byte(doc)); err != nil {
+			t.Errorf("language %q should be accepted: %v", lang, err)
+		}
 	}
 }
 
