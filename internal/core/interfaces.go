@@ -121,6 +121,10 @@ type LanguageHandler interface {
 type ExtractionResult struct {
 	Nodes []Node
 	Edges []Edge
+	// IIR is optional plugin-lifted IIR, each attached to a symbol node. A plugin
+	// that doesn't lift IIR omits it; the host then falls back to its own
+	// extractor.
+	IIR []IIRExtracted `json:"iir,omitempty"`
 }
 
 // ConceptSeed is a vocabulary entry contributed by a language handler or plugin.

@@ -3,6 +3,7 @@ package core
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 )
 
 // Typed string aliases — prevents passing a ProjectID where a NodeID is expected.
@@ -58,6 +59,16 @@ type IIRRecord struct {
 	RunID      string
 	CreatedAt  int64
 	UpdatedAt  int64
+}
+
+// IIRExtracted is a lifted FunctionIntent a language plugin attached to one of
+// its symbol nodes during extraction. Intent is the raw FunctionIntent JSON; the
+// host validates it (iir.ParseIntentJSON) before storing. NodeID is the plugin's
+// node id — the host remaps it alongside the plugin's nodes, so no
+// (name, start_byte) correlation is needed.
+type IIRExtracted struct {
+	NodeID NodeID          `json:"nodeId"`
+	Intent json.RawMessage `json:"intent"`
 }
 
 // Anchor is a resolved substrate reference.
