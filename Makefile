@@ -140,7 +140,8 @@ sdk-lint: sdk-install
 # plugins are sourced separately by the release; this covers the SDK-provided
 # defaults so the CE release no longer needs a hand-copy from a separate repo.
 bundle-default-plugins: sdk-build
-	@for p in $(SDK_DEFAULT_PLUGINS); do \
+	@mkdir -p internal/indexer/defaults
+	@set -e; for p in $(SDK_DEFAULT_PLUGINS); do \
 		cp sdk/plugins/$$p/dist/*.wasm internal/indexer/defaults/ ; \
 	done
 	@echo "staged SDK default plugin wasm into internal/indexer/defaults/"
