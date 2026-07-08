@@ -54,12 +54,16 @@ test-race:
 vet:
 	$(GO) vet $(GOFLAGS) ./...
 
+# sdk/ is a separate module (a TS workspace); its only .go files are the plugins'
+# parser fixtures, which are intentionally not gofmt-clean. Exclude them.
+GO_FILES = $(shell git ls-files '*.go' | grep -v '^sdk/')
+
 fmt:
-	@files="$$(git ls-files '*.go')"; \
+	@files="$(GO_FILES)"; \
 	if [ -n "$$files" ]; then gofmt -w $$files; fi
 
 fmt-check:
-	@files="$$(git ls-files '*.go')"; \
+	@files="$(GO_FILES)"; \
 	if [ -z "$$files" ]; then exit 0; fi; \
 	unformatted="$$(gofmt -l $$files)"; \
 	if [ -n "$$unformatted" ]; then \
