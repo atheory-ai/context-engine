@@ -80,6 +80,20 @@ jobs:
       - name: Validate bundled default plugins
         run: make release-dry-run-plugins
 
+      # Build the in-tree SDK plugins and stage their wasm into
+      # internal/indexer/defaults so the goreleaser build embeds them. Runs after
+      # the dry-run above (which stubs then removes the defaults) and before the
+      # real build. Additive: it only writes the SDK-provided default plugins and
+      # doesn't disturb any others placed by other means.
+      - name: Set up Node.js (for building default plugins)
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Build and stage in-tree default plugins
+        run: make bundle-default-plugins
+
       - name: Build release archives (no publish yet)
         run: goreleaser release --clean --skip=publish
         env:
