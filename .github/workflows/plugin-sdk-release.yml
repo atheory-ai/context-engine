@@ -1,0 +1,143 @@
+name: Plugin SDK Release
+
+# Publishes the @atheory-ai/ce-plugin-sdk packages from sdk/, on its own cadence.
+# Triggered by plugin-sdk-v* tags so it never collides with the engine's v* release.
+on:
+  push:
+    tags:
+      - "plugin-sdk-v*"
+
+# Least privilege: permissions are scoped per job, not workflow-wide.
+permissions: {}
+
+concurrency:
+  group: plugin-sdk-release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: sdk
+
+jobs:
+  verify_release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.release_version.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Ensure tag points to main
+        # checkout's fetch-depth: 0 already brings in origin/main; no extra fetch
+        # (which would run unauthenticated under persist-credentials: false).
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release tags must point to a commit on origin/main."
+            exit 1
+          fi
+
+      - name: Read release version
+        id: release_version
+        run: |
+          tag_version="${GITHUB_REF#refs/tags/plugin-sdk-v}"
+          node - "$tag_version" <<'NODE'
+          const { readFileSync, readdirSync } = require("fs")
+          const { join } = require("path")
+          const tagVersion = process.argv[2]
+          const mismatches = []
+          for (const dir of readdirSync("packages", { withFileTypes: true })) {
+            if (!dir.isDirectory()) continue
+            const p = join("packages", dir.name, "package.json")
+            const pkg = JSON.parse(readFileSync(p, "utf8"))
+            if (pkg.private) continue
+            if (pkg.version !== tagVersion) mismatches.push(`${p}: ${pkg.version}`)
+          }
+          if (mismatches.length) {
+            console.error(`Release tag ${tagVersion} does not match package versions:`)
+            for (const m of mismatches) console.error(`  ${m}`)
+            process.exit(1)
+          }
+          NODE
+          echo "version=$tag_version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint / build / test
+        run: pnpm lint && pnpm build && pnpm test
+
+      - name: Archive workspace output
+        run: tar -czf "$GITHUB_WORKSPACE/ce-plugin-sdk-${{ steps.release_version.outputs.version }}.tar.gz" packages/*/dist plugins/*/dist
+      - name: Upload release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-sdk-release-bundle
+          path: ce-plugin-sdk-${{ steps.release_version.outputs.version }}.tar.gz
+          if-no-files-found: error
+
+  publish_npm:
+    runs-on: ubuntu-latest
+    needs: verify_release
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: npm-release
+    env:
+      VERSION: ${{ needs.verify_release.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build workspace
+        run: pnpm build
+      # Each publish is guarded so a re-run after a partial failure skips the
+      # packages already on npm (npm rejects republishing an existing version).
+      - name: Publish plugin-sdk
+        run: bash scripts/publish-if-new.sh packages/plugin-sdk @atheory-ai/ce-plugin-sdk "$VERSION"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish plugin-sandbox
+        run: bash scripts/publish-if-new.sh packages/plugin-sandbox @atheory-ai/ce-plugin-sandbox "$VERSION"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish create-ce-plugin
+        run: bash scripts/publish-if-new.sh packages/create-ce-plugin @atheory-ai/create-ce-plugin "$VERSION"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish_release:
+    runs-on: ubuntu-latest
+    needs: [verify_release, publish_npm]
+    permissions:
+      contents: write
+    steps:
+      - name: Download release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: plugin-sdk-release-bundle
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: ce-plugin-sdk-${{ needs.verify_release.outputs.version }}.tar.gz
