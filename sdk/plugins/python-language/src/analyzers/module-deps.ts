@@ -19,13 +19,6 @@ export const moduleDepsAnalyzer: AnalyzerDefinition = {
     // Build map: module_path → file node ID
     const fileByModule = new Map<string, string>()
     for (const n of nodes) {
-      if (n.type === "namespace") {
-        const modulePath = n.properties["module_path"] as string | undefined
-        const fileNodeID = n.properties["file_path"] as string | undefined
-        if (modulePath && fileNodeID) {
-          // Also map the file node itself
-        }
-      }
       if (n.type === "file") {
         const filePath = n.canonicalID as string
         // Convert file path to module notation

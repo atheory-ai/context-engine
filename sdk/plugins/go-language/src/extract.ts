@@ -1,6 +1,6 @@
 import type { LanguageDefinition, ExtractionResult, ExtractedFunction, Node, Edge, SyntaxNode } from "@atheory-ai/ce-plugin-sdk"
 import { nodeID, edgeID, childByField, childrenByType, firstByType, firstDescendantByType, walk } from "@atheory-ai/ce-plugin-sdk"
-import { liftGoFunction, collectImports } from "./lift.js"
+import { liftGoFunction, collectImports, isExported } from "./lift.js"
 
 // Structural extraction walks the tree-sitter CST the host provides — never
 // regex. The host already parsed the file; we turn its tree into graph nodes.
@@ -170,10 +170,6 @@ function addImports(node: SyntaxNode, fileID: string, nodes: Node[], edges: Edge
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
-
-function isExported(name: string): boolean {
-  return name.length > 0 && name[0] >= "A" && name[0] <= "Z"
-}
 
 function deduplicate(nodes: Node[], edges: Edge[]): ExtractionResult {
   const seenN = new Set<string>()

@@ -1,4 +1,4 @@
-import { execSync, spawnSync } from "child_process"
+import { spawnSync } from "child_process"
 import { writeFileSync, unlinkSync } from "fs"
 import { tmpdir } from "os"
 import { join } from "path"
@@ -13,9 +13,10 @@ export class PluginLoader {
   }
 
   private validateBinary(): void {
-    try {
-      execSync(`${this.ceBinary} version`, { stdio: "pipe" })
-    } catch {
+    // No shell: run the binary directly with an argv array so a ceBinary value
+    // like "foo; rm -rf ~" can't be interpreted as a shell command.
+    const result = spawnSync(this.ceBinary, ["version"], { stdio: "pipe" })
+    if (result.error || result.status !== 0) {
       throw new Error(
         `CE binary not found: ${this.ceBinary}\n` +
         `Install it or specify path with --ce flag.`
