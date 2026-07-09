@@ -2,7 +2,7 @@ name: Release
 
 # Derived from atheory-ai/release-template v0.2.3 (release-full pattern),
 # adapted for CE's existing flow:
-#   - CGO=1 + Zig cross-compile (tree-sitter dep)
+#   - Pure Go (CGO_ENABLED=0); tree-sitter runs as WASM on wazero
 #   - Coordinated SDK + Studio compatibility checks
 #   - Aggregate release bundle (ce-<version>-dist.tar.gz)
 #   - npm 7-package fan-out (gated on npm-release environment)
@@ -62,11 +62,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-
-      - name: Install Zig
-        uses: goto-bus-stop/setup-zig@7ab2955eb728f5440978d5824358023be3a2802d
-        with:
-          version: 0.13.0
 
       - name: Install GoReleaser
         uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a
@@ -302,10 +297,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Install Zig
-        uses: goto-bus-stop/setup-zig@7ab2955eb728f5440978d5824358023be3a2802d
-        with:
-          version: 0.13.0
       - name: Install GoReleaser
         uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a
         with:

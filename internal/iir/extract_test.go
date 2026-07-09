@@ -5,9 +5,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	sitter "github.com/smacker/go-tree-sitter"
-	ts "github.com/smacker/go-tree-sitter/typescript/typescript"
 )
 
 func extract(t *testing.T, src, name string) *FunctionIntent {
@@ -270,15 +267,12 @@ func TestExtractAll_MalformedErrors(t *testing.T) {
 
 func TestExtractAllFromNode_ReusesParse(t *testing.T) {
 	src := []byte("export function a(x: number): number { return x; }\nfunction b(): void {}")
-	p := sitter.NewParser()
-	p.SetLanguage(ts.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, src)
+	root, err := tsParse(context.Background(), src)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tree.Close()
 
-	got, err := ExtractAllFromNode(tree.RootNode(), src)
+	got, err := ExtractAllFromNode(root, src)
 	if err != nil {
 		t.Fatalf("ExtractAllFromNode: %v", err)
 	}

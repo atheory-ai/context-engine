@@ -77,7 +77,6 @@ verify: fmt-check vet test-unit test-acceptance build
 verify-unit: fmt-check vet test-unit build
 
 build-cross:
-	zig version
 	$(GORELEASER) build --snapshot --clean
 
 release-snapshot:

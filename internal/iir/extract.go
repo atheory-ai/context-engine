@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
-	sitter "github.com/smacker/go-tree-sitter"
-	ts "github.com/smacker/go-tree-sitter/typescript/typescript"
 )
 
 // sideEffectVerbs are substrings that, when present in a called method name,
@@ -25,19 +22,13 @@ var sideEffectVerbs = []string{
 // Extraction is deterministic: inputs follow source order; side effects and
 // failure modes are de-duplicated and sorted.
 func ExtractFunction(ctx context.Context, source []byte, targetName string) (*FunctionIntent, error) {
-	parser := sitter.NewParser()
-	parser.SetLanguage(ts.GetLanguage())
-
-	tree, err := parser.ParseCtx(ctx, nil, source)
+	root, err := tsParse(ctx, source)
 	if err != nil {
 		return nil, fmt.Errorf("parse typescript: %w", err)
 	}
-	defer tree.Close()
-
-	root := tree.RootNode()
-	// ParseCtx returns a tree even for invalid source (with error nodes), so
+	// Parsing returns a tree even for invalid source (with error nodes), so
 	// guard against building a garbled FunctionIntent from malformed input.
-	if root.HasError() {
+	if root == nil || hasError(root) {
 		return nil, fmt.Errorf("source has syntax errors; cannot extract intent")
 	}
 
@@ -56,16 +47,11 @@ func ExtractFunction(ctx context.Context, source []byte, targetName string) (*Fu
 // an empty slice (not an error) for a file with no functions; rejects malformed
 // source as ExtractFunction does.
 func ExtractAll(ctx context.Context, source []byte) ([]*FunctionIntent, error) {
-	parser := sitter.NewParser()
-	parser.SetLanguage(ts.GetLanguage())
-
-	tree, err := parser.ParseCtx(ctx, nil, source)
+	root, err := tsParse(ctx, source)
 	if err != nil {
 		return nil, fmt.Errorf("parse typescript: %w", err)
 	}
-	defer tree.Close()
-
-	fns, err := ExtractAllFromNode(tree.RootNode(), source)
+	fns, err := ExtractAllFromNode(root, source)
 	if err != nil {
 		return nil, err
 	}
@@ -88,11 +74,11 @@ type ExtractedFunction struct {
 // already-parsed tree-sitter root node, so the indexer can reuse the parse it
 // already did rather than re-parsing. source is the file bytes the node spans;
 // the node must not be closed while this runs.
-func ExtractAllFromNode(root *sitter.Node, source []byte) ([]ExtractedFunction, error) {
+func ExtractAllFromNode(root *tsNode, source []byte) ([]ExtractedFunction, error) {
 	if root == nil {
 		return nil, fmt.Errorf("nil root node")
 	}
-	if root.HasError() {
+	if hasError(root) {
 		return nil, fmt.Errorf("source has syntax errors; cannot extract intent")
 	}
 
@@ -112,10 +98,10 @@ func ExtractAllFromNode(root *sitter.Node, source []byte) ([]ExtractedFunction, 
 type funcCandidate struct {
 	name       string
 	exported   bool
-	startByte  uint32       // start byte of the declaration node, for node correlation
-	params     *sitter.Node // formal_parameters
-	returnType *sitter.Node // type_annotation, or nil when absent
-	body       *sitter.Node // statement_block or arrow-function expression
+	startByte  uint32  // start byte of the declaration node, for node correlation
+	params     *tsNode // formal_parameters
+	returnType *tsNode // type_annotation, or nil when absent
+	body       *tsNode // statement_block or arrow-function expression
 }
 
 // pickFunction selects the extraction target: exact name match first, then the
@@ -138,7 +124,7 @@ func pickFunction(funcs []funcCandidate, targetName string) funcCandidate {
 
 // collectFunctions gathers top-level function declarations and arrow functions
 // bound to exported/const variables.
-func collectFunctions(root *sitter.Node, src []byte) []funcCandidate {
+func collectFunctions(root *tsNode, src []byte) []funcCandidate {
 	var out []funcCandidate
 	for i := 0; i < int(root.NamedChildCount()); i++ {
 		child := root.NamedChild(i)
@@ -154,7 +140,7 @@ func collectFunctions(root *sitter.Node, src []byte) []funcCandidate {
 	return out
 }
 
-func fromExportStatement(node *sitter.Node, src []byte) []funcCandidate {
+func fromExportStatement(node *tsNode, src []byte) []funcCandidate {
 	var out []funcCandidate
 	for i := 0; i < int(node.NamedChildCount()); i++ {
 		inner := node.NamedChild(i)
@@ -168,7 +154,7 @@ func fromExportStatement(node *sitter.Node, src []byte) []funcCandidate {
 	return out
 }
 
-func fromFunctionDeclaration(node *sitter.Node, src []byte, exported bool) []funcCandidate {
+func fromFunctionDeclaration(node *tsNode, src []byte, exported bool) []funcCandidate {
 	name := nodeFieldText(node, "name", src)
 	return []funcCandidate{{
 		name:       name,
@@ -180,7 +166,7 @@ func fromFunctionDeclaration(node *sitter.Node, src []byte, exported bool) []fun
 	}}
 }
 
-func fromVariableDeclaration(node *sitter.Node, src []byte, exported bool) []funcCandidate {
+func fromVariableDeclaration(node *tsNode, src []byte, exported bool) []funcCandidate {
 	var out []funcCandidate
 	for i := 0; i < int(node.NamedChildCount()); i++ {
 		declr := node.NamedChild(i)
@@ -236,7 +222,7 @@ func buildIntent(fn funcCandidate, src []byte, imports map[string]bool) *Functio
 	return intent
 }
 
-func extractParams(params *sitter.Node, src []byte) []Param {
+func extractParams(params *tsNode, src []byte) []Param {
 	out := []Param{}
 	for _, p := range paramNodes(params) {
 		switch p.Type() {
@@ -252,24 +238,24 @@ func extractParams(params *sitter.Node, src []byte) []Param {
 // paramNodes normalizes the different shapes a parameter list can take: a
 // `formal_parameters` container, or a single unparenthesized arrow parameter
 // (e.g. `x => x`) that appears as a bare node.
-func paramNodes(params *sitter.Node) []*sitter.Node {
+func paramNodes(params *tsNode) []*tsNode {
 	if params == nil {
 		return nil
 	}
 	if params.Type() == "formal_parameters" {
-		nodes := make([]*sitter.Node, 0, params.NamedChildCount())
+		nodes := make([]*tsNode, 0, params.NamedChildCount())
 		for i := 0; i < int(params.NamedChildCount()); i++ {
 			nodes = append(nodes, params.NamedChild(i))
 		}
 		return nodes
 	}
-	return []*sitter.Node{params}
+	return []*tsNode{params}
 }
 
 // arrowParams resolves an arrow function's parameters across grammar shapes:
 // the `parameters` field (parenthesized), the `parameter` field, or a bare
 // leading identifier for the unparenthesized single-parameter form.
-func arrowParams(fn *sitter.Node) *sitter.Node {
+func arrowParams(fn *tsNode) *tsNode {
 	if p := fn.ChildByFieldName("parameters"); p != nil {
 		return p
 	}
@@ -287,7 +273,7 @@ func arrowParams(fn *sitter.Node) *sitter.Node {
 // paramName resolves a parameter's name. It prefers the `pattern` field,
 // unwrapping a `rest_pattern` (`...args`) to the bound identifier, and falls
 // back to the first identifier for node shapes without a pattern field.
-func paramName(p *sitter.Node, src []byte) string {
+func paramName(p *tsNode, src []byte) string {
 	if pat := p.ChildByFieldName("pattern"); pat != nil {
 		if pat.Type() == "rest_pattern" {
 			return firstIdentifier(pat, src)
@@ -299,7 +285,7 @@ func paramName(p *sitter.Node, src []byte) string {
 
 // paramType resolves a parameter's type annotation, preferring the `type` field
 // and falling back to a `type_annotation` child for node types that omit it.
-func paramType(p *sitter.Node, src []byte) string {
+func paramType(p *tsNode, src []byte) string {
 	if ann := p.ChildByFieldName("type"); ann != nil {
 		return typeAnnotationText(ann, src)
 	}
@@ -311,7 +297,7 @@ func paramType(p *sitter.Node, src []byte) string {
 	return TypeUnknown
 }
 
-func extractReturn(returnType *sitter.Node, src []byte) Return {
+func extractReturn(returnType *tsNode, src []byte) Return {
 	if returnType == nil {
 		return Return{Type: "", Explicit: false}
 	}
@@ -321,9 +307,9 @@ func extractReturn(returnType *sitter.Node, src []byte) Return {
 // extractSideEffects walks the body for call expressions that look like
 // observable effects: calls on imported clients/services, or calls whose method
 // name contains a side-effect verb.
-func extractSideEffects(body *sitter.Node, src []byte, imports map[string]bool) []string {
+func extractSideEffects(body *tsNode, src []byte, imports map[string]bool) []string {
 	seen := map[string]bool{}
-	walk(body, func(n *sitter.Node) {
+	walk(body, func(n *tsNode) {
 		if n.Type() != "call_expression" {
 			return
 		}
@@ -345,9 +331,9 @@ func extractSideEffects(body *sitter.Node, src []byte, imports map[string]bool) 
 
 // extractFailureModes captures string-literal arguments of thrown errors as a
 // conservative approximation of declared failure outcomes.
-func extractFailureModes(body *sitter.Node, src []byte) []string {
+func extractFailureModes(body *tsNode, src []byte) []string {
 	seen := map[string]bool{}
-	walk(body, func(n *sitter.Node) {
+	walk(body, func(n *tsNode) {
 		if n.Type() != "throw_statement" {
 			return
 		}
@@ -367,9 +353,9 @@ func extractFailureModes(body *sitter.Node, src []byte) []string {
 // closures belong to those functions, not this one, so the walk does not
 // descend into nested function scopes; and a bare `else` fallback (no condition
 // of its own) is not counted, so a simple if/else yields one clause, not two.
-func extractBehavior(body *sitter.Node, src []byte) []BehaviorClause {
+func extractBehavior(body *tsNode, src []byte) []BehaviorClause {
 	out := []BehaviorClause{}
-	walkWithinFunction(body, func(n *sitter.Node) {
+	walkWithinFunction(body, func(n *tsNode) {
 		if n.Type() != "if_statement" {
 			return
 		}
@@ -396,7 +382,7 @@ var nestedFunctionTypes = map[string]bool{
 
 // walkWithinFunction is a pre-order walk that does not descend into nested
 // function scopes, keeping traversal within the current function body.
-func walkWithinFunction(node *sitter.Node, fn func(*sitter.Node)) {
+func walkWithinFunction(node *tsNode, fn func(*tsNode)) {
 	if node == nil {
 		return
 	}
@@ -412,7 +398,7 @@ func walkWithinFunction(node *sitter.Node, fn func(*sitter.Node)) {
 
 // conditionText returns the condition expression, stripping the wrapping
 // parentheses of an `if (...)`.
-func conditionText(cond *sitter.Node, src []byte) string {
+func conditionText(cond *tsNode, src []byte) string {
 	if cond == nil {
 		return ""
 	}
@@ -439,7 +425,7 @@ var logicalBinaryOps = map[string]bool{"&&": true, "||": true}
 // computed access) returns nil, the signal to fall back to raw-string behavior.
 // Operands are left as opaque dotted paths; this structures expression shape,
 // not resolved symbols or types.
-func normalizeCondition(node *sitter.Node, src []byte) *Expr {
+func normalizeCondition(node *tsNode, src []byte) *Expr {
 	if node == nil {
 		return nil
 	}
@@ -498,7 +484,7 @@ func normalizeCondition(node *sitter.Node, src []byte) *Expr {
 // path (e.g. "campaign.minimumDonation.cents"). It returns "" for anything that
 // is not a pure static chain — computed access, calls, etc. — signaling the
 // operand is outside the v1 grammar.
-func memberPath(node *sitter.Node, src []byte) string {
+func memberPath(node *tsNode, src []byte) string {
 	if node == nil {
 		return ""
 	}
@@ -517,7 +503,7 @@ func memberPath(node *sitter.Node, src []byte) string {
 	}
 }
 
-func fieldContent(node *sitter.Node, field string, src []byte) string {
+func fieldContent(node *tsNode, field string, src []byte) string {
 	c := node.ChildByFieldName(field)
 	if c == nil {
 		return ""
@@ -527,14 +513,14 @@ func fieldContent(node *sitter.Node, field string, src []byte) string {
 
 // summarizeConsequence describes what a branch does: the first return or throw
 // it contains, else its first statement.
-func summarizeConsequence(cons *sitter.Node, src []byte) string {
+func summarizeConsequence(cons *tsNode, src []byte) string {
 	if cons == nil {
 		return ""
 	}
 	if cons.Type() != "statement_block" {
 		return trimStatement(normalizeWhitespace(cons.Content(src)))
 	}
-	var first *sitter.Node
+	var first *tsNode
 	for i := 0; i < int(cons.NamedChildCount()); i++ {
 		c := cons.NamedChild(i)
 		if first == nil {
@@ -563,7 +549,7 @@ func trimStatement(s string) string {
 // calleeParts returns the called method name, the root object identifier, and
 // the full callee text (e.g. method "track", root "analytics", full
 // "analytics.track").
-func calleeParts(callee *sitter.Node, src []byte) (method, rootObj, full string) {
+func calleeParts(callee *tsNode, src []byte) (method, rootObj, full string) {
 	full = callee.Content(src)
 	switch callee.Type() {
 	case "identifier":
@@ -580,7 +566,7 @@ func calleeParts(callee *sitter.Node, src []byte) (method, rootObj, full string)
 	}
 }
 
-func leftmostIdentifier(node *sitter.Node, src []byte) string {
+func leftmostIdentifier(node *tsNode, src []byte) string {
 	for node != nil {
 		switch node.Type() {
 		case "identifier":
@@ -606,14 +592,14 @@ func matchesSideEffectVerb(method string) bool {
 
 // collectImports returns the set of identifiers introduced by import
 // statements: named, default, and namespace imports.
-func collectImports(root *sitter.Node, src []byte) map[string]bool {
+func collectImports(root *tsNode, src []byte) map[string]bool {
 	imports := map[string]bool{}
 	for i := 0; i < int(root.NamedChildCount()); i++ {
 		node := root.NamedChild(i)
 		if node.Type() != "import_statement" {
 			continue
 		}
-		walk(node, func(n *sitter.Node) {
+		walkWithParent(node, nil, func(n, parent *tsNode) {
 			switch n.Type() {
 			case "import_specifier":
 				// Prefer the local alias when present, else the imported name.
@@ -628,7 +614,7 @@ func collectImports(root *sitter.Node, src []byte) map[string]bool {
 				}
 			case "identifier":
 				// default import: `import Foo from "..."`
-				if n.Parent() != nil && n.Parent().Type() == "import_clause" {
+				if parent != nil && parent.Type() == "import_clause" {
 					imports[n.Content(src)] = true
 				}
 			}
@@ -640,7 +626,7 @@ func collectImports(root *sitter.Node, src []byte) map[string]bool {
 // --- small CST helpers -----------------------------------------------------
 
 // walk invokes fn for node and every descendant in a deterministic pre-order.
-func walk(node *sitter.Node, fn func(*sitter.Node)) {
+func walk(node *tsNode, fn func(*tsNode)) {
 	if node == nil {
 		return
 	}
@@ -650,7 +636,19 @@ func walk(node *sitter.Node, fn func(*sitter.Node)) {
 	}
 }
 
-func nodeFieldText(node *sitter.Node, field string, src []byte) string {
+// walkWithParent is walk that also passes each node's parent (nil for the root),
+// for the few checks that need parent context.
+func walkWithParent(node, parent *tsNode, fn func(n, parent *tsNode)) {
+	if node == nil {
+		return
+	}
+	fn(node, parent)
+	for i := 0; i < int(node.NamedChildCount()); i++ {
+		walkWithParent(node.NamedChild(i), node, fn)
+	}
+}
+
+func nodeFieldText(node *tsNode, field string, src []byte) string {
 	if child := node.ChildByFieldName(field); child != nil {
 		return child.Content(src)
 	}
@@ -659,16 +657,16 @@ func nodeFieldText(node *sitter.Node, field string, src []byte) string {
 
 // typeAnnotationText returns the type inside a `type_annotation` node, stripping
 // the leading colon.
-func typeAnnotationText(ann *sitter.Node, src []byte) string {
+func typeAnnotationText(ann *tsNode, src []byte) string {
 	if ann.Type() == "type_annotation" && ann.NamedChildCount() > 0 {
 		return strings.TrimSpace(ann.NamedChild(0).Content(src))
 	}
 	return strings.TrimSpace(strings.TrimPrefix(ann.Content(src), ":"))
 }
 
-func firstStringLiteral(node *sitter.Node, src []byte) string {
+func firstStringLiteral(node *tsNode, src []byte) string {
 	var found string
-	walk(node, func(n *sitter.Node) {
+	walk(node, func(n *tsNode) {
 		if found != "" {
 			return
 		}
@@ -679,9 +677,9 @@ func firstStringLiteral(node *sitter.Node, src []byte) string {
 	return found
 }
 
-func lastIdentifier(node *sitter.Node, src []byte) string {
+func lastIdentifier(node *tsNode, src []byte) string {
 	var id string
-	walk(node, func(n *sitter.Node) {
+	walk(node, func(n *tsNode) {
 		if n.Type() == "identifier" {
 			id = n.Content(src)
 		}
@@ -689,9 +687,9 @@ func lastIdentifier(node *sitter.Node, src []byte) string {
 	return id
 }
 
-func firstIdentifier(node *sitter.Node, src []byte) string {
+func firstIdentifier(node *tsNode, src []byte) string {
 	var id string
-	walk(node, func(n *sitter.Node) {
+	walk(node, func(n *tsNode) {
 		if id == "" && n.Type() == "identifier" {
 			id = n.Content(src)
 		}
