@@ -50,7 +50,7 @@ chmod +x "${binary}" 2>/dev/null || true
 
 project_dir="${work_dir}/project"
 data_dir="${work_dir}/data"
-mkdir -p "${project_dir}"
+mkdir -p "${project_dir}" "${data_dir}"
 cat >"${project_dir}/ce.yaml" <<'YAML'
 project:
   git_url: https://example.invalid/context-engine-release-validation.git
@@ -60,10 +60,17 @@ llm:
   provider: local
 engine:
   max_loops: 1
+features:
+  # `ce query` is gated off by default; enable it so this validation can use it
+  # to construct the engine (which extracts the embedded defaults) before the
+  # query itself fails for lack of a real LLM.
+  ce_query: true
 YAML
 
 set +e
-"${binary}" --data-dir "${data_dir}" --config "${project_dir}/ce.yaml" query "trigger default extraction" \
+# The data dir is taken from CE_DATA_DIR (the --data-dir flag does not drive
+# default extraction), so plugins extract into ${data_dir} rather than ~/.ce.
+CE_DATA_DIR="${data_dir}" "${binary}" --config "${project_dir}/ce.yaml" query "trigger default extraction" \
   >"${work_dir}/ce.stdout" 2>"${work_dir}/ce.stderr"
 run_status=$?
 set -e
