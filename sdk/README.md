@@ -148,6 +148,13 @@ definePlugin({
 });
 ```
 
+`extract` receives `treeJSON` — the host's tree-sitter CST. For a language the
+engine doesn't bundle (go, python, javascript, typescript, tsx), ship a
+tree-sitter grammar WASM and add `grammar: 'my-language.wasm'` to `language`;
+the host loads it at runtime. A plugin can also lift each function to
+**intent** — return `iir` alongside `nodes`/`edges` — and contribute conformance
+rules via `iirRules`. See the runtime's `docs/iir.md`.
+
 ### Node types
 
 | Type | When to use |

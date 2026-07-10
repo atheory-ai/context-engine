@@ -98,3 +98,14 @@ const uniqueNodes = nodes.filter(n => {
 // Symbol belongs to namespace
 { type: "belongs_to", sourceID: symbolNode.id, targetID: namespaceNode.id }
 ```
+
+## Lifting intent (IIR)
+
+Beyond nodes and edges, `extract` may return `iir` — a `FunctionIntent` per
+function, attached to the symbol node it came from — so the engine can verify
+code against declared intent and generate code/tests from it. Lift the
+contract (name, visibility, inputs, returns) plus behavior (branch
+`when`/`then` with a normalized `whenExpr`), side effects, and failure modes.
+Normalize conditions to a language-neutral shape (`x is None` / `x == nil` /
+`x == null` → the same `whenExpr`) so cross-language conformance rules match.
+See the runtime's `docs/iir.md`.

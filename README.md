@@ -237,6 +237,25 @@ Tokens are used to authenticate requests to the REST API and MCP server.
 ce cache clear             # Clear wazero plugin compilation cache
 ```
 
+### `ce iir`
+
+Intermediate Intent Representation — a structured description of what code is
+*intended* to do, used to verify that source matches its declared intent, and to
+generate code and tests from intent.
+
+```bash
+ce iir verify <intent> <source>     # does the source match the declared intent?
+ce iir generate <intent> [--verify] # generate source from intent
+ce iir gen-tests <intent>           # generate tests from intent
+ce iir repair <intent> <source>     # iteratively repair source to match intent
+ce iir shape "<description>"        # natural language → intent (uses the model)
+```
+
+During indexing (with `iir.enabled: true`), language plugins lift each function
+to intent and store it in the graph. Conditions normalize across languages
+(`x is None` / `x == nil` / `x == null` → the same shape), so conformance rules
+written once apply everywhere. See [docs/iir.md](./docs/iir.md).
+
 ---
 
 ## Configuration
