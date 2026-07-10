@@ -1,0 +1,58 @@
+name: IIR Golden
+
+# Runs the golden IIR corpus + self-index smoke over the REAL pipeline (pure-Go
+# WASM tree-sitter parse + the actual language plugin lift). Triggers on changes
+# to either side — the parser/harness (Go) or the plugin lift (SDK) — since the
+# goldens depend on both. The main CI workflow ignores sdk/**, so a plugin-lift
+# change wouldn't otherwise exercise the corpus.
+
+on:
+  pull_request:
+    paths:
+      - 'internal/indexer/wasmparse/**'
+      - 'internal/indexer/goldeniir/**'
+      - 'internal/iir/**'
+      - 'sdk/plugins/**'
+      - 'sdk/packages/plugin-sdk/**'
+      - 'Makefile'
+      - '.github/workflows/golden-iir.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'internal/indexer/wasmparse/**'
+      - 'internal/indexer/goldeniir/**'
+      - 'internal/iir/**'
+      - 'sdk/plugins/**'
+      - 'sdk/packages/plugin-sdk/**'
+      - 'Makefile'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: golden-iir-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  golden-iir:
+    name: IIR golden corpus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Set up Node.js (build default plugins)
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Enable pnpm
+        run: corepack enable
+      # `make test-iir-golden` builds the default plugins, then runs the golden
+      # corpus + self-index smoke against the real parse + plugin lift.
+      - name: Run IIR golden corpus
+        run: make test-iir-golden
