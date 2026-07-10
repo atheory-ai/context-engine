@@ -41,7 +41,7 @@ export interface PluginManifest {
     analyzers: string[]
     tools:     string[]
   }
-  language?: { extensions: string[] }
+  language?: { extensions: string[]; grammar?: string }
   iirRules?: IIRRulePack
 }
 
@@ -63,7 +63,9 @@ export function buildPluginManifest(plugin: PluginDefinition): PluginManifest {
       analyzers: plugin.analyzers?.map((analyzer) => analyzer.name) ?? [],
       tools: plugin.tools?.map((tool) => tool.name) ?? [],
     },
-    language: plugin.language ? { extensions: [] } : undefined,
+    language: plugin.language
+      ? { extensions: plugin.language.extensions ?? [], grammar: plugin.language.grammar }
+      : undefined,
     // Contributed IIR conformance rules; the host merges them over its defaults.
     iirRules: plugin.iirRules,
   }
