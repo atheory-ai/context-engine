@@ -130,11 +130,13 @@ Per-grammar load sequence:
 3. **Grammar-build pipeline** (Option 1): wrap the proven build steps into a
    version-bump/manual-dispatch workflow; provenance + checksums; commit blobs.
    **TODO** — grammars currently built by hand into `wasmparse/wasm/`.
-4. **Plugins declare grammars**: SDK manifest emits `language.grammar` +
-   `extensions`; wire `tree-sitter build --wasm` into plugin builds; add
-   `wasmparse.RegisterGrammar` so a plugin's grammar WASM loads at runtime.
-   **TODO** — bundled grammars cover defaults today; the runtime-registration
-   hook for third-party grammars is the remaining extensibility step.
+4. **Plugins declare grammars** — host side ✅ DONE: `wasmparse.RegisterGrammar`
+   (auto-detects the `tree_sitter_<name>` entry) + the indexer registers any
+   grammar a loaded plugin declares (`GrammarPath()` + `Extensions()`), so a
+   plugin adds a language at runtime with no engine rebuild. **Remaining (SDK):**
+   emit `language.grammar` + `extensions` in the manifest and wire
+   `tree-sitter build --wasm` into plugin builds, so first-/third-party plugins
+   actually ship a grammar WASM (the host hook is dormant until they do).
 5. **Retire CGO built-ins** — ✅ DONE. Deleted `internal/indexer/parser`
    (smacker); converted `internal/iir/extract.go` to wazero via a `tsNode`
    adapter; whole repo builds `CGO_ENABLED=0`; `.goreleaser.yaml` +
@@ -146,12 +148,12 @@ Per-grammar load sequence:
 ## Remaining work
 
 - Grammar-build **pipeline** (step 3) — automate + provenance/checksums.
-- **Runtime grammar registration** (step 4) — `wasmparse.RegisterGrammar` +
-  SDK manifest `grammar` field, so third parties add languages with no engine
-  rebuild (the original extensibility goal; bundled grammars cover defaults now).
-- **Concurrency**: `wasmparse.Parser.Parse` is mutex-serialized (one shared
-  linear memory). The indexer parses concurrently, so parsing serializes. A pool
-  of core instances would restore throughput.
+- **SDK grammar declaration** (step 4, SDK side) — manifest `language.grammar` +
+  `extensions` + `tree-sitter build --wasm` in plugin builds, so plugins ship a
+  grammar WASM the host hook can load (the host `RegisterGrammar` path is done).
+- ~~**Concurrency**~~ ✅ DONE: `wasmparse.Parser` is a pool of independent engine
+  instances (GOMAXPROCS-sized, shared compilation cache), so the indexer parses
+  concurrently. Race-tested.
 - Consolidate `SyntaxTree`/`SyntaxNode` into a shared CGO-free package (now
   duplicated in `wasmparse/cst.go`).
 
