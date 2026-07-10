@@ -1,6 +1,8 @@
 {
   "default": 0,
+  "internal/agent/reviewer": 35,
   "internal/agent/strategizer": 45,
+  "internal/agent/synthesizer": 70,
   "internal/config": 55,
   "internal/core": 95,
   "internal/graph/activation": 40,
