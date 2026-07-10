@@ -17,6 +17,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -61,7 +62,14 @@ func New(
 	indexQueries *queries.IndexQueries,
 	channels *core.AppChannels,
 ) *Indexer {
-	wasm, err := wasmparse.New(context.Background())
+	// Persist the WASM compilation cache to disk so grammars/core compile once
+	// and are reused across `ce index` runs. Falls back to an in-memory cache
+	// when no data dir is configured.
+	wasmCacheDir := ""
+	if cfg.DataDir != "" {
+		wasmCacheDir = filepath.Join(cfg.DataDir, "cache", "wazero-parse")
+	}
+	wasm, err := wasmparse.New(context.Background(), wasmCacheDir)
 	if err != nil {
 		channels.Emit(core.Emission{
 			Source:  "indexer",

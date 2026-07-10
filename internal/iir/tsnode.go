@@ -87,7 +87,7 @@ var (
 )
 
 func tsParse(ctx context.Context, source []byte) (*tsNode, error) {
-	wpOnce.Do(func() { wp, wpErr = wasmparse.New(context.Background()) })
+	wpOnce.Do(func() { wp, wpErr = wasmparse.New(context.Background(), "") })
 	if wpErr != nil {
 		return nil, wpErr
 	}
