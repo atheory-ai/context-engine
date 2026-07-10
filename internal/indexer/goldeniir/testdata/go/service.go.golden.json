@@ -1,0 +1,68 @@
+[
+  {
+    "kind": "FunctionIntent",
+    "name": "FindUser",
+    "language": "go",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "string"
+      },
+      {
+        "name": "limit",
+        "type": "int"
+      }
+    ],
+    "returns": {
+      "type": "(*User, error)",
+      "explicit": true
+    },
+    "behavior": [
+      {
+        "when": "id == \"\"",
+        "then": "return nil, fmt.Errorf(\"empty id\")",
+        "whenExpr": {
+          "op": "==",
+          "args": [
+            {
+              "op": "path",
+              "text": "id"
+            },
+            {
+              "op": "lit",
+              "text": "\"\""
+            }
+          ]
+        }
+      }
+    ],
+    "sideEffects": [
+      "fmt.Errorf"
+    ],
+    "failureModes": [],
+    "constraints": []
+  },
+  {
+    "kind": "FunctionIntent",
+    "name": "recordEvent",
+    "language": "go",
+    "visibility": "private",
+    "inputs": [
+      {
+        "name": "name",
+        "type": "string"
+      }
+    ],
+    "returns": {
+      "type": "",
+      "explicit": false
+    },
+    "behavior": [],
+    "sideEffects": [
+      "fmt.Println"
+    ],
+    "failureModes": [],
+    "constraints": []
+  }
+]

@@ -58,12 +58,15 @@ function liftParams(params: SyntaxNode | null): IIRParam[] {
   for (const decl of childrenByType(params, "parameter_declaration")) {
     const type = childByField(decl, "type")?.text ?? IIRTypeUnknown
     const names = (decl.children ?? []).filter(c => c.fieldName === "name")
-    if (names.length === 0) out.push({ name: "", type: normWs(type) })
+    // An unnamed parameter (`func f([]byte)`) has no name field; Go's blank
+    // identifier "_" names it — a real, valid identifier, not an empty string
+    // (which the IIR model rejects).
+    if (names.length === 0) out.push({ name: "_", type: normWs(type) })
     else for (const n of names) out.push({ name: n.text, type: normWs(type) })
   }
   for (const decl of childrenByType(params, "variadic_parameter_declaration")) {
     const type = childByField(decl, "type")?.text ?? IIRTypeUnknown
-    out.push({ name: childByField(decl, "name")?.text ?? "", type: "..." + normWs(type) })
+    out.push({ name: childByField(decl, "name")?.text ?? "_", type: "..." + normWs(type) })
   }
   return out
 }
