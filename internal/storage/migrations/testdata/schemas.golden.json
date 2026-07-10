@@ -66,6 +66,7 @@
       "idx_nodes_plugin",
       "idx_nodes_project",
       "idx_nodes_source_class",
+      "idx_nodes_source_file",
       "idx_nodes_type",
       "version_unique"
     ],
@@ -148,6 +149,7 @@
       "idx_nodes_plugin",
       "idx_nodes_project",
       "idx_nodes_source_class",
+      "idx_nodes_source_file",
       "idx_nodes_type",
       "version_unique"
     ],

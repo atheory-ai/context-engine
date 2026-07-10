@@ -27,9 +27,14 @@ type Node struct {
 	CanonicalID string
 	SourceClass SourceClass
 	PluginID    PluginID
-	Properties  map[string]any
-	CreatedAt   int64
-	UpdatedAt   int64
+	// SourceFile is the project-relative path of the file this node was
+	// extracted from, stamped by the indexer. Enables incremental pruning of a
+	// file's stale symbols. Empty for cross-file nodes (namespace/concept) and
+	// nodes written before it was tracked.
+	SourceFile string
+	Properties map[string]any
+	CreatedAt  int64
+	UpdatedAt  int64
 }
 
 // Edge is a property graph edge as read from the substrate.
