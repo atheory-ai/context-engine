@@ -1,0 +1,88 @@
+[
+  {
+    "kind": "FunctionIntent",
+    "name": "internalHelper",
+    "language": "typescript",
+    "visibility": "private",
+    "inputs": [
+      {
+        "name": "x",
+        "type": "number"
+      }
+    ],
+    "returns": {
+      "type": "number",
+      "explicit": true
+    },
+    "behavior": [],
+    "sideEffects": [],
+    "failureModes": [],
+    "constraints": []
+  },
+  {
+    "kind": "FunctionIntent",
+    "name": "recordDonation",
+    "language": "typescript",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "donation",
+        "type": "Donation"
+      }
+    ],
+    "returns": {
+      "type": "void",
+      "explicit": true
+    },
+    "behavior": [],
+    "sideEffects": [
+      "analytics.track"
+    ],
+    "failureModes": [],
+    "constraints": []
+  },
+  {
+    "kind": "FunctionIntent",
+    "name": "validateDonationAmount",
+    "language": "typescript",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "Money"
+      },
+      {
+        "name": "campaign",
+        "type": "Campaign"
+      }
+    ],
+    "returns": {
+      "type": "ValidationResult",
+      "explicit": true
+    },
+    "behavior": [
+      {
+        "when": "amount.cents \u003c campaign.minimumDonation.cents",
+        "then": "throw new Error(\"below_minimum\")",
+        "whenExpr": {
+          "op": "\u003c",
+          "args": [
+            {
+              "op": "path",
+              "text": "amount.cents"
+            },
+            {
+              "op": "path",
+              "text": "campaign.minimumDonation.cents"
+            }
+          ]
+        }
+      }
+    ],
+    "sideEffects": [],
+    "failureModes": [
+      "below_minimum"
+    ],
+    "constraints": []
+  }
+]

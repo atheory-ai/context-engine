@@ -1,0 +1,66 @@
+[
+  {
+    "kind": "FunctionIntent",
+    "name": "charge",
+    "language": "python",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "int"
+      }
+    ],
+    "returns": {
+      "type": "bool",
+      "explicit": true
+    },
+    "behavior": [],
+    "sideEffects": [],
+    "failureModes": [],
+    "constraints": []
+  },
+  {
+    "kind": "FunctionIntent",
+    "name": "find_user",
+    "language": "python",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "str"
+      },
+      {
+        "name": "limit",
+        "type": "int"
+      }
+    ],
+    "returns": {
+      "type": "str",
+      "explicit": true
+    },
+    "behavior": [
+      {
+        "when": "id is None",
+        "then": "raise ValueError(\"missing_id\")",
+        "whenExpr": {
+          "op": "==",
+          "args": [
+            {
+              "op": "path",
+              "text": "id"
+            },
+            {
+              "op": "lit",
+              "text": "none"
+            }
+          ]
+        }
+      }
+    ],
+    "sideEffects": [],
+    "failureModes": [
+      "missing_id"
+    ],
+    "constraints": []
+  }
+]

@@ -7,7 +7,7 @@ VERSION ?= $(BASE_VERSION)
 PACKAGE_VERSION ?= $(VERSION)
 UNIT_PACKAGES = $(shell $(GO) list ./... | grep -v '/test/acceptance$$' | grep -v '/test/coverage$$')
 
-.PHONY: build install test test-unit test-acceptance test-coverage test-race vet fmt fmt-check verify verify-unit clean build-cross release-snapshot release-dry-run-plugins version-sync npm-stage npm-pack npm-publish help sdk-install sdk-build sdk-test sdk-lint bundle-default-plugins
+.PHONY: build install test test-unit test-acceptance test-coverage test-race vet fmt fmt-check verify verify-unit clean build-cross release-snapshot release-dry-run-plugins version-sync npm-stage npm-pack npm-publish help sdk-install sdk-build sdk-test sdk-lint bundle-default-plugins test-iir-golden
 
 help:
 	@echo "Available targets:"
@@ -138,6 +138,10 @@ sdk-lint: sdk-install
 # ce binary (//go:embed internal/indexer/defaults). Grammar/php/woocommerce
 # plugins are sourced separately by the release; this covers the SDK-provided
 # defaults so the CE release no longer needs a hand-copy from a separate repo.
+# Run the golden IIR corpus against the real parse + plugin lift (needs plugins).
+test-iir-golden: bundle-default-plugins
+	$(GO) test $(GOFLAGS) ./internal/indexer/goldeniir/
+
 bundle-default-plugins: sdk-build
 	@mkdir -p internal/indexer/defaults
 	@set -e; for p in $(SDK_DEFAULT_PLUGINS); do \
