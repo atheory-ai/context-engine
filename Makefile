@@ -7,7 +7,7 @@ VERSION ?= $(BASE_VERSION)
 PACKAGE_VERSION ?= $(VERSION)
 UNIT_PACKAGES = $(shell $(GO) list ./... | grep -v '/test/acceptance$$' | grep -v '/test/coverage$$')
 
-.PHONY: build install test test-unit test-acceptance test-coverage test-race vet fmt fmt-check verify verify-unit clean build-cross release-snapshot release-dry-run-plugins version-sync npm-stage npm-pack npm-publish help sdk-install sdk-build sdk-test sdk-lint bundle-default-plugins test-iir-golden
+.PHONY: build install test test-unit test-acceptance test-coverage test-race test-fuzz vet fmt fmt-check verify verify-unit clean build-cross release-snapshot release-dry-run-plugins version-sync npm-stage npm-pack npm-publish help sdk-install sdk-build sdk-test sdk-lint bundle-default-plugins test-iir-golden
 
 help:
 	@echo "Available targets:"
@@ -18,6 +18,7 @@ help:
 	@echo "  make test-acceptance   Run CLI acceptance tests"
 	@echo "  make test-coverage     Run unit coverage with package minimums"
 	@echo "  make test-race         Run all Go tests with the race detector"
+	@echo "  make test-fuzz         Fuzz the untrusted wasm byte-parsers (FUZZTIME=15s)"
 	@echo "  make vet               Run go vet"
 	@echo "  make fmt               Format Go files"
 	@echo "  make fmt-check         Fail if Go files need formatting"
@@ -50,6 +51,16 @@ test-coverage:
 
 test-race:
 	$(GO) test $(GOFLAGS) -race ./...
+
+# Fuzz the wasmparse byte-parsers that read UNTRUSTED plugin-grammar wasm. A short
+# active run per target (the seed corpus also runs on every `make test`). Bump
+# FUZZTIME locally for a deeper soak.
+FUZZTIME ?= 15s
+test-fuzz:
+	@for fz in FuzzParseImports FuzzGrammarEntryName FuzzDylinkMemInfo FuzzPatchImports; do \
+		echo "== $$fz ($(FUZZTIME)) =="; \
+		$(GO) test $(GOFLAGS) ./internal/indexer/wasmparse/ -run '^$$' -fuzz="^$$fz$$" -fuzztime=$(FUZZTIME) || exit 1; \
+	done
 
 vet:
 	$(GO) vet $(GOFLAGS) ./...
