@@ -71,6 +71,29 @@ func New(
 		wasm = nil
 	}
 
+	// Register grammars declared by loaded plugins, so a plugin can add a
+	// language at runtime without an engine rebuild. Failures are warnings —
+	// the language just goes unparsed.
+	if wasm != nil {
+		for _, pl := range pluginReg.Loaded() {
+			h := pl.Language()
+			if h == nil || h.GrammarPath() == "" {
+				continue
+			}
+			wb, err := os.ReadFile(h.GrammarPath())
+			if err == nil {
+				_, err = wasm.RegisterGrammar(h.Extensions(), wb)
+			}
+			if err != nil {
+				channels.Emit(core.Emission{
+					Source:  "indexer",
+					Channel: core.ChanWarning,
+					Content: fmt.Sprintf("plugin %s grammar: %v", pl.ID(), err),
+				})
+			}
+		}
+	}
+
 	return &Indexer{
 		cfg:       cfg,
 		plugins:   pluginReg,

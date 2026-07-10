@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
@@ -55,6 +56,71 @@ type Parser struct {
 	cache wazero.CompilationCache
 	pool  chan *instance
 	all   []*instance
+
+	// Grammars registered at runtime (e.g. plugin-provided), overriding the
+	// bundled defaults. Guarded by mu.
+	mu       sync.RWMutex
+	dynGramm map[string][]byte // grammar name → wasm
+	dynExt   map[string]string // extension → grammar name
+}
+
+// RegisterGrammar registers a tree-sitter grammar WASM at runtime for the given
+// file extensions, so plugins can add languages without an engine rebuild. The
+// grammar's language name is read from its tree_sitter_<name> export. Safe to
+// call concurrently; takes effect for subsequent parses.
+func (p *Parser) RegisterGrammar(extensions []string, wasm []byte) (name string, err error) {
+	// Untrusted plugin input: recover any panic from raw WASM byte parsing, and
+	// validate everything loadGrammar will parse (entry, dylink, imports) up
+	// front so a grammar that registers can't panic later at parse time.
+	defer func() {
+		if r := recover(); r != nil {
+			name, err = "", fmt.Errorf("malformed grammar wasm: %v", r)
+		}
+	}()
+	if name, err = grammarEntryName(wasm); err != nil {
+		return "", err
+	}
+	if _, _, _, err = dylinkMemInfo(wasm); err != nil {
+		return "", fmt.Errorf("grammar %q: %w", name, err)
+	}
+	if _, err = parseImports(wasm); err != nil {
+		return "", fmt.Errorf("grammar %q imports: %w", name, err)
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.dynGramm == nil {
+		p.dynGramm = map[string][]byte{}
+		p.dynExt = map[string]string{}
+	}
+	p.dynGramm[name] = wasm
+	for _, e := range extensions {
+		p.dynExt[strings.ToLower(e)] = name
+	}
+	return name, nil
+}
+
+// grammarWASM resolves a grammar name to WASM: runtime-registered first, then
+// bundled defaults.
+func (p *Parser) grammarWASM(name string) ([]byte, bool) {
+	p.mu.RLock()
+	w, ok := p.dynGramm[name]
+	p.mu.RUnlock()
+	if ok {
+		return w, true
+	}
+	return builtinGrammar(name)
+}
+
+// grammarForExt resolves an extension to a grammar name: runtime-registered
+// first, then bundled defaults.
+func (p *Parser) grammarForExt(ext string) string {
+	p.mu.RLock()
+	n, ok := p.dynExt[ext]
+	p.mu.RUnlock()
+	if ok {
+		return n
+	}
+	return GrammarForExt(ext)
 }
 
 // New builds a Parser with a pool of engine instances sized to GOMAXPROCS
@@ -133,7 +199,7 @@ func GrammarForExt(ext string) string {
 // ParseFile parses a file by extension and returns the serialized SyntaxTree
 // JSON for the plugin boundary, or nil if no bundled grammar handles it.
 func (p *Parser) ParseFile(ctx context.Context, filePath string, content []byte) ([]byte, error) {
-	name := GrammarForExt(strings.ToLower(filepath.Ext(filePath)))
+	name := p.grammarForExt(strings.ToLower(filepath.Ext(filePath)))
 	if name == "" {
 		return nil, nil
 	}
@@ -165,11 +231,18 @@ func builtinGrammar(name string) ([]byte, bool) {
 }
 
 // loadGrammar dynamically links a grammar side module into this instance's core
-// and returns its TSLanguage pointer, caching by name.
-func (in *instance) loadGrammar(ctx context.Context, name string, wasmBytes []byte) (uint32, error) {
-	if lang, ok := in.langs[name]; ok {
-		return lang, nil
+// and returns its TSLanguage pointer, caching by name. The raw WASM byte-parsing
+// (dylink, imports) may run on untrusted plugin-provided grammars, so a panic on
+// a malformed module is recovered into an error rather than crashing the indexer.
+func (in *instance) loadGrammar(ctx context.Context, name string, wasmBytes []byte) (lang uint32, err error) {
+	if l, ok := in.langs[name]; ok {
+		return l, nil
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			lang, err = 0, fmt.Errorf("grammar %s: malformed wasm: %v", name, r)
+		}
+	}()
 	memSize, memAlign, tableSize, err := dylinkMemInfo(wasmBytes)
 	if err != nil {
 		return 0, fmt.Errorf("grammar %s dylink: %w", name, err)
@@ -211,19 +284,19 @@ func (in *instance) loadGrammar(ctx context.Context, name string, wasmBytes []by
 			return 0, fmt.Errorf("grammar %s ctors: %w", name, err)
 		}
 	}
-	lang, err := in.call(ctx, gm, "tree_sitter_"+name)
+	entry, err := in.call(ctx, gm, "tree_sitter_"+name)
 	if err != nil {
 		return 0, fmt.Errorf("grammar %s entry: %w", name, err)
 	}
-	in.langs[name] = uint32(lang)
-	return uint32(lang), nil
+	in.langs[name] = uint32(entry)
+	return uint32(entry), nil
 }
 
 // Parse parses source with the named grammar and returns the SyntaxTree, or nil
 // if the grammar is not bundled. Checks out a pooled engine instance so calls
 // can run concurrently; blocks until one is free or ctx is cancelled.
 func (p *Parser) Parse(ctx context.Context, grammarName string, source []byte) (*SyntaxTree, error) {
-	wasmBytes, ok := builtinGrammar(grammarName)
+	wasmBytes, ok := p.grammarWASM(grammarName)
 	if !ok {
 		return nil, nil
 	}

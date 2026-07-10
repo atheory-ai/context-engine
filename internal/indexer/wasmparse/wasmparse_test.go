@@ -88,6 +88,55 @@ func TestParseGo(t *testing.T) {
 	}
 }
 
+// TestRegisterGrammar registers a grammar at runtime under a novel extension
+// and parses through it, exercising the plugin-provided-grammar path.
+func TestRegisterGrammar(t *testing.T) {
+	ctx := context.Background()
+	p, err := New(ctx)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer p.Close(ctx)
+
+	// Register the Go grammar wasm under a made-up extension. The name must be
+	// auto-detected from its tree_sitter_go export.
+	name, err := p.RegisterGrammar([]string{".gox"}, goGrammarWASM)
+	if err != nil {
+		t.Fatalf("RegisterGrammar: %v", err)
+	}
+	if name != "go" {
+		t.Fatalf("detected name = %q, want go", name)
+	}
+	// Route the novel extension through the runtime registry (not a builtin).
+	if GrammarForExt(".gox") != "" {
+		t.Fatal(".gox should not be a builtin extension")
+	}
+	tree, err := p.ParseFile(ctx, "f.gox", []byte("package p\nfunc f() {}\n"))
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+	if tree == nil {
+		t.Fatal("nil tree from registered grammar")
+	}
+	var st SyntaxTree
+	if err := json.Unmarshal(tree, &st); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if st.Root.Type != "source_file" {
+		t.Errorf("root = %q, want source_file", st.Root.Type)
+	}
+	// A non-grammar wasm is rejected.
+	if _, err := p.RegisterGrammar([]string{".bad"}, []byte("\x00asm\x01\x00\x00\x00")); err == nil {
+		t.Error("expected error registering a non-grammar wasm")
+	}
+	// A truncated/malformed module must be rejected, not panic (untrusted input):
+	// an import section claiming a 16-byte module name with only one byte present.
+	truncated := []byte{0x00, 'a', 's', 'm', 1, 0, 0, 0, 0x02, 0x05, 0x01, 0x10, 0x61}
+	if _, err := p.RegisterGrammar([]string{".bad2"}, truncated); err == nil {
+		t.Error("expected error registering a truncated wasm")
+	}
+}
+
 // TestParseConcurrent hammers one Parser from many goroutines to exercise the
 // instance pool (run with -race). Each parse must return a correct tree.
 func TestParseConcurrent(t *testing.T) {

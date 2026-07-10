@@ -3,6 +3,7 @@ package wasmparse
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/tetratelabs/wazero"
 )
@@ -91,6 +92,52 @@ func parseImports(b []byte) ([]wimport, error) {
 		p = end
 	}
 	return imports, nil
+}
+
+// grammarEntryName finds the grammar's language name by scanning its export
+// section for a function named "tree_sitter_<name>" and returning <name>.
+func grammarEntryName(b []byte) (string, error) {
+	if len(b) < 8 {
+		return "", fmt.Errorf("not a wasm module")
+	}
+	p := 8
+	rd := func() uint64 {
+		var r uint64
+		var s uint
+		for {
+			x := b[p]
+			p++
+			r |= uint64(x&0x7f) << s
+			if x&0x80 == 0 {
+				break
+			}
+			s += 7
+		}
+		return r
+	}
+	const prefix = "tree_sitter_"
+	for p < len(b) {
+		sec := b[p]
+		p++
+		size := int(rd())
+		end := p + size
+		if sec == 7 { // export section
+			n := int(rd())
+			for i := 0; i < n; i++ {
+				nl := int(rd())
+				name := string(b[p : p+nl])
+				p += nl
+				kind := b[p]
+				p++
+				rd() // index
+				if kind == 0 && strings.HasPrefix(name, prefix) {
+					return name[len(prefix):], nil
+				}
+			}
+		}
+		p = end
+	}
+	return "", fmt.Errorf("no tree_sitter_* export (not a tree-sitter grammar?)")
 }
 
 // linkGrammar resolves a grammar's imports, instantiates a per-grammar glue
