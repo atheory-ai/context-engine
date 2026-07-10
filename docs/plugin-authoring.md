@@ -70,6 +70,13 @@ export default definePlugin({
       return filePath.endsWith(".my")
     },
 
+    // To add a language the engine doesn't bundle, ship a tree-sitter grammar
+    // WASM alongside the plugin and declare it here — the host loads it at
+    // runtime for these extensions. Omit both to rely on a built-in grammar
+    // (go, python, javascript, typescript, tsx).
+    extensions: [".my"],
+    grammar:    "my-grammar.wasm",
+
     extract(filePath, content) {
       return {
         nodes: [],

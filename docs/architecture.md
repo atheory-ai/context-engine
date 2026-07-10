@@ -142,7 +142,7 @@ Treat server request/response shapes as compatibility contracts. Studio is a sep
 
 ## Release Boundary
 
-Normal PR checks build only for the local CI environment. Tagged releases build the full single-binary matrix with CGO enabled:
+Normal PR checks build only for the local CI environment. Tagged releases build the full single-binary matrix:
 
 ```text
 darwin/amd64
@@ -153,13 +153,13 @@ windows/amd64
 windows/arm64
 ```
 
-Tree-sitter uses CGO, so cross-platform release builds require target C compilation. The current release workflow uses Zig for that release-only cross-compilation path.
+The engine is pure Go (`CGO_ENABLED=0`) — tree-sitter runs as WASM on wazero (`internal/indexer/wasmparse`; see [Spec 18](./specs/18-spec-wasm-grammar-loader.md)) — so every target cross-compiles with plain `go build`, no C toolchain.
 
 ## Non-Negotiables
 
 - `internal/core` imports nothing from other internal packages.
 - All substrate writes go through the write buffer.
-- CGO is allowed for tree-sitter only.
+- The engine stays pure Go (`CGO_ENABLED=0`); tree-sitter runs as WASM.
 - Release cross-compilation must remain supported.
 - Read-scoped token sessions never write to `execution.db` or the substrate.
 - Plugin loading uses wazero and Extism only.
