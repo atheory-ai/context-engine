@@ -130,6 +130,12 @@ issues:
       linters: [errcheck, gosec, revive, staticcheck, unused]
     - source: "^//go:generate "
       linters: [revive]
+    # WASM binary parsing + wasm32 pointer arithmetic inherently convert between
+    # uint64 (LEB128 values), int (indices/sizes), and uint32/int32 (wasm32
+    # addresses). These conversions are safe by construction; G115 is noise here.
+    - path: internal/indexer/wasmparse/
+      text: "G115"
+      linters: [gosec]
 
   max-issues-per-linter: 0
   max-same-issues: 0

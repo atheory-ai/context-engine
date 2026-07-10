@@ -1,7 +1,8 @@
 # Derived from atheory-ai/release-template v0.2.3
 # See .release-template-config for substitution values.
 #
-# Uses CGO=1 with Zig-backed cross-compilation (tree-sitter dep).
+# Pure Go (CGO_ENABLED=0): tree-sitter runs as WASM on wazero, so every target
+# cross-compiles with plain `go build` — no zig/clang/osxcross toolchain.
 
 version: 2
 
@@ -16,7 +17,7 @@ builds:
     main: ./cmd/ce
     binary: ce
     env:
-      - CGO_ENABLED=1
+      - CGO_ENABLED=0
     goos:
       - linux
       - darwin
@@ -24,31 +25,6 @@ builds:
     goarch:
       - amd64
       - arm64
-    overrides:
-      - goos: linux
-        goarch: amd64
-        env:
-          - CC=zig cc -target x86_64-linux-gnu
-      - goos: linux
-        goarch: arm64
-        env:
-          - CC=zig cc -target aarch64-linux-gnu
-      - goos: darwin
-        goarch: amd64
-        env:
-          - CC=clang -arch x86_64
-      - goos: darwin
-        goarch: arm64
-        env:
-          - CC=clang -arch arm64
-      - goos: windows
-        goarch: amd64
-        env:
-          - CC=zig cc -target x86_64-windows-gnu
-      - goos: windows
-        goarch: arm64
-        env:
-          - CC=zig cc -target aarch64-windows-gnu
     ldflags:
       - -s -w
         -X main.version={{.Version}}

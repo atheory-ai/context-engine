@@ -5,7 +5,7 @@
 //
 // Dependency rules:
 //   - imports internal/core, internal/config
-//   - imports internal/indexer/parser, internal/indexer/walker
+//   - imports internal/indexer/wasmparse, internal/indexer/walker
 //   - imports internal/plugins (registry)
 //   - imports internal/storage/queries (IndexQueries)
 //   - NO dependency on internal/agent or internal/runner
@@ -24,8 +24,8 @@ import (
 
 	"github.com/atheory-ai/context-engine/internal/config"
 	"github.com/atheory-ai/context-engine/internal/core"
-	"github.com/atheory-ai/context-engine/internal/indexer/parser"
 	"github.com/atheory-ai/context-engine/internal/indexer/walker"
+	"github.com/atheory-ai/context-engine/internal/indexer/wasmparse"
 	"github.com/atheory-ai/context-engine/internal/plugins"
 	"github.com/atheory-ai/context-engine/internal/storage/queries"
 )
@@ -45,16 +45,15 @@ type Stats struct {
 type Indexer struct {
 	cfg       *config.Config
 	plugins   *plugins.Registry
-	parser    *parser.Parser
-	grammars  *parser.GrammarRegistry
+	wasm      *wasmparse.Parser // pure-Go tree-sitter (WASM on wazero, no CGO)
 	substrate core.SubstrateWriter
 	queries   *queries.IndexQueries
 	channels  *core.AppChannels
 }
 
-// New creates an Indexer backed by the given plugin registry.
-// Plugin grammars are registered into the grammar registry here;
-// failures are emitted as warnings and fall back to built-in grammars.
+// New creates an Indexer backed by the given plugin registry. Files are parsed
+// by the pure-Go WASM tree-sitter (wazero); a failure to init it is non-fatal
+// but disables structural extraction (plugins receive tree: null).
 func New(
 	cfg *config.Config,
 	pluginReg *plugins.Registry,
@@ -62,36 +61,33 @@ func New(
 	indexQueries *queries.IndexQueries,
 	channels *core.AppChannels,
 ) *Indexer {
-	grammars := parser.NewGrammarRegistry()
-
-	// Register grammars declared by loaded plugins.
-	for _, p := range pluginReg.Loaded() {
-		h := p.Language()
-		if h == nil {
-			continue
-		}
-		grammarPath := h.GrammarPath()
-		if grammarPath == "" {
-			continue
-		}
-		if err := grammars.RegisterPluginGrammar(grammarPath, h.Extensions(), string(p.ID())); err != nil {
-			channels.Emit(core.Emission{
-				Source:  "indexer",
-				Channel: core.ChanWarning,
-				Content: fmt.Sprintf("plugin %s grammar: %v", p.ID(), err),
-			})
-		}
+	wasm, err := wasmparse.New(context.Background())
+	if err != nil {
+		channels.Emit(core.Emission{
+			Source:  "indexer",
+			Channel: core.ChanWarning,
+			Content: fmt.Sprintf("wasm parser init: %v", err),
+		})
+		wasm = nil
 	}
 
 	return &Indexer{
 		cfg:       cfg,
 		plugins:   pluginReg,
-		parser:    parser.NewParser(grammars),
-		grammars:  grammars,
+		wasm:      wasm,
 		substrate: substrate,
 		queries:   indexQueries,
 		channels:  channels,
 	}
+}
+
+// parseFile returns the serialized SyntaxTree JSON for the plugin boundary, or
+// nil if no bundled grammar handles the file (plugin receives tree: null).
+func (idx *Indexer) parseFile(ctx context.Context, relPath string, content []byte) ([]byte, error) {
+	if idx.wasm == nil {
+		return nil, nil
+	}
+	return idx.wasm.ParseFile(ctx, relPath, content)
 }
 
 // Run performs a full or incremental index of rootDir.
@@ -243,20 +239,11 @@ func (idx *Indexer) processFile(
 		return -1, 0, nil // no plugin handles this extension
 	}
 
-	// Parse the file with tree-sitter ONCE. The same tree feeds both the plugin
-	// (serialized) and in-process IIR extraction. tree/treeJSON are nil if no
-	// grammar is available.
-	tree, grammar, err := idx.parser.ParseTree(ctx, result.RelPath, content)
+	// Parse the file to the serialized SyntaxTree the plugin consumes.
+	// treeJSON is nil if no bundled grammar handles the file.
+	treeJSON, err := idx.parseFile(ctx, result.RelPath, content)
 	if err != nil {
 		return 0, 0, fmt.Errorf("parse: %w", err)
-	}
-	var treeJSON []byte
-	if tree != nil {
-		defer tree.Close()
-		treeJSON, err = parser.SerializeTree(tree, content, grammar.Name)
-		if err != nil {
-			return 0, 0, fmt.Errorf("serialize tree: %w", err)
-		}
 	}
 
 	nodesOut := 0
