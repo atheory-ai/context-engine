@@ -51,7 +51,6 @@ query → Strategizer → Activation → Fan-out (6 tools) → Reviewer → Synt
 | Tool | Version | Notes |
 | ---- | ------- | ----- |
 | Go | 1.24.3+ | `brew install go` |
-| C compiler | Any | For tree-sitter CGO — already present on macOS (Xcode CLT) |
 | Language plugins | `.wasm` files | See [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) |
 
 ---
@@ -355,7 +354,7 @@ make fmt
 
 - `internal/core` imports nothing internal — it is the dependency floor
 - All substrate writes go through the write buffer — never write directly to graph DBs
-- No CGO except for tree-sitter (use `modernc.org/sqlite` everywhere else)
+- No CGO — tree-sitter runs as WASM on wazero; use `modernc.org/sqlite` for storage
 - Agents take `*core.AgentContext` — never import `runner`
 
 ---
@@ -385,13 +384,15 @@ make fmt
 
 ## Release builds
 
-Releases use GoReleaser with CGO enabled for all platforms:
+Releases use GoReleaser. The engine is pure Go (`CGO_ENABLED=0`) — tree-sitter
+runs as WASM on wazero — so it cross-compiles with plain `go build`, no C
+toolchain:
 
 ```bash
 make release-snapshot
 ```
 
-Binaries land in `dist/`. The release workflow validates builds for darwin, linux, and windows on amd64 and arm64 with Zig-backed CGO cross-compilation. The release pipeline embeds compiled WASM plugins from `ce-plugin-sdk` into the binary.
+Binaries land in `dist/`. The release workflow builds darwin, linux, and windows on amd64 and arm64 — no zig/clang cross-compilation needed. The release pipeline embeds compiled WASM plugins from `ce-plugin-sdk` into the binary.
 
 Release publishing also creates npm packages:
 
