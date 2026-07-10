@@ -154,6 +154,18 @@ export interface SubstrateQuery {
 export interface LanguageDefinition {
   match:     (filePath: string) => boolean
   /**
+   * File extensions (with leading dot, e.g. [".ex", ".exs"]) this language
+   * covers. Used by the host to route those files to `grammar` for parsing.
+   * Optional — omit when relying on a host built-in grammar.
+   */
+  extensions?: string[]
+  /**
+   * Path to a tree-sitter grammar WASM (relative to the plugin .wasm), letting a
+   * plugin add a language the host doesn't bundle. The host loads it at runtime
+   * for the declared `extensions`. Optional — omit to use a host built-in.
+   */
+  grammar?:  string
+  /**
    * Turn a file into graph nodes/edges. `tree` is the host's parsed CST — walk
    * it rather than matching raw text. It is null only when no grammar is
    * available for the file (rare); for grammared languages it is always present.
