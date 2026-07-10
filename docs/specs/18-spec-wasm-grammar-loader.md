@@ -149,9 +149,9 @@ Per-grammar load sequence:
 - **Runtime grammar registration** (step 4) — `wasmparse.RegisterGrammar` +
   SDK manifest `grammar` field, so third parties add languages with no engine
   rebuild (the original extensibility goal; bundled grammars cover defaults now).
-- **Concurrency**: `wasmparse.Parser.Parse` is mutex-serialized (one shared
-  linear memory). The indexer parses concurrently, so parsing serializes. A pool
-  of core instances would restore throughput.
+- ~~**Concurrency**~~ ✅ DONE: `wasmparse.Parser` is a pool of independent engine
+  instances (GOMAXPROCS-sized, shared compilation cache), so the indexer parses
+  concurrently. Race-tested.
 - Consolidate `SyntaxTree`/`SyntaxNode` into a shared CGO-free package (now
   duplicated in `wasmparse/cst.go`).
 

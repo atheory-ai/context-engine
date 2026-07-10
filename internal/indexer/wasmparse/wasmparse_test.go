@@ -3,6 +3,7 @@ package wasmparse
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 )
 
@@ -85,6 +86,40 @@ func TestParseGo(t *testing.T) {
 	if _, err := json.Marshal(tree); err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
+}
+
+// TestParseConcurrent hammers one Parser from many goroutines to exercise the
+// instance pool (run with -race). Each parse must return a correct tree.
+func TestParseConcurrent(t *testing.T) {
+	ctx := context.Background()
+	p, err := New(ctx)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer p.Close(ctx)
+
+	langs := []struct{ name, src, root string }{
+		{"go", "package p\nfunc f() {}\n", "source_file"},
+		{"python", "def g():\n    pass\n", "module"},
+		{"typescript", "export function h(): void {}\n", "program"},
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 64; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			tc := langs[i%len(langs)]
+			tree, err := p.Parse(ctx, tc.name, []byte(tc.src))
+			if err != nil {
+				t.Errorf("%s: %v", tc.name, err)
+				return
+			}
+			if tree == nil || tree.Root.Type != tc.root {
+				t.Errorf("%s: bad tree %+v", tc.name, tree)
+			}
+		}(i)
+	}
+	wg.Wait()
 }
 
 // TestParseAllLanguages loads every bundled grammar in one Parser (exercising

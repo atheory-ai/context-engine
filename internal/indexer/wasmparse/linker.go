@@ -96,7 +96,7 @@ func parseImports(b []byte) ([]wimport, error) {
 // linkGrammar resolves a grammar's imports, instantiates a per-grammar glue
 // module for the base/GOT globals, and returns the grammar wasm with its import
 // module names rewritten (base/GOT globals → glue, everything else → core).
-func (p *Parser) linkGrammar(ctx context.Context, name string, wasmBytes []byte, memBase, tableBase int32) ([]byte, error) {
+func (in *instance) linkGrammar(ctx context.Context, name string, wasmBytes []byte, memBase, tableBase int32) ([]byte, error) {
 	imports, err := parseImports(wasmBytes)
 	if err != nil {
 		return nil, err
@@ -121,7 +121,7 @@ func (p *Parser) linkGrammar(ctx context.Context, name string, wasmBytes []byte,
 		case im.name == "__table_base":
 			g = gg{"__table_base", tableBase, false}
 		case im.module == "GOT.mem":
-			e := p.core.ExportedGlobal(im.name)
+			e := in.core.ExportedGlobal(im.name)
 			if e == nil {
 				return nil, fmt.Errorf("grammar %s: core does not export GOT.mem symbol %q", name, im.name)
 			}
@@ -145,7 +145,7 @@ func (p *Parser) linkGrammar(ctx context.Context, name string, wasmBytes []byte,
 		exports = append(exports, append(e, uleb(uint64(i))...))
 	}
 	glue := wmodule(wsection(6, vec(defs)), wsection(7, vec(exports)))
-	if _, err := p.rt.InstantiateWithConfig(ctx, glue, wazero.NewModuleConfig().WithName(glueName)); err != nil {
+	if _, err := in.rt.InstantiateWithConfig(ctx, glue, wazero.NewModuleConfig().WithName(glueName)); err != nil {
 		return nil, fmt.Errorf("grammar %s glue: %w", name, err)
 	}
 
