@@ -27,7 +27,7 @@ func TestHostPluginLiftParity(t *testing.T) {
 		t.Skipf("typescript.wasm not built — run `make bundle-default-plugins`")
 	}
 
-	parser, err := wasmparse.New(ctx)
+	parser, err := wasmparse.New(ctx, "")
 	if err != nil {
 		t.Fatalf("wasmparse.New: %v", err)
 	}

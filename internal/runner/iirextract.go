@@ -56,7 +56,7 @@ func NewIIRExtractor(ctx context.Context, cfg *config.Config, ch *core.AppChanne
 				Content: fmt.Sprintf("default plugin %s: %v", name, err)})
 		}
 	}
-	parser, err := wasmparse.New(ctx)
+	parser, err := wasmparse.New(ctx, "")
 	if err != nil {
 		reg.UnloadAll()
 		return nil, nil, fmt.Errorf("wasmparse: %w", err)
