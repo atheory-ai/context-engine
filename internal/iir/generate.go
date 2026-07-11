@@ -24,8 +24,10 @@ func validGeneratableName(name string) bool {
 // The emitter produces a skeleton whose *structure* round-trips: the same name,
 // visibility, inputs, return type, branch count, declared side effects, and
 // (under the throw strategy) failure modes come back out when the generated
-// source is re-extracted. Branch conditions are placeholders — turning declared
-// intent prose into real predicates is where a model assists, not the emitter.
+// source is re-extracted. A branch condition is rendered from its normalized
+// WhenExpr when one is present, so the guard round-trips on content too; a
+// clause with only prose (no structured expression) still falls back to a
+// `false` placeholder — turning prose into a predicate is where a model assists.
 
 const genIndent = "  "
 
@@ -126,15 +128,22 @@ func writeSignature(b *strings.Builder, intent *FunctionIntent) {
 	}
 }
 
-// writeBehavior emits one guard branch per behavior clause. The condition is a
-// placeholder (`false`) with the declared intent in comments; failure modes are
+// writeBehavior emits one guard branch per behavior clause. When the clause
+// carries a normalized WhenExpr, the guard is that condition rendered back to
+// TypeScript so it re-extracts to the same expression (closing the
+// generate→extract→verify loop on behavior content); otherwise it falls back to
+// a `false` placeholder with the declared intent in comments. Failure modes are
 // distributed into branch bodies via the active strategy.
 func writeBehavior(b *strings.Builder, intent *FunctionIntent, resultStrategy bool) {
 	for i, clause := range intent.Behavior {
 		if clause.When != "" {
 			fmt.Fprintf(b, "%s// when: %s\n", genIndent, clause.When)
 		}
-		b.WriteString(genIndent + "if (false) {\n")
+		cond := "false"
+		if rendered, ok := renderTSCondition(clause.WhenExpr); ok {
+			cond = rendered
+		}
+		fmt.Fprintf(b, "%sif (%s) {\n", genIndent, cond)
 		if clause.Then != "" {
 			fmt.Fprintf(b, "%s%s// then: %s\n", genIndent, genIndent, clause.Then)
 		}
@@ -182,6 +191,102 @@ func failureStatement(mode string, resultStrategy bool) string {
 		return fmt.Sprintf("return failure(%q);", mode)
 	}
 	return fmt.Sprintf("throw new Error(%q);", mode)
+}
+
+// numLitRE matches a numeric literal we can safely re-emit verbatim.
+var numLitRE = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
+
+// renderTSCondition renders a normalized Expr back into a TypeScript boolean
+// expression that re-extracts to the same Expr. It returns ok=false when the
+// expression can't be emitted safely (unknown operator, non-identifier path, or
+// an unrecognized literal), so the caller falls back to a placeholder guard
+// rather than emit malformed source.
+func renderTSCondition(e *Expr) (string, bool) {
+	if e == nil {
+		return "", false
+	}
+	switch e.Op {
+	case "path":
+		if !validCondPath(e.Text) {
+			return "", false
+		}
+		return e.Text, true
+	case "lit":
+		return renderLiteral(e.Text)
+	case "!":
+		if len(e.Args) != 1 {
+			return "", false
+		}
+		arg, ok := renderOperand(e.Args[0])
+		if !ok {
+			return "", false
+		}
+		return "!" + arg, true
+	case "==", "!=", "===", "!==", "<", "<=", ">", ">=", "&&", "||":
+		if len(e.Args) != 2 {
+			return "", false
+		}
+		l, okL := renderOperand(e.Args[0])
+		r, okR := renderOperand(e.Args[1])
+		if !okL || !okR {
+			return "", false
+		}
+		// The operator is emitted verbatim: the extractor preserves TypeScript's
+		// native forms (=== / !==), so the rendered guard re-extracts to the same
+		// Expr for the ops it produces.
+		return l + " " + e.Op + " " + r, true
+	default:
+		return "", false
+	}
+}
+
+// renderOperand renders a child expression, parenthesizing compound nodes so the
+// emitted precedence and grouping match the tree (the extractor unwraps the
+// parens on the way back).
+func renderOperand(e *Expr) (string, bool) {
+	s, ok := renderTSCondition(e)
+	if !ok {
+		return "", false
+	}
+	if e.Op != "path" && e.Op != "lit" {
+		return "(" + s + ")", true
+	}
+	return s, true
+}
+
+// renderLiteral emits a normalized literal as TypeScript. The null aliases from
+// other languages (Go's nil, Python's None) collapse to null; booleans, numbers,
+// and already-quoted string literals pass through; anything else is rejected.
+func renderLiteral(text string) (string, bool) {
+	switch text {
+	case "nil", "None", "null":
+		return "null", true
+	case "true", "false":
+		return text, true
+	}
+	if numLitRE.MatchString(text) {
+		return text, true
+	}
+	if len(text) >= 2 {
+		if q := text[0]; (q == '"' || q == '\'' || q == '`') && text[len(text)-1] == q {
+			return text, true
+		}
+	}
+	return "", false
+}
+
+// validCondPath reports whether a dotted access path is made entirely of safe
+// TypeScript identifiers, so it can be emitted as a condition operand.
+func validCondPath(path string) bool {
+	if path == "" {
+		return false
+	}
+	for _, seg := range strings.Split(path, ".") {
+		if !tsIdentifierRE.MatchString(seg) {
+			return false
+		}
+	}
+	return true
 }
 
 // sideEffectImports returns the root objects of member-expression side effects

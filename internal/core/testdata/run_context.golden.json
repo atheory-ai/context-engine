@@ -25,6 +25,7 @@
           "CanonicalID": "",
           "SourceClass": "",
           "PluginID": "",
+          "SourceFile": "",
           "Properties": null,
           "CreatedAt": 0,
           "UpdatedAt": 0
@@ -48,6 +49,7 @@
           "CanonicalID": "",
           "SourceClass": "",
           "PluginID": "",
+          "SourceFile": "",
           "Properties": null,
           "CreatedAt": 0,
           "UpdatedAt": 0

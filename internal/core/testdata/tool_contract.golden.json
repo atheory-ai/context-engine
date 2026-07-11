@@ -32,6 +32,7 @@
         "CanonicalID": "concept:golden-contract",
         "SourceClass": "derived",
         "PluginID": "",
+        "SourceFile": "",
         "Properties": null,
         "CreatedAt": 0,
         "UpdatedAt": 0

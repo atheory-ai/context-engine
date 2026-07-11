@@ -43,6 +43,7 @@ func (w *Writer) UpsertNode(_ context.Context, node core.Node) error {
 			CanonicalID: node.CanonicalID,
 			SourceClass: string(node.SourceClass),
 			PluginID:    string(node.PluginID),
+			SourceFile:  node.SourceFile,
 			Properties:  props,
 			CreatedAt:   node.CreatedAt,
 			UpdatedAt:   node.UpdatedAt,
