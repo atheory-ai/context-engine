@@ -76,6 +76,7 @@ type RepairResult struct {
 // given a deterministic stage and approval.
 func RepairLoop(
 	ctx context.Context,
+	extractor Extractor,
 	intent *FunctionIntent,
 	source string,
 	pack RulePack,
@@ -91,7 +92,7 @@ func RepairLoop(
 	current := source
 
 	for attempt := 0; ; attempt++ {
-		report, err := VerifySource(ctx, intent, []byte(current), pack)
+		report, err := VerifySource(ctx, extractor, intent, []byte(current), pack)
 		if err != nil {
 			return nil, err
 		}

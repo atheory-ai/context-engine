@@ -63,12 +63,16 @@ func RegisterIIR(s Registrar) {
 		}
 		return iir.DefaultRulePack()
 	}
-	s.RegisterTool(iirVerifyTool, handleIIRVerify(rulePack))
+	var extractor iir.Extractor
+	if e := s.Engine(); e != nil {
+		extractor = e.IIRExtractor()
+	}
+	s.RegisterTool(iirVerifyTool, handleIIRVerify(extractor, rulePack))
 	s.RegisterTool(iirGenerateTool, handleIIRGenerate())
 	s.RegisterTool(iirGenTestsTool, handleIIRGenTests())
 }
 
-func handleIIRVerify(rulePack func() iir.RulePack) HandlerFunc {
+func handleIIRVerify(extractor iir.Extractor, rulePack func() iir.RulePack) HandlerFunc {
 	return func(ctx context.Context, args json.RawMessage) (protocol.CallToolResult, error) {
 		var params struct {
 			Intent json.RawMessage `json:"intent"`
@@ -81,7 +85,7 @@ func handleIIRVerify(rulePack func() iir.RulePack) HandlerFunc {
 		if err != nil {
 			return errorResult(err.Error()), nil
 		}
-		report, err := iir.VerifySource(ctx, intent, []byte(params.Source), rulePack())
+		report, err := iir.VerifySource(ctx, extractor, intent, []byte(params.Source), rulePack())
 		if err != nil {
 			return errorResult(err.Error()), nil
 		}

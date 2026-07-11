@@ -44,6 +44,9 @@ type Engine struct {
 	plugins    *plugins.Registry
 	llmRouter  *llm.Router
 	orgGraph   *orggraph.OrgGraph
+
+	iirOnce      sync.Once
+	iirExtractor iir.Extractor
 }
 
 // New constructs a fully wired Engine from config.

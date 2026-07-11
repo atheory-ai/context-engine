@@ -2,7 +2,6 @@ package iir
 
 import (
 	"context"
-	"strings"
 )
 
 // This file defines the IIR plugin surface. Slice 5 is interface-first: there
@@ -76,29 +75,6 @@ type Plugin struct {
 // builtinPluginID is the id under which IIR's built-in capabilities register.
 const builtinPluginID = "builtin"
 
-// tsFunctionExtractor is the built-in TypeScript function extractor exposed
-// through the Extractor interface (it wraps ExtractFunction).
-type tsFunctionExtractor struct{}
-
-func (tsFunctionExtractor) ID() string { return "builtin.typescript.function" }
-
-func (tsFunctionExtractor) Supports(input ExtractionInput) bool {
-	if input.Language == "typescript" {
-		return true
-	}
-	// Fall back to extension when language is unspecified.
-	return input.Language == "" &&
-		(strings.HasSuffix(input.Path, ".ts") || strings.HasSuffix(input.Path, ".tsx"))
-}
-
-func (tsFunctionExtractor) Extract(ctx context.Context, input ExtractionInput) (ExtractionResult, error) {
-	fn, err := ExtractFunction(ctx, input.Source, input.Target)
-	if err != nil {
-		return ExtractionResult{}, err
-	}
-	return ExtractionResult{Function: fn}, nil
-}
-
 // functionComparator is the built-in FunctionIntent comparator exposed through
 // the Comparator interface (it wraps Compare).
 type functionComparator struct{}
@@ -115,14 +91,8 @@ func (functionComparator) Compare(intended, extracted *FunctionIntent) Compariso
 	return ComparisonResult{Matches: matches, Mismatches: mismatches}
 }
 
-// Compile-time proof the built-ins satisfy the plugin interfaces.
-var (
-	_ Extractor  = tsFunctionExtractor{}
-	_ Comparator = functionComparator{}
-)
-
-// BuiltinExtractor returns the built-in TypeScript function extractor.
-func BuiltinExtractor() Extractor { return tsFunctionExtractor{} }
+// Compile-time proof the built-in comparator satisfies the plugin interface.
+var _ Comparator = functionComparator{}
 
 // BuiltinComparator returns the built-in FunctionIntent comparator.
 func BuiltinComparator() Comparator { return functionComparator{} }
@@ -135,7 +105,6 @@ func BuiltinPlugin() Plugin {
 		Name:         "IIR Built-in",
 		Version:      "0.1.0",
 		Languages:    []string{"typescript"},
-		Extractors:   []Extractor{BuiltinExtractor()},
 		Comparators:  []Comparator{BuiltinComparator()},
 		Emitters:     []Emitter{BuiltinEmitter()},
 		TestEmitters: []TestEmitter{BuiltinTestEmitter()},

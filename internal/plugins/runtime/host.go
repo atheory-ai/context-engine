@@ -8,6 +8,7 @@ import (
 	extism "github.com/extism/go-sdk"
 
 	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/iir"
 )
 
 // HostDeps are the engine dependencies injected into ce.* host functions.
@@ -17,6 +18,10 @@ type HostDeps struct {
 	Channels     *core.AppChannels
 	Substrate    core.SubstrateReader // nil during indexing / Phase 1
 	PluginConfig map[string]any
+	// IIRExtractor backs ce.iir_extract / ce.iir_verify. nil in contexts that
+	// don't provide one (indexing, standalone runtimes); those host functions
+	// then return an in-band error rather than trapping.
+	IIRExtractor iir.Extractor
 }
 
 // pluginPermittedChannels defines which engine channels plugins may write to.
@@ -40,7 +45,7 @@ func buildHostFunctions(deps HostDeps) []extism.HostFunction {
 		makeHostEdgeID(),
 	}
 	// IIR is a host capability plugins can call (extract/verify/generate/tests).
-	funcs = append(funcs, buildIIRHostFunctions()...)
+	funcs = append(funcs, buildIIRHostFunctions(deps)...)
 	for i := range funcs {
 		funcs[i].SetNamespace("ce")
 	}

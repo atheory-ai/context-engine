@@ -68,6 +68,20 @@ func NewIIRExtractor(ctx context.Context, cfg *config.Config, ch *core.AppChanne
 	return &pluginExtractor{reg: reg, parser: parser}, cleanup, nil
 }
 
+// IIRExtractor returns an iir.Extractor backed by the engine's own plugin
+// registry (lazily built, cached). Used by the server IIR endpoints; safe
+// because those are user-initiated, not re-entrant plugin calls.
+func (e *Engine) IIRExtractor() iir.Extractor {
+	e.iirOnce.Do(func() {
+		parser, err := wasmparse.New(context.Background(), "")
+		if err != nil {
+			return // leaves iirExtractor nil; VerifySource reports it
+		}
+		e.iirExtractor = &pluginExtractor{reg: e.plugins, parser: parser}
+	})
+	return e.iirExtractor
+}
+
 func (p *pluginExtractor) ID() string { return "plugin.lift" }
 
 // Supports reports whether a plugin frontend exists for the input's language.

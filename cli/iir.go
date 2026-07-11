@@ -18,6 +18,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// iirExtractor builds a standalone plugin-backed IIR extractor for the verify/
+// repair commands (extraction now runs through the same plugin lift indexing
+// uses). Returns a cleanup func to unload the plugins.
+func iirExtractor(ctx context.Context) (iir.Extractor, func(), error) {
+	cfg, err := config.LoadRaw()
+	if err != nil {
+		return nil, func() {}, err
+	}
+	ch := core.NewAppChannels()
+	return runner.NewIIRExtractor(ctx, cfg, &ch)
+}
+
 func newIirCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "iir",
@@ -103,7 +115,12 @@ func runIirShape(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	report, err := iir.VerifySource(ctx, intent, []byte(source), iir.DefaultRulePack())
+	ext, cleanup, err := iirExtractor(ctx)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	report, err := iir.VerifySource(ctx, ext, intent, []byte(source), iir.DefaultRulePack())
 	if err != nil {
 		return err
 	}
@@ -158,7 +175,12 @@ func runIirRepair(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	result, err := iir.RepairLoop(context.Background(), intent, string(source), pack,
+	ext, cleanup, err := iirExtractor(cmd.Context())
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	result, err := iir.RepairLoop(cmd.Context(), ext, intent, string(source), pack,
 		iir.RegenerateStage{}, iir.RepairOptions{MaxIterations: maxAttempts})
 	if err != nil {
 		return err
@@ -282,7 +304,12 @@ func runIirGenerate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	report, err := iir.VerifySource(context.Background(), intent, []byte(source), pack)
+	ext, cleanup, err := iirExtractor(cmd.Context())
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	report, err := iir.VerifySource(cmd.Context(), ext, intent, []byte(source), pack)
 	if err != nil {
 		return err
 	}
@@ -340,7 +367,12 @@ func runIirVerify(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	report, err := iir.VerifySource(context.Background(), intent, source, pack)
+	ext, cleanup, err := iirExtractor(cmd.Context())
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	report, err := iir.VerifySource(cmd.Context(), ext, intent, source, pack)
 	if err != nil {
 		return err
 	}
