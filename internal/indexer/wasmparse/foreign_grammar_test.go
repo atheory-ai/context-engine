@@ -23,7 +23,7 @@ var rustGrammarWASM []byte
 // fake extension), this exercises a real non-bundled language end-to-end.
 func TestRegisterForeignGrammar(t *testing.T) {
 	ctx := context.Background()
-	p, err := New(ctx)
+	p, err := New(ctx, "")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
