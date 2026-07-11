@@ -27,7 +27,7 @@ func field(n *SyntaxNode, name string) *SyntaxNode {
 
 func TestParseGo(t *testing.T) {
 	ctx := context.Background()
-	p, err := New(ctx)
+	p, err := New(ctx, "")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestParseGo(t *testing.T) {
 // and parses through it, exercising the plugin-provided-grammar path.
 func TestRegisterGrammar(t *testing.T) {
 	ctx := context.Background()
-	p, err := New(ctx)
+	p, err := New(ctx, "")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestRegisterGrammar(t *testing.T) {
 // instance pool (run with -race). Each parse must return a correct tree.
 func TestParseConcurrent(t *testing.T) {
 	ctx := context.Background()
-	p, err := New(ctx)
+	p, err := New(ctx, "")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestParseAllLanguages(t *testing.T) {
 		{"tsx", "const x = <div className=\"a\">hi</div>\n", "program", ""},
 	}
 	ctx := context.Background()
-	p, err := New(ctx)
+	p, err := New(ctx, "")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

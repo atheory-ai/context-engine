@@ -41,7 +41,7 @@ var languages = []struct{ dir, wasm string }{
 func TestIIRGolden(t *testing.T) {
 	ctx := context.Background()
 
-	parser, err := wasmparse.New(ctx)
+	parser, err := wasmparse.New(ctx, "")
 	if err != nil {
 		t.Fatalf("wasmparse.New: %v", err)
 	}
