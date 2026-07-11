@@ -50,8 +50,14 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
-      - name: Enable pnpm
-        run: corepack enable
+      # Pin pnpm to the version in sdk/package.json's packageManager field.
+      # `corepack enable` alone lets the runner's bundled pnpm (a newer major)
+      # run, which hard-errors on the packageManager mismatch; action-setup
+      # installs the pinned version directly and sidesteps that.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdk/package.json
       # `make test-iir-golden` builds the default plugins, then runs the golden
       # corpus + self-index smoke against the real parse + plugin lift.
       - name: Run IIR golden corpus
