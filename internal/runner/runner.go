@@ -452,8 +452,10 @@ func (e *Engine) SearchSubstrate(ctx context.Context, opts SearchOptions) ([]Sea
 
 // Index walks rootDir, extracts nodes and edges via language plugins,
 // and writes them to the project's substrate graph.
-// full=true forces a complete reindex regardless of previous state.
-// Phase 1: incremental indexing is not yet implemented; full is always performed.
+// full=true forces a complete reindex regardless of previous state; full=false
+// re-indexes only changed files and prunes symbols from changed or deleted
+// files (see indexer.Run). Run --full once after upgrading so every node is
+// stamped with its source file, which is what makes incremental pruning exact.
 func (e *Engine) Index(ctx context.Context, rootDir string, full bool) (indexer.Stats, error) {
 	const projectID = core.ProjectID("local")
 

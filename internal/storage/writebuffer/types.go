@@ -56,6 +56,7 @@ type NodeUpsert struct {
 	CanonicalID string
 	SourceClass string
 	PluginID    string
+	SourceFile  string // project-relative path the node was extracted from ('' if unknown)
 	Properties  string // JSON
 	CreatedAt   int64
 	UpdatedAt   int64

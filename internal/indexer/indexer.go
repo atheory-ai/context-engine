@@ -121,6 +121,27 @@ func (idx *Indexer) parseFile(ctx context.Context, relPath string, content []byt
 	return idx.wasm.ParseFile(ctx, relPath, content)
 }
 
+// reindexTracker records, across the concurrent workers, which files were seen
+// this run and the fresh node ids each changed file produced — the inputs to
+// the post-pass incremental prune.
+type reindexTracker struct {
+	mu      sync.Mutex
+	walked  map[string]struct{}
+	changed map[string][]string // relPath → fresh node ids, only for files that had a prior hash
+}
+
+func (t *reindexTracker) markWalked(relPath string) {
+	t.mu.Lock()
+	t.walked[relPath] = struct{}{}
+	t.mu.Unlock()
+}
+
+func (t *reindexTracker) markChanged(relPath string, ids []string) {
+	t.mu.Lock()
+	t.changed[relPath] = ids
+	t.mu.Unlock()
+}
+
 // Run performs a full or incremental index of rootDir.
 // projectID identifies the substrate graph to write to.
 // full=true forces reindex of all files regardless of cached hashes.
@@ -181,13 +202,16 @@ func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.Proj
 
 	now := time.Now().UnixMilli()
 
+	tracker := &reindexTracker{walked: map[string]struct{}{}, changed: map[string][]string{}}
+
 	for i := 0; i < workerCount; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for result := range fileResults {
 				atomic.AddInt64(&filesWalked, 1)
-				n, e, err := idx.processFile(ctx, projectID, result, existingHashes, now)
+				tracker.markWalked(result.RelPath)
+				n, e, err := idx.processFile(ctx, projectID, result, existingHashes, now, tracker)
 				if err != nil {
 					atomic.AddInt64(&filesErrored, 1)
 					idx.emitWarning(fmt.Sprintf("index %s: %v", result.RelPath, err))
@@ -211,9 +235,17 @@ func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.Proj
 		return Stats{}, fmt.Errorf("walk: %w", walkErr)
 	}
 
-	// Flush the write buffer so all writes are committed before returning.
+	// Flush the write buffer so all writes are committed before pruning.
 	if err := idx.substrate.Flush(ctx); err != nil {
 		idx.emitWarning(fmt.Sprintf("flush write buffer: %v", err))
+	}
+
+	// Incremental prune: now that the fresh nodes are committed, drop the stale
+	// ones. For a changed file, remove the symbols it no longer produces; for a
+	// file gone from disk, remove everything it contributed. (A full reindex
+	// re-stamps every node's source_file, which is what makes this exact.)
+	if !full && idx.queries != nil && ctx.Err() == nil {
+		idx.pruneStale(ctx, projectID, existingHashes, tracker)
 	}
 
 	stats := Stats{
@@ -248,6 +280,7 @@ func (idx *Indexer) processFile(
 	result walker.WalkResult,
 	existingHashes map[string]string,
 	now int64,
+	tracker *reindexTracker,
 ) (int, int, error) {
 	content, err := os.ReadFile(result.Path)
 	if err != nil {
@@ -255,6 +288,10 @@ func (idx *Indexer) processFile(
 	}
 
 	hash := fileHash(content)
+
+	// A file with a prior hash that we're re-processing is a change — its stale
+	// symbols get pruned after the run (a brand-new file has nothing to prune).
+	_, changed := existingHashes[result.RelPath]
 
 	// Incremental check — skip if content unchanged.
 	if existingHashes != nil {
@@ -282,6 +319,7 @@ func (idx *Indexer) processFile(
 	successfulPlugins := 0
 	extractErrors := 0
 	var filePluginIIR []core.IIRExtracted // plugin-lifted IIR (Track B), if any
+	var keepIDs []string                  // ids emitted this run — survivors of the prune
 	for _, p := range matchingPlugins {
 		langHandler := p.Language()
 		if langHandler == nil {
@@ -302,10 +340,12 @@ func (idx *Indexer) processFile(
 		filePluginIIR = append(filePluginIIR, remapped.IIR...)
 
 		for _, node := range remapped.Nodes {
+			node.SourceFile = result.RelPath // stamp for incremental pruning
 			if err := idx.substrate.UpsertNode(ctx, node); err != nil {
 				idx.emitWarning(fmt.Sprintf("write node %s: %v", node.CanonicalID, err))
 				continue
 			}
+			keepIDs = append(keepIDs, string(node.ID))
 			nodesOut++
 		}
 
@@ -351,7 +391,39 @@ func (idx *Indexer) processFile(
 		_ = idx.queries.UpsertFileHash(ctx, string(projectID), result.RelPath, hash) //nolint:errcheck // best-effort; next run re-hashes if missing
 	}
 
+	// A changed file may have dropped symbols since last index; record the ids it
+	// still emits so the post-run prune can remove the rest.
+	if changed && tracker != nil {
+		tracker.markChanged(result.RelPath, keepIDs)
+	}
+
 	return nodesOut, edgesOut, nil
+}
+
+// pruneStale removes nodes left over from a previous index that the current
+// incremental run supersedes: symbols dropped from changed files, and every
+// node contributed by files that no longer exist on disk. Runs after the write
+// buffer is flushed, single-threaded, so its direct deletes don't contend with
+// buffered writes.
+func (idx *Indexer) pruneStale(ctx context.Context, projectID core.ProjectID, existingHashes map[string]string, tracker *reindexTracker) {
+	// Changed files: drop the symbols they no longer produce.
+	for relPath, keepIDs := range tracker.changed {
+		if _, err := idx.queries.PruneFileNodes(ctx, string(projectID), relPath, keepIDs); err != nil {
+			idx.emitWarning(fmt.Sprintf("prune changed %s: %v", relPath, err))
+		}
+	}
+	// Deleted files: present in the prior index, absent from this walk.
+	for relPath := range existingHashes {
+		if _, seen := tracker.walked[relPath]; seen {
+			continue
+		}
+		if _, err := idx.queries.PruneFileNodes(ctx, string(projectID), relPath, nil); err != nil {
+			idx.emitWarning(fmt.Sprintf("prune deleted %s: %v", relPath, err))
+		}
+		if err := idx.queries.DeleteFileHash(ctx, string(projectID), relPath); err != nil {
+			idx.emitWarning(fmt.Sprintf("delete hash %s: %v", relPath, err))
+		}
+	}
 }
 
 // fileHash returns the SHA-256 hash of content as a lowercase hex string.

@@ -213,15 +213,16 @@ func execOp(ctx context.Context, tx *sql.Tx, op WriteOp) error {
 	case OpUpsertNode:
 		n := op.Payload.(NodeUpsert)
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO nodes (id, project_id, type, label, canonical_id, source_class, plugin_id, created_at, updated_at, properties)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO nodes (id, project_id, type, label, canonical_id, source_class, plugin_id, source_file, created_at, updated_at, properties)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(id) DO UPDATE SET
 				label        = excluded.label,
 				source_class = excluded.source_class,
+				source_file  = excluded.source_file,
 				updated_at   = excluded.updated_at,
 				properties   = excluded.properties
 		`, n.ID, n.ProjectID, n.Type, n.Label, n.CanonicalID, n.SourceClass,
-			nullableString(n.PluginID), n.CreatedAt, n.UpdatedAt, n.Properties)
+			nullableString(n.PluginID), n.SourceFile, n.CreatedAt, n.UpdatedAt, n.Properties)
 		return err
 
 	case OpUpsertEdge:
