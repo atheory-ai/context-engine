@@ -25,7 +25,7 @@ func TestSelfIndexSmoke(t *testing.T) {
 		t.Skipf("go-language plugin not built — run `make bundle-default-plugins`")
 	}
 
-	parser, err := wasmparse.New(ctx)
+	parser, err := wasmparse.New(ctx, "")
 	if err != nil {
 		t.Fatalf("wasmparse.New: %v", err)
 	}
