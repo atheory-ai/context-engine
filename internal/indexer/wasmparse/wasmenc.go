@@ -95,28 +95,15 @@ func patchImports(wasm []byte, rename func(module, name string) string) ([]byte,
 	if len(wasm) < 8 {
 		return nil, fmt.Errorf("not a wasm module")
 	}
-	p := 8
-	read := func() uint64 {
-		var r uint64
-		var s uint
-		for {
-			x := wasm[p]
-			p++
-			r |= uint64(x&0x7f) << s
-			if x&0x80 == 0 {
-				break
-			}
-			s += 7
-		}
-		return r
-	}
+	r := &reader{b: wasm, p: 8}
 	out := append([]byte{}, wasm[:8]...)
-	for p < len(wasm) {
-		sec := wasm[p]
-		p++
-		size := int(read())
-		body := wasm[p : p+size]
-		p += size
+	for r.p < len(wasm) && !r.bad {
+		sec := r.u8()
+		size := int(r.uleb())
+		body := r.take(size)
+		if r.bad {
+			break
+		}
 		if sec != 2 { // not the import section — copy verbatim
 			out = append(out, sec)
 			out = append(out, uleb(uint64(size))...)
@@ -124,73 +111,58 @@ func patchImports(wasm []byte, rename func(module, name string) string) ([]byte,
 			continue
 		}
 		// rebuild import section, renaming matching module names
-		q := 0
-		bread := func() uint64 {
-			var r uint64
-			var s uint
-			for {
-				x := body[q]
-				q++
-				r |= uint64(x&0x7f) << s
-				if x&0x80 == 0 {
-					break
-				}
-				s += 7
-			}
-			return r
-		}
-		n := int(bread())
+		br := &reader{b: body, p: 0}
+		n := int(br.uleb())
 		entries := make([][]byte, 0, n)
-		for i := 0; i < n; i++ {
-			ml := int(bread())
-			mod := string(body[q : q+ml])
-			q += ml
-			nl := int(bread())
-			nm := body[q : q+nl]
-			q += nl
-			kind := body[q]
-			q++
-			var desc []byte
+		for i := 0; i < n && !br.bad; i++ {
+			mod := br.str()
+			nm := br.str()
+			kind := br.u8()
+			ds := br.p
 			switch kind {
 			case 0: // func: typeidx
-				ds := q
-				bread()
-				desc = body[ds:q]
+				br.uleb()
 			case 1: // table: reftype + limits
-				ds := q
-				q++ // reftype
-				fl := body[q]
-				q++
-				bread()
+				br.skip(1) // reftype
+				fl := br.u8()
+				br.uleb()
 				if fl&1 != 0 {
-					bread()
+					br.uleb()
 				}
-				desc = body[ds:q]
 			case 2: // mem: limits
-				ds := q
-				fl := body[q]
-				q++
-				bread()
+				fl := br.u8()
+				br.uleb()
 				if fl&1 != 0 {
-					bread()
+					br.uleb()
 				}
-				desc = body[ds:q]
 			case 3: // global: valtype + mut
-				desc = body[q : q+2]
-				q += 2
+				br.skip(2)
 			default:
+				if br.bad {
+					break
+				}
 				return nil, fmt.Errorf("unknown import kind %d", kind)
 			}
-			useMod := rename(mod, string(nm))
-			e := append(wname(useMod), wname(string(nm))...)
+			if br.bad {
+				break
+			}
+			desc := body[ds:br.p]
+			useMod := rename(mod, nm)
+			e := append(wname(useMod), wname(nm)...)
 			e = append(e, kind)
 			e = append(e, desc...)
 			entries = append(entries, e)
+		}
+		if br.bad {
+			return nil, errMalformedWASM
 		}
 		nb := vec(entries)
 		out = append(out, sec)
 		out = append(out, uleb(uint64(len(nb)))...)
 		out = append(out, nb...)
+	}
+	if r.bad {
+		return nil, errMalformedWASM
 	}
 	return out, nil
 }
@@ -201,88 +173,38 @@ func dylinkMemInfo(b []byte) (memSize, memAlign, tableSize int32, err error) {
 	if len(b) < 8 {
 		return 0, 0, 0, fmt.Errorf("not a wasm module")
 	}
-	p := 8
-	readU := func() uint64 {
-		var r uint64
-		var s uint
-		for {
-			x := b[p]
-			p++
-			r |= uint64(x&0x7f) << s
-			if x&0x80 == 0 {
-				break
-			}
-			s += 7
+	r := &reader{b: b, p: 8}
+	for r.p < len(b) && !r.bad {
+		sec := r.u8()
+		size := int(r.uleb())
+		end := r.p + size
+		if r.bad || end < r.p || end > len(b) {
+			break
 		}
-		return r
-	}
-	for p < len(b) {
-		sec := b[p]
-		p++
-		size := int(readU())
-		end := p + size
-		if sec == 0 { // custom
-			np := p
-			nlen := int(func() uint64 {
-				var r uint64
-				var s uint
-				for {
-					x := b[np]
-					np++
-					r |= uint64(x&0x7f) << s
-					if x&0x80 == 0 {
+		if sec == 0 { // custom section
+			if r.str() == "dylink.0" {
+				for r.p < end && !r.bad {
+					sub := r.u8()
+					sl := int(r.uleb())
+					subEnd := r.p + sl
+					if r.bad || subEnd < r.p || subEnd > end {
 						break
 					}
-					s += 7
-				}
-				return r
-			}())
-			nm := string(b[np : np+nlen])
-			np += nlen
-			if nm == "dylink.0" {
-				q := np
-				for q < end {
-					sub := b[q]
-					q++
-					// subsection length
-					var sl uint64
-					var s uint
-					for {
-						x := b[q]
-						q++
-						sl |= uint64(x&0x7f) << s
-						if x&0x80 == 0 {
-							break
-						}
-						s += 7
-					}
-					sq := q
 					if sub == 1 { // WASM_DYLINK_MEM_INFO
-						rd := func() uint64 {
-							var r uint64
-							var s uint
-							for {
-								x := b[sq]
-								sq++
-								r |= uint64(x&0x7f) << s
-								if x&0x80 == 0 {
-									break
-								}
-								s += 7
-							}
-							return r
+						ms := r.uleb()
+						maExp := r.uleb()
+						ts := r.uleb()
+						_ = r.uleb() // table_align exp
+						if r.bad || maExp > 31 {
+							return 0, 0, 0, errMalformedWASM
 						}
-						ms := rd()
-						maExp := rd()
-						ts := rd()
-						_ = rd() // table_align exp
 						return int32(ms), int32(1) << maExp, int32(ts), nil
 					}
-					q += int(sl)
+					r.seek(subEnd)
 				}
 			}
 		}
-		p = end
+		r.seek(end)
 	}
 	return 0, 0, 0, fmt.Errorf("no dylink.0 MEM_INFO")
 }

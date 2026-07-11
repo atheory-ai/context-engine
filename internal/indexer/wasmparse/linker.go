@@ -25,71 +25,55 @@ type wimport struct {
 	gmut         byte // global mutability (kind 3)
 }
 
-// parseImports reads a module's import section.
+// parseImports reads a module's import section. Input is untrusted (a plugin
+// grammar), so it must never panic — see reader and fuzz_test.go.
 func parseImports(b []byte) ([]wimport, error) {
 	if len(b) < 8 {
 		return nil, fmt.Errorf("not a wasm module")
 	}
-	p := 8
-	rd := func() uint64 {
-		var r uint64
-		var s uint
-		for {
-			x := b[p]
-			p++
-			r |= uint64(x&0x7f) << s
-			if x&0x80 == 0 {
-				break
-			}
-			s += 7
-		}
-		return r
-	}
+	r := &reader{b: b, p: 8}
 	var imports []wimport
-	for p < len(b) {
-		sec := b[p]
-		p++
-		size := int(rd())
-		end := p + size
+	for r.p < len(b) && !r.bad {
+		sec := r.u8()
+		size := int(r.uleb())
+		end := r.p + size
 		if sec == 2 {
-			n := int(rd())
-			for i := 0; i < n; i++ {
-				ml := int(rd())
-				mod := string(b[p : p+ml])
-				p += ml
-				nl := int(rd())
-				nm := string(b[p : p+nl])
-				p += nl
-				kind := b[p]
-				p++
+			n := int(r.uleb())
+			for i := 0; i < n && !r.bad; i++ {
+				mod := r.str()
+				nm := r.str()
+				kind := r.u8()
 				imp := wimport{module: mod, name: nm, kind: kind}
 				switch kind {
 				case 0:
-					rd() // typeidx
+					r.uleb() // typeidx
 				case 1:
-					p++ // reftype
-					fl := b[p]
-					p++
-					rd()
+					r.skip(1) // reftype
+					fl := r.u8()
+					r.uleb()
 					if fl&1 != 0 {
-						rd()
+						r.uleb()
 					}
 				case 2:
-					fl := b[p]
-					p++
-					rd()
+					fl := r.u8()
+					r.uleb()
 					if fl&1 != 0 {
-						rd()
+						r.uleb()
 					}
 				case 3:
-					p++ // valtype
-					imp.gmut = b[p]
-					p++
+					r.skip(1) // valtype
+					imp.gmut = r.u8()
 				}
 				imports = append(imports, imp)
 			}
 		}
-		p = end
+		if r.bad || end < r.p || end > len(b) {
+			break
+		}
+		r.seek(end)
+	}
+	if r.bad {
+		return nil, errMalformedWASM
 	}
 	return imports, nil
 }
@@ -100,42 +84,27 @@ func grammarEntryName(b []byte) (string, error) {
 	if len(b) < 8 {
 		return "", fmt.Errorf("not a wasm module")
 	}
-	p := 8
-	rd := func() uint64 {
-		var r uint64
-		var s uint
-		for {
-			x := b[p]
-			p++
-			r |= uint64(x&0x7f) << s
-			if x&0x80 == 0 {
-				break
-			}
-			s += 7
-		}
-		return r
-	}
+	r := &reader{b: b, p: 8}
 	const prefix = "tree_sitter_"
-	for p < len(b) {
-		sec := b[p]
-		p++
-		size := int(rd())
-		end := p + size
+	for r.p < len(b) && !r.bad {
+		sec := r.u8()
+		size := int(r.uleb())
+		end := r.p + size
 		if sec == 7 { // export section
-			n := int(rd())
-			for i := 0; i < n; i++ {
-				nl := int(rd())
-				name := string(b[p : p+nl])
-				p += nl
-				kind := b[p]
-				p++
-				rd() // index
+			n := int(r.uleb())
+			for i := 0; i < n && !r.bad; i++ {
+				name := r.str()
+				kind := r.u8()
+				r.uleb() // index
 				if kind == 0 && strings.HasPrefix(name, prefix) {
 					return name[len(prefix):], nil
 				}
 			}
 		}
-		p = end
+		if r.bad || end < r.p || end > len(b) {
+			break
+		}
+		r.seek(end)
 	}
 	return "", fmt.Errorf("no tree_sitter_* export (not a tree-sitter grammar?)")
 }
