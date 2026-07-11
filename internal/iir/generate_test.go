@@ -136,6 +136,68 @@ behavior:
 	}
 }
 
+func TestRenderTSCondition(t *testing.T) {
+	cases := []struct {
+		name string
+		expr *Expr
+		want string
+		ok   bool
+	}{
+		{"null check", bin("===", path("id"), lit("null")), "id === null", true},
+		{"nil alias to null", bin("===", path("id"), lit("nil")), "id === null", true},
+		{"comparison", bin("<", path("amount.cents"), path("min.cents")), "amount.cents < min.cents", true},
+		{"strict inequality string", bin("!==", path("name"), lit(`"hi"`)), `name !== "hi"`, true},
+		{"logical with grouping", bin("&&", bin(">", path("a"), lit("0")), bin(">", path("b"), lit("0"))), "(a > 0) && (b > 0)", true},
+		{"negation of compound", &Expr{Op: "!", Args: []*Expr{bin("===", path("x"), lit("null"))}}, "!(x === null)", true},
+		{"negation of path", &Expr{Op: "!", Args: []*Expr{path("ready")}}, "!ready", true},
+		{"nil expr", nil, "", false},
+		{"unknown op", &Expr{Op: "??", Args: []*Expr{path("a"), path("b")}}, "", false},
+		{"unsafe path rejected", path("a; drop"), "", false},
+		{"unknown literal rejected", lit("__weird__"), "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := renderTSCondition(tc.expr)
+			if ok != tc.ok {
+				t.Fatalf("ok = %v, want %v (got %q)", ok, tc.ok, got)
+			}
+			if ok && got != tc.want {
+				t.Errorf("rendered %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestGenerate_BehaviorWhenExprRoundTrips proves the closed loop: a clause with a
+// structured WhenExpr generates a real guard (not the `false` placeholder) that
+// re-extracts to the same condition, so verification finds no behavior-content
+// divergence.
+func TestGenerate_BehaviorWhenExprRoundTrips(t *testing.T) {
+	intent := &FunctionIntent{
+		Kind:     KindFunctionIntent,
+		Name:     "check",
+		Language: "typescript",
+		Inputs:   []Param{{Name: "id", Type: "string"}},
+		Returns:  Return{Type: "boolean", Explicit: true},
+		Behavior: []BehaviorClause{{
+			When:     "id is null",
+			Then:     "return false",
+			WhenExpr: bin("===", path("id"), lit("null")),
+		}},
+	}
+
+	src, report := roundTrip(t, intent)
+	if !strings.Contains(src, "if (id === null)") {
+		t.Errorf("expected a real guard, got:\n%s", src)
+	}
+	if m := findMismatch(report.Mismatches, MismatchBehaviorContent); m != nil {
+		t.Errorf("WhenExpr should round-trip without a content mismatch: %+v", m)
+	}
+	if m := findMismatch(report.Mismatches, MismatchUnsupported); m != nil {
+		t.Errorf("a rendered guard is verifiable, not unsupported: %+v", m)
+	}
+}
+
 func TestGenerate_RespectsRulePacks(t *testing.T) {
 	// A rule-compliant intent (public, explicit return, declared side effects)
 	// must generate rule-compliant code.
