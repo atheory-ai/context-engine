@@ -13,6 +13,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -127,7 +128,12 @@ func (p *Parser) grammarForExt(ext string) string {
 // (capped). A shared compilation cache compiles the embedded WASM once and
 // reuses it across instances. reference-types (needed by the helper's
 // table.grow) is on by default in wazero's core feature set.
-func New(ctx context.Context) (*Parser, error) {
+//
+// cacheDir, when non-empty, is a directory where wazero persists compiled
+// modules across process runs — so the core and grammars are JIT-compiled once
+// and reused on the next run rather than recompiled every time. Pass "" for an
+// in-memory cache (tests, one-off use).
+func New(ctx context.Context, cacheDir string) (*Parser, error) {
 	n := runtime.GOMAXPROCS(0)
 	if n > 8 {
 		n = 8
@@ -135,8 +141,12 @@ func New(ctx context.Context) (*Parser, error) {
 	if n < 1 {
 		n = 1
 	}
+	cache, err := newCache(cacheDir)
+	if err != nil {
+		return nil, err
+	}
 	p := &Parser{
-		cache: wazero.NewCompilationCache(),
+		cache: cache,
 		pool:  make(chan *instance, n),
 	}
 	for i := 0; i < n; i++ {
@@ -149,6 +159,22 @@ func New(ctx context.Context) (*Parser, error) {
 		p.pool <- in
 	}
 	return p, nil
+}
+
+// newCache returns an on-disk compilation cache under dir (persisted across
+// runs), or an in-memory cache when dir is empty.
+func newCache(dir string) (wazero.CompilationCache, error) {
+	if dir == "" {
+		return wazero.NewCompilationCache(), nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, fmt.Errorf("wasm cache dir %s: %w", dir, err)
+	}
+	c, err := wazero.NewCompilationCacheWithDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("wasm cache: %w", err)
+	}
+	return c, nil
 }
 
 func newInstance(ctx context.Context, cache wazero.CompilationCache) (*instance, error) {
