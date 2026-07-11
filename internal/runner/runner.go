@@ -23,6 +23,8 @@ import (
 	"github.com/atheory-ai/context-engine/internal/indexer"
 	"github.com/atheory-ai/context-engine/internal/llm"
 	"github.com/atheory-ai/context-engine/internal/llm/anthropic"
+	"github.com/atheory-ai/context-engine/internal/llm/local"
+	"github.com/atheory-ai/context-engine/internal/llm/openai"
 	"github.com/atheory-ai/context-engine/internal/orggraph"
 	"github.com/atheory-ai/context-engine/internal/plugins"
 	"github.com/atheory-ai/context-engine/internal/storage/db"
@@ -185,6 +187,23 @@ func buildLLMRouter(cfg *config.Config) *llm.Router {
 		BaseURL: cfg.LLM.BaseURL,
 	})
 
+	// OpenAI falls back to OPENAI_API_KEY when the shared key is unset.
+	openaiKey := apiKey
+	if openaiKey == "" {
+		openaiKey = os.Getenv("OPENAI_API_KEY")
+	}
+	openaiProv := openai.New(openai.Config{
+		APIKey:     openaiKey,
+		BaseURL:    cfg.LLM.BaseURL,
+		MaxRetries: cfg.LLM.MaxRetries,
+	})
+
+	// Local Ollama uses BaseURL as its server endpoint (default localhost:11434).
+	localProv := local.New(local.Config{
+		BaseURL: cfg.LLM.BaseURL,
+		Timeout: time.Duration(cfg.LLM.TimeoutSeconds) * time.Second,
+	})
+
 	llmCfg := llm.Config{
 		DefaultProvider: cfg.LLM.Provider,
 		TierModels:      cfg.LLM.Models,
@@ -194,10 +213,11 @@ func buildLLMRouter(cfg *config.Config) *llm.Router {
 		},
 	}
 
-	return llm.NewRouter(llmCfg, llm.ProviderEntry{
-		Name:     "anthropic",
-		Provider: anthropicProv,
-	})
+	return llm.NewRouter(llmCfg,
+		llm.ProviderEntry{Name: "anthropic", Provider: anthropicProv},
+		llm.ProviderEntry{Name: "openai", Provider: openaiProv},
+		llm.ProviderEntry{Name: "local", Provider: localProv},
+	)
 }
 
 // QueryOptions carries the query and optional overrides for a query run.
