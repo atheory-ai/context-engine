@@ -90,20 +90,24 @@ func (q *IndexQueries) PruneFileNodes(ctx context.Context, projectID, relPath st
 	if err != nil {
 		return 0, err
 	}
-	defer func() { _ = tx.Rollback() }() // no-op after a successful Commit
+	defer tx.Rollback() //nolint:errcheck // no-op after a successful Commit
+
+	// The two queries below are assembled only from string literals and bound "?"
+	// placeholders (keepIDs are passed as args, never interpolated), so gosec's
+	// SQL-string-concatenation warning (G202) is a false positive here.
 
 	// 1. IIR has no FK cascade — delete rows for the doomed nodes explicitly.
-	if _, err := tx.ExecContext(ctx,
-		"DELETE FROM iir WHERE project_id = ? AND node_id IN (SELECT id FROM nodes WHERE "+where+")",
-		append([]any{projectID}, args...)...); err != nil {
+	iirDelete := "DELETE FROM iir WHERE project_id = ? AND node_id IN (SELECT id FROM nodes WHERE " + where + ")" //nolint:gosec // G202: literals + bound placeholders only
+	if _, err := tx.ExecContext(ctx, iirDelete, append([]any{projectID}, args...)...); err != nil {
 		return 0, fmt.Errorf("prune iir for %s: %w", relPath, err)
 	}
 
 	// 2. Delete the nodes; edges, edge_weight and node_activation cascade.
-	res, err := tx.ExecContext(ctx, "DELETE FROM nodes WHERE "+where, args...)
+	nodeDelete := "DELETE FROM nodes WHERE " + where //nolint:gosec // G202: literals + bound placeholders only
+	res, err := tx.ExecContext(ctx, nodeDelete, args...)
 	if err != nil {
 		return 0, fmt.Errorf("prune nodes for %s: %w", relPath, err)
 	}
-	n, _ := res.RowsAffected()
+	n, _ := res.RowsAffected() //nolint:errcheck // RowsAffected only errors on drivers that don't support it (not sqlite)
 	return n, tx.Commit()
 }
