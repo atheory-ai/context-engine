@@ -1,0 +1,24 @@
+# Declared intent for validateDonation — the contract the code must uphold.
+kind: FunctionIntent
+name: validateDonation
+language: typescript
+visibility: public
+inputs:
+  - name: amount
+    type: Money
+  - name: campaign
+    type: Campaign
+returns:
+  type: ValidationResult<Money>
+behavior:
+  - when: amount.cents < campaign.minimumCents
+    then: return err("amount_below_minimum")
+    # The structured condition lets the engine compare behavior by shape, not
+    # just count — so flipping the comparison is detected.
+    whenExpr:
+      op: "<"
+      args:
+        - { op: path, text: amount.cents }
+        - { op: path, text: campaign.minimumCents }
+# The function is declared pure: it performs no observable side effects.
+sideEffects: []
