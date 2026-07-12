@@ -168,7 +168,7 @@ func writeUnmatchedFailures(b *strings.Builder, intent *FunctionIntent, resultSt
 
 func writeSideEffects(b *strings.Builder, intent *FunctionIntent) {
 	for _, se := range intent.SideEffects {
-		fmt.Fprintf(b, "%s%s();\n", genIndent, se)
+		fmt.Fprintf(b, "%s%s();\n", genIndent, se.Name)
 	}
 	if len(intent.SideEffects) > 0 {
 		b.WriteByte('\n')
@@ -292,12 +292,12 @@ func validCondPath(path string) bool {
 // sideEffectImports returns the root objects of member-expression side effects
 // (e.g. "analytics" for "analytics.track"), in first-seen order, so the emitter
 // can import them and re-extraction attributes the call to an imported client.
-func sideEffectImports(effects []string) []string {
+func sideEffectImports(effects []SideEffect) []string {
 	seen := map[string]bool{}
 	var out []string
-	for _, e := range effects {
-		if i := strings.IndexByte(e, '.'); i > 0 {
-			root := e[:i]
+	for _, se := range effects {
+		if i := strings.IndexByte(se.Name, '.'); i > 0 {
+			root := se.Name[:i]
 			if !seen[root] {
 				seen[root] = true
 				out = append(out, root)

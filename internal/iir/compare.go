@@ -329,27 +329,46 @@ func inputMatchKind(want, got string) MatchKind {
 }
 
 func compareSideEffects(intended, extracted *FunctionIntent, matches *[]Match, mismatches *[]Mismatch) {
-	declared := toSet(intended.SideEffects)
-	found := toSet(extracted.SideEffects)
+	declared := toSet(effectNames(intended.SideEffects))
+	found := toSet(effectNames(extracted.SideEffects))
 
-	// Effects in source but not declared: an error — the intent claims fewer
-	// effects than the code performs.
-	var undeclared []string
-	for e := range found {
-		if !declared[e] {
-			undeclared = append(undeclared, e)
+	// Effects in source but not declared. Severity is graded by confidence: a
+	// high-confidence (recognized) effect is an error, a low-confidence
+	// (heuristic-only) one is a warning — so an over-eager heuristic detection
+	// doesn't fail verification outright.
+	var undeclaredHigh, undeclaredLow []string
+	for _, e := range extracted.SideEffects {
+		if declared[e.Name] {
+			continue
+		}
+		if effectConfidence(e) == ConfidenceHigh {
+			undeclaredHigh = append(undeclaredHigh, e.Name)
+		} else {
+			undeclaredLow = append(undeclaredLow, e.Name)
 		}
 	}
-	if len(undeclared) > 0 {
-		sort.Strings(undeclared)
+	if len(undeclaredHigh) > 0 {
+		sort.Strings(undeclaredHigh)
 		*mismatches = append(*mismatches, Mismatch{
 			Kind:         MismatchUndeclaredEffect,
 			Severity:     SeverityError,
 			Path:         "FunctionIntent.sideEffects",
-			Message:      fmt.Sprintf("source performs undeclared side effects: %s", strings.Join(undeclared, ", ")),
+			Message:      fmt.Sprintf("source performs undeclared side effects: %s", strings.Join(undeclaredHigh, ", ")),
 			Expected:     intended.SideEffects,
 			Actual:       extracted.SideEffects,
-			RepairTarget: fmt.Sprintf("Either remove %s or declare the side effect(s) in intended IIR.", strings.Join(undeclared, ", ")),
+			RepairTarget: fmt.Sprintf("Either remove %s or declare the side effect(s) in intended IIR.", strings.Join(undeclaredHigh, ", ")),
+		})
+	}
+	if len(undeclaredLow) > 0 {
+		sort.Strings(undeclaredLow)
+		*mismatches = append(*mismatches, Mismatch{
+			Kind:         MismatchUndeclaredEffect,
+			Severity:     SeverityWarning,
+			Path:         "FunctionIntent.sideEffects",
+			Message:      fmt.Sprintf("source may perform undeclared side effects (low confidence): %s", strings.Join(undeclaredLow, ", ")),
+			Expected:     intended.SideEffects,
+			Actual:       extracted.SideEffects,
+			RepairTarget: fmt.Sprintf("If %s is a real effect, declare it in intended IIR; otherwise ignore.", strings.Join(undeclaredLow, ", ")),
 		})
 	}
 
@@ -374,7 +393,7 @@ func compareSideEffects(intended, extracted *FunctionIntent, matches *[]Match, m
 		})
 	}
 
-	if len(undeclared) == 0 && len(undetected) == 0 {
+	if len(undeclaredHigh) == 0 && len(undeclaredLow) == 0 && len(undetected) == 0 {
 		*matches = append(*matches, Match{
 			Kind:    MatchExact,
 			Path:    "FunctionIntent.sideEffects",

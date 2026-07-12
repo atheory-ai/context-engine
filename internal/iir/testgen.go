@@ -151,10 +151,10 @@ func planCoverage(intent *FunctionIntent) []TestCoverage {
 
 	for _, se := range intent.SideEffects {
 		out = append(out, TestCoverage{
-			NodeID:   fmt.Sprintf("%s.sideEffect.%s", intent.Name, se),
+			NodeID:   fmt.Sprintf("%s.sideEffect.%s", intent.Name, se.Name),
 			Kind:     CoverageSideEffect,
 			Covered:  true,
-			TestName: "performs side effect " + se,
+			TestName: "performs side effect " + se.Name,
 		})
 	}
 
