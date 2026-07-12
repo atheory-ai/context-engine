@@ -166,12 +166,12 @@ describe("liftFunction (behavior, effects, failures)", () => {
     ])
   })
 
-  it("detects a side effect from a verb method call", () => {
+  it("detects a side effect from a verb method call and classifies it", () => {
     const intent = liftOf(program(fnWith(bodyOf(callExpr(member("analytics", "track")))))).at(0)!.intent
-    expect(intent.sideEffects).toEqual(["analytics.track"])
+    expect(intent.sideEffects).toEqual([{ name: "analytics.track", kind: "mutation", confidence: "high" }])
   })
 
-  it("detects a call on an imported client as a side effect", () => {
+  it("detects a call on an imported client and classifies by its root", () => {
     // import { db } from "./db"; db.query()
     const imp = n("import_statement", {
       children: [n("import_clause", { children: [n("named_imports", {
@@ -180,7 +180,20 @@ describe("liftFunction (behavior, effects, failures)", () => {
     })
     const fn = fnWith(bodyOf(callExpr(member("db", "query"))))
     const intent = liftOf(program(imp, fn))[0].intent
-    expect(intent.sideEffects).toEqual(["db.query"])
+    expect(intent.sideEffects).toEqual([{ name: "db.query", kind: "db", confidence: "high" }])
+  })
+
+  it("classifies a call on an imported network client (axios) as network", () => {
+    // import axios from "axios"; axios.get(...)
+    const imp = n("import_statement", {
+      children: [
+        n("import_clause", { children: [n("identifier", { text: "axios" })] }),
+        n("string", { field: "source", text: `"axios"` }),
+      ],
+    })
+    const fn = fnWith(bodyOf(callExpr(member("axios", "get"))))
+    const intent = liftOf(program(imp, fn))[0].intent
+    expect(intent.sideEffects).toEqual([{ name: "axios.get", kind: "network", confidence: "high" }])
   })
 
   it("captures a thrown string literal as a failure mode", () => {
