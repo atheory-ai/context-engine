@@ -40,7 +40,9 @@
     "sideEffects": [
       "fmt.Errorf"
     ],
-    "failureModes": [],
+    "failureModes": [
+      "empty id"
+    ],
     "constraints": []
   },
   {
