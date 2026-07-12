@@ -2,37 +2,38 @@
 // Engine's internal/iir extractor so plugin-produced IIR can reach parity with
 // (and eventually replace) the host's Go lift. Deterministic AST walk, no model.
 import type {
-  FunctionIntent, IIRParam, IIRReturn, IIRExpr, IIRBehaviorClause, SyntaxNode,
+  FunctionIntent, IIRParam, IIRReturn, IIRExpr, IIRBehaviorClause, IIRSideEffect, SyntaxNode,
 } from "@atheory-ai/ce-plugin-sdk"
-import { IIRTypeUnknown, childByField, childrenByType, fieldText, walk, walkTopLevel } from "@atheory-ai/ce-plugin-sdk"
+import { IIRTypeUnknown, childByField, childrenByType, fieldText, walk, walkTopLevel, classifyEffect } from "@atheory-ai/ce-plugin-sdk"
 
 // collectImports gathers the identifiers a module imports (local aliases, named
 // imports, namespace and default imports) — the set used to decide whether a
 // call targets an imported client/service.
-export function collectImports(tree: SyntaxNode): Set<string> {
-  const imports = new Set<string>()
+export function collectImports(tree: SyntaxNode): Map<string, string> {
+  const imports = new Map<string, string>()
   for (const node of tree.children ?? []) {
     if (node.type !== "import_statement") continue
+    // The module specifier (e.g. "axios", "./logger") lets the effect classifier
+    // categorize a call on the binding; the binding name gates detection.
+    const source = (childByField(node, "source")?.text ?? "").replace(/^['"`]|['"`]$/g, "")
     walk(node, (n) => {
       switch (n.type) {
         case "import_specifier": {
           // Prefer the local alias when present, else the imported name.
-          const alias = childByField(n, "alias")
-          const name = childByField(n, "name")
-          if (alias) imports.add(alias.text)
-          else if (name) imports.add(name.text)
+          const binding = childByField(n, "alias")?.text ?? childByField(n, "name")?.text
+          if (binding) imports.set(binding, source)
           break
         }
         case "namespace_import": {
           const id = lastIdentifier(n)
-          if (id) imports.add(id)
+          if (id) imports.set(id, source)
           break
         }
         case "import_clause":
           // default import: `import Foo from "..."` — a direct identifier child
           // of import_clause (named/namespace imports are nested deeper).
           for (const c of n.children ?? []) {
-            if (c.type === "identifier") imports.add(c.text)
+            if (c.type === "identifier") imports.set(c.text, source)
           }
           break
       }
@@ -43,7 +44,7 @@ export function collectImports(tree: SyntaxNode): Set<string> {
 
 // liftFunction builds a FunctionIntent from a function-bearing node (a
 // function_declaration or an arrow_function/function_expression value).
-export function liftFunction(name: string, fnNode: SyntaxNode, exported: boolean, imports: Set<string>): FunctionIntent {
+export function liftFunction(name: string, fnNode: SyntaxNode, exported: boolean, imports: Map<string, string>): FunctionIntent {
   const body = childByField(fnNode, "body")
   return {
     kind:         "FunctionIntent",
@@ -269,8 +270,8 @@ const sideEffectVerbs = ["track", "send", "emit", "publish", "save", "create", "
 // effect (JSON.stringify, Math.max, Object.keys), so they are not side effects.
 const purePackages = new Set(["JSON", "Math", "Object", "Array", "Number", "String"])
 
-function extractSideEffects(body: SyntaxNode | null, imports: Set<string>): string[] {
-  const seen = new Set<string>()
+function extractSideEffects(body: SyntaxNode | null, imports: Map<string, string>): IIRSideEffect[] {
+  const byName = new Map<string, IIRSideEffect>()
   if (!body) return []
   walk(body, (n) => {
     if (n.type !== "call_expression") return
@@ -278,9 +279,16 @@ function extractSideEffects(body: SyntaxNode | null, imports: Set<string>): stri
     if (!callee) return
     const { method, rootObj, full } = calleeParts(callee)
     if (purePackages.has(rootObj)) return
-    if (imports.has(rootObj) || matchesSideEffectVerb(method)) seen.add(full)
+    if (!imports.has(rootObj) && !matchesSideEffectVerb(method)) return
+    if (byName.has(full)) return
+    const { kind, confidence } = classifyEffect({ method, root: rootObj, importPath: imports.get(rootObj) })
+    byName.set(full, { name: full, kind, confidence })
   })
-  return [...seen].sort()
+  return [...byName.values()].sort((a, b) => effectName(a).localeCompare(effectName(b)))
+}
+
+function effectName(e: IIRSideEffect): string {
+  return typeof e === "string" ? e : e.name
 }
 
 function calleeParts(callee: SyntaxNode): { method: string; rootObj: string; full: string } {

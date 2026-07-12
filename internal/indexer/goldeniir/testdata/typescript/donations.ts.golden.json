@@ -36,7 +36,11 @@
     },
     "behavior": [],
     "sideEffects": [
-      "analytics.track"
+      {
+        "name": "analytics.track",
+        "kind": "mutation",
+        "confidence": "high"
+      }
     ],
     "failureModes": [],
     "constraints": []
