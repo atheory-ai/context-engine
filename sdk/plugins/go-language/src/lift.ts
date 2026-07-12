@@ -277,6 +277,17 @@ function memberPath(node: SyntaxNode | null): string {
 
 const sideEffectVerbs = ["track", "send", "emit", "publish", "save", "create", "update", "delete", "write"]
 
+// Read-only stdlib packages: a call on one constructs/derives a value without an
+// observable effect, so it is not a side effect even though it's on an import.
+const purePackages = new Set(["strings", "strconv", "math", "unicode", "utf8", "errors", "sort", "bytes", "regexp"])
+// Individually-pure functions from packages that are otherwise effectful (fmt
+// writes to stdout, but fmt.Errorf/Sprintf only format a value).
+const pureCalls = new Set(["fmt.Errorf", "fmt.Sprintf", "fmt.Sprint", "fmt.Sprintln"])
+
+function isPureCall(root: string, full: string): boolean {
+  return purePackages.has(root) || pureCalls.has(full)
+}
+
 function extractSideEffects(body: SyntaxNode | null, imports: Set<string>): string[] {
   const seen = new Set<string>()
   if (!body) return []
@@ -285,6 +296,7 @@ function extractSideEffects(body: SyntaxNode | null, imports: Set<string>): stri
     const callee = childByField(n, "function")
     if (!callee) return
     const { method, root, full } = calleeParts(callee)
+    if (isPureCall(root, full)) return
     if (imports.has(root) || matchesSideEffectVerb(method)) seen.add(full)
   })
   return [...seen].sort()
