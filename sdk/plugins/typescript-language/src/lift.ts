@@ -112,17 +112,67 @@ function extractBehavior(body: SyntaxNode | null): IIRBehaviorClause[] {
   // walkTopLevel stops at nested function scopes, so a callback's `if` is not
   // counted as the outer function's behavior.
   walkTopLevel(body, (n) => {
-    if (n.type !== "if_statement") return
-    const cond = childByField(n, "condition")
-    const clause: IIRBehaviorClause = {
-      when: conditionText(cond),
-      then: summarizeConsequence(childByField(n, "consequence")),
-    }
-    const whenExpr = normalizeCondition(cond)
-    if (whenExpr) clause.whenExpr = whenExpr
-    out.push(clause)
+    if (n.type === "if_statement") { pushIf(n, out); return }
+    if (n.type === "switch_statement") { pushSwitch(n, out); return }
   })
-  return out
+  // A clause needs a meaningful consequence: the IIR model (and the comparator)
+  // require both when and then, so drop empty-then guards (e.g. `if (ok) {} else …`).
+  return out.filter(c => c.then !== "")
+}
+
+function pushIf(n: SyntaxNode, out: IIRBehaviorClause[]): void {
+  const cond = childByField(n, "condition")
+  const clause: IIRBehaviorClause = {
+    when: conditionText(cond),
+    then: summarizeConsequence(childByField(n, "consequence")),
+  }
+  const whenExpr = normalizeCondition(cond)
+  if (whenExpr) clause.whenExpr = whenExpr
+  out.push(clause)
+  // A terminal `else { … }` (an else_clause wrapping a block, not another `if`,
+  // which walkTopLevel visits on its own) adds an otherwise-clause.
+  const alt = childByField(n, "alternative")
+  const altBody = alt?.type === "else_clause"
+    ? (alt.children ?? []).find(c => c.isNamed)
+    : alt
+  if (altBody && altBody.type === "statement_block") {
+    out.push({ when: "else", then: summarizeConsequence(altBody) })
+  }
+}
+
+// pushSwitch turns `switch (subj) { case v: … }` into one clause per case:
+// when = "subj === v", then = the case body summary. default becomes "else".
+function pushSwitch(sw: SyntaxNode, out: IIRBehaviorClause[]): void {
+  const subject = childByField(sw, "value")
+  const subjExpr = normalizeCondition(subject)
+  const subjText = conditionText(subject)
+  const switchBody = childByField(sw, "body")
+  for (const c of switchBody?.children ?? []) {
+    if (c.type === "switch_case") {
+      const value = childByField(c, "value")
+      const valExpr = normalizeCondition(value)
+      const clause: IIRBehaviorClause = {
+        when: `${subjText} === ${value ? normWs(value.text) : ""}`,
+        then: summarizeCaseBody(c),
+      }
+      if (subjExpr && valExpr) clause.whenExpr = { op: "===", args: [subjExpr, valExpr] }
+      out.push(clause)
+    } else if (c.type === "switch_default") {
+      out.push({ when: "else", then: summarizeCaseBody(c) })
+    }
+  }
+}
+
+// summarizeCaseBody summarizes a switch case's statements, preferring a return
+// or throw. The case value (the `value` field) is excluded.
+function summarizeCaseBody(c: SyntaxNode): string {
+  let first: SyntaxNode | undefined
+  for (const s of c.children ?? []) {
+    if (!s.isNamed || s.fieldName === "value") continue
+    if (!first) first = s
+    if (s.type === "return_statement" || s.type === "throw_statement") return trimStatement(normWs(s.text))
+  }
+  return first ? trimStatement(normWs(first.text)) : ""
 }
 
 function conditionText(cond: SyntaxNode | null): string {

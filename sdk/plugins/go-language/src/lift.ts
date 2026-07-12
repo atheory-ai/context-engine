@@ -83,17 +83,109 @@ function extractBehavior(body: SyntaxNode | null): IIRBehaviorClause[] {
   const out: IIRBehaviorClause[] = []
   if (!body) return out
   walkWithinFunc(body, (n) => {
-    if (n.type !== "if_statement") return
-    const cond = childByField(n, "condition")
-    const clause: IIRBehaviorClause = {
-      when: cond ? normWs(cond.text) : "",
-      then: summarizeConsequence(childByField(n, "consequence")),
-    }
-    const whenExpr = normalizeCondition(cond)
-    if (whenExpr) clause.whenExpr = whenExpr
-    out.push(clause)
+    if (n.type === "if_statement") { pushIf(n, out); return }
+    if (n.type === "expression_switch_statement") { pushExprSwitch(n, out); return }
+    if (n.type === "type_switch_statement") { pushTypeSwitch(n, out); return }
   })
-  return out
+  // A clause needs a meaningful consequence: the IIR model (and the comparator)
+  // require both when and then, so drop empty-then guards (e.g. `if ok {} else …`).
+  return out.filter(c => c.then !== "")
+}
+
+function pushIf(n: SyntaxNode, out: IIRBehaviorClause[]): void {
+  const cond = childByField(n, "condition")
+  const clause: IIRBehaviorClause = {
+    when: cond ? normWs(cond.text) : "",
+    then: summarizeConsequence(childByField(n, "consequence")),
+  }
+  const whenExpr = normalizeCondition(cond)
+  if (whenExpr) clause.whenExpr = whenExpr
+  out.push(clause)
+  // A terminal `else { … }` (not an `else if`, which the walk visits on its own)
+  // adds an otherwise-clause. tree-sitter-go models it as an `alternative` field.
+  const alt = childByField(n, "alternative")
+  if (alt && alt.type === "block") {
+    out.push({ when: "else", then: summarizeConsequence(alt) })
+  }
+}
+
+// pushExprSwitch turns `switch subj { case v: … }` into one clause per case:
+// when = "subj == v" (or the case's own boolean when subj is absent), then =
+// the case body summary. A default becomes an "else" clause.
+function pushExprSwitch(sw: SyntaxNode, out: IIRBehaviorClause[]): void {
+  const subject = childByField(sw, "value")
+  const subjExpr = subject ? normalizeCondition(subject) : undefined
+  const subjText = subject ? normWs(subject.text) : ""
+  for (const c of sw.children ?? []) {
+    if (c.type === "expression_case") {
+      const values = caseValueNodes(childByField(c, "value"))
+      const parts = values.map(v => caseCondition(subject, subjExpr, subjText, v))
+      const clause: IIRBehaviorClause = {
+        when: parts.map(p => p.text).join(" || ") || normWs(c.text),
+        then: summarizeCaseBody(c),
+      }
+      const exprs = parts.map(p => p.expr).filter((e): e is IIRExpr => !!e)
+      if (exprs.length === values.length && exprs.length > 0) {
+        clause.whenExpr = exprs.length === 1 ? exprs[0] : orFold(exprs)
+      }
+      out.push(clause)
+    } else if (c.type === "default_case") {
+      out.push({ when: "else", then: summarizeCaseBody(c) })
+    }
+  }
+}
+
+// pushTypeSwitch turns `switch v := x.(type) { case T: … }` into clauses. Type
+// matching isn't in the whenExpr grammar, so these carry when-text only.
+function pushTypeSwitch(sw: SyntaxNode, out: IIRBehaviorClause[]): void {
+  const subject = childByField(sw, "value")
+  const subjText = subject ? normWs(subject.text) : "value"
+  for (const c of sw.children ?? []) {
+    if (c.type === "type_case") {
+      const t = childByField(c, "type")
+      out.push({ when: `${subjText} is ${t ? normWs(t.text) : "?"}`, then: summarizeCaseBody(c) })
+    } else if (c.type === "default_case") {
+      out.push({ when: "else", then: summarizeCaseBody(c) })
+    }
+  }
+}
+
+function caseValueNodes(value: SyntaxNode | null): SyntaxNode[] {
+  if (!value) return []
+  // The case `value` field is an expression_list; a bare value may be the node itself.
+  const list = value.type === "expression_list" ? value.children : [value]
+  return (list ?? []).filter(v => v.isNamed && v.type !== ",")
+}
+
+// caseCondition builds the when-text and whenExpr for one case value. With a
+// subject it's an equality (subject == value); without one the case value is
+// itself a boolean condition.
+function caseCondition(
+  subject: SyntaxNode | null, subjExpr: IIRExpr | undefined, subjText: string, value: SyntaxNode,
+): { text: string; expr?: IIRExpr } {
+  if (!subject) {
+    return { text: normWs(value.text), expr: normalizeCondition(value) }
+  }
+  const valExpr = normalizeCondition(value)
+  const expr = subjExpr && valExpr ? { op: "==", args: [subjExpr, valExpr] } : undefined
+  return { text: `${subjText} == ${normWs(value.text)}`, expr }
+}
+
+function orFold(exprs: IIRExpr[]): IIRExpr {
+  return exprs.reduce((acc, e) => ({ op: "||", args: [acc, e] }))
+}
+
+// summarizeCaseBody summarizes a case's statements (which follow the value/type
+// as direct children), preferring a return statement.
+function summarizeCaseBody(c: SyntaxNode): string {
+  let first: SyntaxNode | undefined
+  for (const s of c.children ?? []) {
+    if (!s.isNamed) continue
+    if (s.fieldName === "value" || s.fieldName === "type" || s.type === "expression_list") continue
+    if (!first) first = s
+    if (s.type === "return_statement") return normWs(s.text)
+  }
+  return first ? normWs(first.text) : ""
 }
 
 // walkWithinFunc stops at nested func_literals so a closure's `if` is not counted

@@ -145,6 +145,27 @@ describe("liftFunction (behavior, effects, failures)", () => {
     })
   })
 
+  it("lifts a switch into one strict-equality clause per case, default as else", () => {
+    const num = (v: number) => n("number", { text: String(v) })
+    const switchCase = (value: SyntaxNode, body: SyntaxNode) => n("switch_case", {
+      children: [withField(value, "value"), body],
+    })
+    const sw = n("switch_statement", {
+      children: [
+        withField(n("parenthesized_expression", { children: [ident("x")] }), "value"),
+        withField(n("switch_body", { children: [
+          switchCase(num(1), returnStmt("return 'one';")),
+          n("switch_default", { children: [returnStmt("return 'other';")] }),
+        ] }), "body"),
+      ],
+    })
+    const intent = liftOf(program(fnWith(bodyOf(sw))))[0].intent
+    expect(intent.behavior).toEqual([
+      { when: "x === 1", then: "return 'one'", whenExpr: { op: "===", args: [{ op: "path", text: "x" }, { op: "lit", text: "1" }] } },
+      { when: "else", then: "return 'other'" },
+    ])
+  })
+
   it("detects a side effect from a verb method call", () => {
     const intent = liftOf(program(fnWith(bodyOf(callExpr(member("analytics", "track")))))).at(0)!.intent
     expect(intent.sideEffects).toEqual(["analytics.track"])

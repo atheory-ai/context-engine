@@ -1,0 +1,120 @@
+[
+  {
+    "kind": "FunctionIntent",
+    "name": "describe",
+    "language": "python",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "n",
+        "type": "unknown"
+      }
+    ],
+    "returns": {
+      "type": "",
+      "explicit": false
+    },
+    "behavior": [
+      {
+        "when": "n \u003c 0",
+        "then": "return \"negative\"",
+        "whenExpr": {
+          "op": "\u003c",
+          "args": [
+            {
+              "op": "path",
+              "text": "n"
+            },
+            {
+              "op": "lit",
+              "text": "0"
+            }
+          ]
+        }
+      },
+      {
+        "when": "n == 0",
+        "then": "return \"zero\"",
+        "whenExpr": {
+          "op": "==",
+          "args": [
+            {
+              "op": "path",
+              "text": "n"
+            },
+            {
+              "op": "lit",
+              "text": "0"
+            }
+          ]
+        }
+      },
+      {
+        "when": "else",
+        "then": "return \"positive\""
+      }
+    ],
+    "sideEffects": [],
+    "failureModes": [],
+    "constraints": []
+  },
+  {
+    "kind": "FunctionIntent",
+    "name": "grade",
+    "language": "python",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "score",
+        "type": "unknown"
+      }
+    ],
+    "returns": {
+      "type": "",
+      "explicit": false
+    },
+    "behavior": [
+      {
+        "when": "score == 100",
+        "then": "return \"perfect\"",
+        "whenExpr": {
+          "op": "==",
+          "args": [
+            {
+              "op": "path",
+              "text": "score"
+            },
+            {
+              "op": "lit",
+              "text": "100"
+            }
+          ]
+        }
+      },
+      {
+        "when": "score == 0",
+        "then": "return \"zero\"",
+        "whenExpr": {
+          "op": "==",
+          "args": [
+            {
+              "op": "path",
+              "text": "score"
+            },
+            {
+              "op": "lit",
+              "text": "0"
+            }
+          ]
+        }
+      },
+      {
+        "when": "else",
+        "then": "return \"other\""
+      }
+    ],
+    "sideEffects": [],
+    "failureModes": [],
+    "constraints": []
+  }
+]
