@@ -188,6 +188,15 @@ describe("liftFunction (behavior, effects, failures)", () => {
     expect(intent.failureModes).toEqual(["amount_below_minimum"])
   })
 
+  it("names a custom error class thrown without a message, and skips a re-throw", () => {
+    const throwNew = (cls: string) => n("throw_statement", {
+      children: [n("new_expression", { children: [withField(ident(cls), "constructor"), n("arguments")] })],
+    })
+    const rethrow = n("throw_statement", { children: [ident("err")] })
+    const intent = liftOf(program(fnWith(bodyOf(throwNew("NotFoundError"), rethrow)))).at(0)!.intent
+    expect(intent.failureModes).toEqual(["NotFoundError"])
+  })
+
   it("does not descend into nested closures for behavior", () => {
     // outer if + a callback with its own if — only the outer branch counts.
     const inner = ifStmt(bin(ident("x"), ">", n("number", { text: "0" })), returnStmt("return true"))

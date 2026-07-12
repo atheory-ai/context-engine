@@ -1,0 +1,80 @@
+[
+  {
+    "kind": "FunctionIntent",
+    "name": "loadUser",
+    "language": "typescript",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "string"
+      }
+    ],
+    "returns": {
+      "type": "string",
+      "explicit": true
+    },
+    "behavior": [
+      {
+        "when": "id === \"\"",
+        "then": "throw new Error(\"empty_id\")",
+        "whenExpr": {
+          "op": "===",
+          "args": [
+            {
+              "op": "path",
+              "text": "id"
+            },
+            {
+              "op": "lit",
+              "text": "\"\""
+            }
+          ]
+        }
+      },
+      {
+        "when": "id === \"missing\"",
+        "then": "throw new NotFoundError()",
+        "whenExpr": {
+          "op": "===",
+          "args": [
+            {
+              "op": "path",
+              "text": "id"
+            },
+            {
+              "op": "lit",
+              "text": "\"missing\""
+            }
+          ]
+        }
+      }
+    ],
+    "sideEffects": [],
+    "failureModes": [
+      "NotFoundError",
+      "empty_id"
+    ],
+    "constraints": []
+  },
+  {
+    "kind": "FunctionIntent",
+    "name": "retry",
+    "language": "typescript",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "fn",
+        "type": "() =\u003e void"
+      }
+    ],
+    "returns": {
+      "type": "void",
+      "explicit": true
+    },
+    "behavior": [],
+    "sideEffects": [],
+    "failureModes": [],
+    "constraints": []
+  }
+]

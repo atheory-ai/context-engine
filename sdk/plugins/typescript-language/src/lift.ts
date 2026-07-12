@@ -313,10 +313,21 @@ function extractFailureModes(body: SyntaxNode | null): string[] {
   if (!body) return []
   walk(body, (n) => {
     if (n.type !== "throw_statement") return
-    const lit = firstStringLiteral(n)
-    if (lit) seen.add(lit)
+    const fm = throwFailureMode(n)
+    if (fm) seen.add(fm)
   })
   return [...seen].sort()
+}
+
+// throwFailureMode names a thrown failure: the string-literal message when
+// present (throw new Error("msg")), else the error class (throw new
+// NotFoundError()). A bare `throw err` re-throw has no stable name and is skipped.
+function throwFailureMode(node: SyntaxNode): string {
+  const lit = firstStringLiteral(node)
+  if (lit) return lit
+  const arg = (node.children ?? []).find(c => c.isNamed)
+  if (arg?.type === "new_expression") return childByField(arg, "constructor")?.text ?? ""
+  return ""
 }
 
 function firstStringLiteral(node: SyntaxNode): string {

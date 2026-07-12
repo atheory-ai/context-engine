@@ -1,0 +1,97 @@
+[
+  {
+    "kind": "FunctionIntent",
+    "name": "load_user",
+    "language": "python",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "user_id",
+        "type": "unknown"
+      }
+    ],
+    "returns": {
+      "type": "",
+      "explicit": false
+    },
+    "behavior": [
+      {
+        "when": "user_id == \"\"",
+        "then": "raise ValueError(\"empty_id\")",
+        "whenExpr": {
+          "op": "==",
+          "args": [
+            {
+              "op": "path",
+              "text": "user_id"
+            },
+            {
+              "op": "lit",
+              "text": "\"\""
+            }
+          ]
+        }
+      },
+      {
+        "when": "user_id == \"missing\"",
+        "then": "raise NotFoundError()",
+        "whenExpr": {
+          "op": "==",
+          "args": [
+            {
+              "op": "path",
+              "text": "user_id"
+            },
+            {
+              "op": "lit",
+              "text": "\"missing\""
+            }
+          ]
+        }
+      },
+      {
+        "when": "user_id == \"closed\"",
+        "then": "raise NotFoundError",
+        "whenExpr": {
+          "op": "==",
+          "args": [
+            {
+              "op": "path",
+              "text": "user_id"
+            },
+            {
+              "op": "lit",
+              "text": "\"closed\""
+            }
+          ]
+        }
+      }
+    ],
+    "sideEffects": [],
+    "failureModes": [
+      "NotFoundError",
+      "empty_id"
+    ],
+    "constraints": []
+  },
+  {
+    "kind": "FunctionIntent",
+    "name": "retry",
+    "language": "python",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "fn",
+        "type": "unknown"
+      }
+    ],
+    "returns": {
+      "type": "",
+      "explicit": false
+    },
+    "behavior": [],
+    "sideEffects": [],
+    "failureModes": [],
+    "constraints": []
+  }
+]
