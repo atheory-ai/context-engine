@@ -1,0 +1,190 @@
+[
+  {
+    "kind": "FunctionIntent",
+    "name": "Describe",
+    "language": "go",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "n",
+        "type": "int"
+      }
+    ],
+    "returns": {
+      "type": "string",
+      "explicit": true
+    },
+    "behavior": [
+      {
+        "when": "n \u003c 0",
+        "then": "return \"negative\"",
+        "whenExpr": {
+          "op": "\u003c",
+          "args": [
+            {
+              "op": "path",
+              "text": "n"
+            },
+            {
+              "op": "lit",
+              "text": "0"
+            }
+          ]
+        }
+      },
+      {
+        "when": "else",
+        "then": "fmt.Println(\"non-negative\")"
+      },
+      {
+        "when": "n == 0",
+        "then": "return \"zero\"",
+        "whenExpr": {
+          "op": "==",
+          "args": [
+            {
+              "op": "path",
+              "text": "n"
+            },
+            {
+              "op": "lit",
+              "text": "0"
+            }
+          ]
+        }
+      },
+      {
+        "when": "n \u003e 100",
+        "then": "return \"big\"",
+        "whenExpr": {
+          "op": "\u003e",
+          "args": [
+            {
+              "op": "path",
+              "text": "n"
+            },
+            {
+              "op": "lit",
+              "text": "100"
+            }
+          ]
+        }
+      }
+    ],
+    "sideEffects": [
+      "fmt.Println"
+    ],
+    "failureModes": [],
+    "constraints": []
+  },
+  {
+    "kind": "FunctionIntent",
+    "name": "Grade",
+    "language": "go",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "score",
+        "type": "int"
+      }
+    ],
+    "returns": {
+      "type": "string",
+      "explicit": true
+    },
+    "behavior": [
+      {
+        "when": "score == 100",
+        "then": "return \"A+\"",
+        "whenExpr": {
+          "op": "==",
+          "args": [
+            {
+              "op": "path",
+              "text": "score"
+            },
+            {
+              "op": "lit",
+              "text": "100"
+            }
+          ]
+        }
+      },
+      {
+        "when": "score == 90 || score == 80",
+        "then": "return \"pass\"",
+        "whenExpr": {
+          "op": "||",
+          "args": [
+            {
+              "op": "==",
+              "args": [
+                {
+                  "op": "path",
+                  "text": "score"
+                },
+                {
+                  "op": "lit",
+                  "text": "90"
+                }
+              ]
+            },
+            {
+              "op": "==",
+              "args": [
+                {
+                  "op": "path",
+                  "text": "score"
+                },
+                {
+                  "op": "lit",
+                  "text": "80"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "when": "else",
+        "then": "return \"fail\""
+      }
+    ],
+    "sideEffects": [],
+    "failureModes": [],
+    "constraints": []
+  },
+  {
+    "kind": "FunctionIntent",
+    "name": "Kind",
+    "language": "go",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "v",
+        "type": "any"
+      }
+    ],
+    "returns": {
+      "type": "string",
+      "explicit": true
+    },
+    "behavior": [
+      {
+        "when": "v is int",
+        "then": "return \"int\""
+      },
+      {
+        "when": "v is string",
+        "then": "return \"string\""
+      },
+      {
+        "when": "else",
+        "then": "return \"other\""
+      }
+    ],
+    "sideEffects": [],
+    "failureModes": [],
+    "constraints": []
+  }
+]

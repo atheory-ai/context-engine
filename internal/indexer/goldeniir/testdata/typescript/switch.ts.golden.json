@@ -1,0 +1,103 @@
+[
+  {
+    "kind": "FunctionIntent",
+    "name": "describe",
+    "language": "typescript",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "n",
+        "type": "number"
+      }
+    ],
+    "returns": {
+      "type": "string",
+      "explicit": true
+    },
+    "behavior": [
+      {
+        "when": "n \u003c 0",
+        "then": "return \"negative\"",
+        "whenExpr": {
+          "op": "\u003c",
+          "args": [
+            {
+              "op": "path",
+              "text": "n"
+            },
+            {
+              "op": "lit",
+              "text": "0"
+            }
+          ]
+        }
+      },
+      {
+        "when": "else",
+        "then": "return \"non-negative\""
+      }
+    ],
+    "sideEffects": [],
+    "failureModes": [],
+    "constraints": []
+  },
+  {
+    "kind": "FunctionIntent",
+    "name": "grade",
+    "language": "typescript",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "score",
+        "type": "number"
+      }
+    ],
+    "returns": {
+      "type": "string",
+      "explicit": true
+    },
+    "behavior": [
+      {
+        "when": "score === 100",
+        "then": "return \"perfect\"",
+        "whenExpr": {
+          "op": "===",
+          "args": [
+            {
+              "op": "path",
+              "text": "score"
+            },
+            {
+              "op": "lit",
+              "text": "100"
+            }
+          ]
+        }
+      },
+      {
+        "when": "score === 0",
+        "then": "return \"zero\"",
+        "whenExpr": {
+          "op": "===",
+          "args": [
+            {
+              "op": "path",
+              "text": "score"
+            },
+            {
+              "op": "lit",
+              "text": "0"
+            }
+          ]
+        }
+      },
+      {
+        "when": "else",
+        "then": "return \"other\""
+      }
+    ],
+    "sideEffects": [],
+    "failureModes": [],
+    "constraints": []
+  }
+]

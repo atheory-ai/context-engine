@@ -140,6 +140,42 @@ describe("liftPyFunction (behavior, effects, failures)", () => {
     })
   })
 
+  it("captures elif and else branches of an if (previously missed)", () => {
+    const pint = (v: number) => n("integer", { text: String(v) })
+    const consequence = (stmt: SyntaxNode) => withField(n("block", { children: [stmt] }), "consequence")
+    const ifNode = n("if_statement", {
+      children: [
+        withField(cmp(pid("n"), "<", pint(0)), "condition"),
+        consequence(pret("return 'neg'")),
+        n("elif_clause", { children: [withField(cmp(pid("n"), "==", pint(0)), "condition"), consequence(pret("return 'zero'"))] }),
+        n("else_clause", { children: [withField(n("block", { children: [pret("return 'pos'")] }), "body")] }),
+      ],
+    })
+    const intent = liftOf(module(pyBody("f", ifNode)))[0].intent
+    expect(intent.behavior.map(b => b.when)).toEqual(["n < 0", "n == 0", "else"])
+  })
+
+  it("lifts a match into one == clause per case, `case _` as else", () => {
+    const pint = (v: number) => n("integer", { text: String(v) })
+    const caseClause = (pattern: SyntaxNode, body: SyntaxNode) => n("case_clause", {
+      children: [n("case_pattern", { text: pattern.text, children: [pattern] }), withField(n("block", { children: [body] }), "consequence")],
+    })
+    const match = n("match_statement", {
+      children: [
+        withField(pid("score"), "subject"),
+        withField(n("block", { children: [
+          caseClause(pint(100), pret("return 'perfect'")),
+          n("case_clause", { children: [n("case_pattern", { text: "_" }), withField(n("block", { children: [pret("return 'other'")] }), "consequence")] }),
+        ] }), "body"),
+      ],
+    })
+    const intent = liftOf(module(pyBody("f", match)))[0].intent
+    expect(intent.behavior).toEqual([
+      { when: "score == 100", then: "return 'perfect'", whenExpr: { op: "==", args: [{ op: "path", text: "score" }, { op: "lit", text: "100" }] } },
+      { when: "else", then: "return 'other'" },
+    ])
+  })
+
   it("binds `is not None` to != with a none literal", () => {
     const fn = pyBody("f", pif(n("comparison_operator", {
       text: "x is not None",

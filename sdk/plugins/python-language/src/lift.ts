@@ -120,17 +120,63 @@ function extractBehavior(body: SyntaxNode | null): IIRBehaviorClause[] {
   const out: IIRBehaviorClause[] = []
   if (!body) return out
   walkWithinFunc(body, (n) => {
-    if (n.type !== "if_statement") return
-    const cond = childByField(n, "condition")
-    const clause: IIRBehaviorClause = {
-      when: cond ? normWs(cond.text) : "",
-      then: summarizeConsequence(childByField(n, "consequence")),
-    }
-    const whenExpr = normalizeCondition(cond)
-    if (whenExpr) clause.whenExpr = whenExpr
-    out.push(clause)
+    if (n.type === "if_statement") { pushIf(n, out); return }
+    if (n.type === "match_statement") { pushMatch(n, out); return }
   })
-  return out
+  // A clause needs a meaningful consequence: the IIR model (and the comparator)
+  // require both when and then, so drop empty-then guards.
+  return out.filter(c => c.then !== "")
+}
+
+function condClause(cond: SyntaxNode | null, consequence: SyntaxNode | null): IIRBehaviorClause {
+  const clause: IIRBehaviorClause = {
+    when: cond ? normWs(cond.text) : "",
+    then: summarizeConsequence(consequence),
+  }
+  const whenExpr = normalizeCondition(cond)
+  if (whenExpr) clause.whenExpr = whenExpr
+  return clause
+}
+
+// pushIf emits the if clause plus each elif/else. Python models elif/else as
+// alternative-field children of if_statement (not separate if nodes), so unlike
+// the other languages they must be handled here rather than by the walk.
+function pushIf(n: SyntaxNode, out: IIRBehaviorClause[]): void {
+  out.push(condClause(childByField(n, "condition"), childByField(n, "consequence")))
+  for (const c of n.children ?? []) {
+    if (c.type === "elif_clause") {
+      out.push(condClause(childByField(c, "condition"), childByField(c, "consequence")))
+    } else if (c.type === "else_clause") {
+      out.push({ when: "else", then: summarizeConsequence(childByField(c, "body")) })
+    }
+  }
+}
+
+// pushMatch turns `match subj: case p: …` into one clause per case: when =
+// "subj == p", then = the case body summary. A `case _:` wildcard becomes "else".
+function pushMatch(m: SyntaxNode, out: IIRBehaviorClause[]): void {
+  const subject = childByField(m, "subject")
+  const subjExpr = normalizeCondition(subject)
+  const subjText = subject ? normWs(subject.text) : ""
+  const matchBody = childByField(m, "body")
+  for (const c of matchBody?.children ?? []) {
+    if (c.type !== "case_clause") continue
+    const pattern = (c.children ?? []).find(p => p.type === "case_pattern")
+    const patText = pattern ? normWs(pattern.text) : ""
+    const consequence = childByField(c, "consequence")
+    if (patText === "_") {
+      out.push({ when: "else", then: summarizeConsequence(consequence) })
+      continue
+    }
+    const inner = pattern ? (pattern.children ?? []).find(p => p.isNamed) : null
+    const valExpr = normalizeCondition(inner ?? pattern)
+    const clause: IIRBehaviorClause = {
+      when: `${subjText} == ${patText}`,
+      then: summarizeConsequence(consequence),
+    }
+    if (subjExpr && valExpr) clause.whenExpr = { op: "==", args: [subjExpr, valExpr] }
+    out.push(clause)
+  }
 }
 
 // walkWithinFunc stops at nested function scopes (def / lambda) so a nested

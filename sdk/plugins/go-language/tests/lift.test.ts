@@ -176,6 +176,37 @@ describe("liftGoFunction (behavior, effects, failures)", () => {
     expect(intent.failureModes).toEqual(["nil_amount"])
   })
 
+  it("lifts a switch into one equality clause per case, default as else", () => {
+    const gnum = (v: number) => n("int_literal", { text: String(v) })
+    const exprCase = (value: SyntaxNode, body: SyntaxNode) => n("expression_case", {
+      children: [n("expression_list", { field: "value", children: [value] }), body],
+    })
+    const sw = n("expression_switch_statement", {
+      children: [
+        withField(gid("x"), "value"),
+        exprCase(gnum(1), greturn('return "one"')),
+        n("default_case", { children: [greturn('return "other"')] }),
+      ],
+    })
+    const intent = liftOf(sourceFile(pkgClause("svc"), goBody("f", sw)))[0].intent
+    expect(intent.behavior).toEqual([
+      { when: "x == 1", then: 'return "one"', whenExpr: { op: "==", args: [{ op: "path", text: "x" }, { op: "lit", text: "1" }] } },
+      { when: "else", then: 'return "other"' },
+    ])
+  })
+
+  it("captures a terminal else on an if and drops an empty-then guard", () => {
+    const emptyGuard = n("if_statement", {
+      children: [
+        withField(gbin(gid("x"), "<", n("int_literal", { text: "0" })), "condition"),
+        withField(n("block", { children: [] }), "consequence"), // empty then -> dropped
+        withField(n("block", { children: [greturn('return "neg"')] }), "alternative"),
+      ],
+    })
+    const intent = liftOf(sourceFile(pkgClause("svc"), goBody("f", emptyGuard)))[0].intent
+    expect(intent.behavior.map(b => b.when)).toEqual(["else"])
+  })
+
   it("captures returned errors.New / fmt.Errorf messages and Err* sentinels", () => {
     // func f() (T, error) with: return nil, errors.New("empty id");
     // return nil, ErrClosed; return nil, err (propagated, excluded).
