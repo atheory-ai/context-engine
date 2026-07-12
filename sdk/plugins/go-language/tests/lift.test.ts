@@ -170,6 +170,19 @@ describe("liftGoFunction (behavior, effects, failures)", () => {
     expect(intent.sideEffects).toEqual(["analytics.Track"])
   })
 
+  it("excludes pure stdlib calls (fmt.Errorf, strings.*) from side effects", () => {
+    // fmt is imported and effectful for Println, but fmt.Errorf/Sprintf and the
+    // read-only strings package only derive values — not observable effects.
+    const errorf = n("call_expression", { children: [withField(selector("fmt", "Errorf"), "function"), n("argument_list", { children: [strLit("boom")] })] })
+    const trimSpace = n("call_expression", { children: [withField(selector("strings", "TrimSpace"), "function"), n("argument_list")] })
+    const fn = goBody("f",
+      n("expression_statement", { children: [errorf] }),
+      n("expression_statement", { children: [trimSpace] }),
+    )
+    const intent = liftOf(sourceFile(pkgClause("svc"), importOf("fmt"), importOf("strings"), fn))[0].intent
+    expect(intent.sideEffects).toEqual([])
+  })
+
   it("captures a panic string literal as a failure mode", () => {
     const fn = goBody("f", n("expression_statement", { children: [gpanic("nil_amount")] }))
     const intent = liftOf(sourceFile(pkgClause("svc"), fn))[0].intent

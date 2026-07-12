@@ -54,9 +54,7 @@
         "then": "return nil, ErrClosed"
       }
     ],
-    "sideEffects": [
-      "errors.New"
-    ],
+    "sideEffects": [],
     "failureModes": [
       "ErrClosed",
       "empty id"
@@ -118,9 +116,7 @@
         }
       }
     ],
-    "sideEffects": [
-      "fmt.Errorf"
-    ],
+    "sideEffects": [],
     "failureModes": [
       "nil data",
       "save %q: %w"

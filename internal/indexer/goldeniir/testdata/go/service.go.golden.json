@@ -37,9 +37,7 @@
         }
       }
     ],
-    "sideEffects": [
-      "fmt.Errorf"
-    ],
+    "sideEffects": [],
     "failureModes": [
       "empty id"
     ],

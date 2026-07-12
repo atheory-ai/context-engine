@@ -265,6 +265,10 @@ function memberPath(node: SyntaxNode | null): string {
 
 const sideEffectVerbs = ["track", "send", "emit", "publish", "save", "create", "update", "delete", "write"]
 
+// Pure built-in namespaces: calls on them derive values without an observable
+// effect (JSON.stringify, Math.max, Object.keys), so they are not side effects.
+const purePackages = new Set(["JSON", "Math", "Object", "Array", "Number", "String"])
+
 function extractSideEffects(body: SyntaxNode | null, imports: Set<string>): string[] {
   const seen = new Set<string>()
   if (!body) return []
@@ -273,6 +277,7 @@ function extractSideEffects(body: SyntaxNode | null, imports: Set<string>): stri
     const callee = childByField(n, "function")
     if (!callee) return
     const { method, rootObj, full } = calleeParts(callee)
+    if (purePackages.has(rootObj)) return
     if (imports.has(rootObj) || matchesSideEffectVerb(method)) seen.add(full)
   })
   return [...seen].sort()
