@@ -126,6 +126,26 @@ const importOf = (path: string) => n("import_declaration", {
 const goBody = (name: string, ...stmts: SyntaxNode[]) => n("function_declaration", {
   children: [n("identifier", { field: "name", text: name }), paramList(), n("block", { field: "body", children: stmts })],
 })
+// resultErr builds a `(T, error)` result whose second entry is an `error` type.
+const resultErr = () => n("parameter_list", {
+  field: "result",
+  children: [
+    n("parameter_declaration", { children: [n("type_identifier", { field: "type", text: "T" })] }),
+    n("parameter_declaration", { children: [n("type_identifier", { field: "type", text: "error" })] }),
+  ],
+})
+const goBodyErr = (name: string, ...stmts: SyntaxNode[]) => n("function_declaration", {
+  children: [n("identifier", { field: "name", text: name }), paramList(), resultErr(), n("block", { field: "body", children: stmts })],
+})
+// errCall builds `pkg.Method("msg")` (e.g. errors.New / fmt.Errorf).
+const errCall = (pkg: string, method: string, msg: string) => n("call_expression", {
+  text: `${pkg}.${method}("${msg}")`,
+  children: [withField(selector(pkg, method), "function"), n("argument_list", { children: [strLit(msg)] })],
+})
+// retErr builds `return nil, <expr>`.
+const retErr = (errExpr: SyntaxNode) => n("return_statement", {
+  children: [n("expression_list", { children: [gnil(), errExpr] })],
+})
 
 describe("liftGoFunction (behavior, effects, failures)", () => {
   it("lifts an if to a when/then clause with a member-path whenExpr", () => {
@@ -154,6 +174,25 @@ describe("liftGoFunction (behavior, effects, failures)", () => {
     const fn = goBody("f", n("expression_statement", { children: [gpanic("nil_amount")] }))
     const intent = liftOf(sourceFile(pkgClause("svc"), fn))[0].intent
     expect(intent.failureModes).toEqual(["nil_amount"])
+  })
+
+  it("captures returned errors.New / fmt.Errorf messages and Err* sentinels", () => {
+    // func f() (T, error) with: return nil, errors.New("empty id");
+    // return nil, ErrClosed; return nil, err (propagated, excluded).
+    const fn = goBodyErr("Load",
+      retErr(errCall("errors", "New", "empty id")),
+      retErr(gid("ErrClosed")),
+      retErr(gid("err")), // propagated variable — no stable name, excluded
+    )
+    const intent = liftOf(sourceFile(pkgClause("svc"), fn))[0].intent
+    expect(intent.failureModes).toEqual(["ErrClosed", "empty id"])
+  })
+
+  it("does not treat returned values as failures when the function returns no error", () => {
+    // No `error` in the result → error-return scanning is skipped entirely.
+    const fn = goBody("pure", retErr(errCall("errors", "New", "unreachable")))
+    const intent = liftOf(sourceFile(pkgClause("svc"), fn))[0].intent
+    expect(intent.failureModes).toEqual([])
   })
 
   it("resolves the package qualifier for a versioned module path", () => {

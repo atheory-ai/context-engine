@@ -1,0 +1,170 @@
+[
+  {
+    "kind": "FunctionIntent",
+    "name": "Load",
+    "language": "go",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "string"
+      }
+    ],
+    "returns": {
+      "type": "([]byte, error)",
+      "explicit": true
+    },
+    "behavior": [
+      {
+        "when": "id == \"\"",
+        "then": "return nil, errors.New(\"empty id\")",
+        "whenExpr": {
+          "op": "==",
+          "args": [
+            {
+              "op": "path",
+              "text": "id"
+            },
+            {
+              "op": "lit",
+              "text": "\"\""
+            }
+          ]
+        }
+      },
+      {
+        "when": "err != nil",
+        "then": "return nil, err",
+        "whenExpr": {
+          "op": "!=",
+          "args": [
+            {
+              "op": "path",
+              "text": "err"
+            },
+            {
+              "op": "lit",
+              "text": "nil"
+            }
+          ]
+        }
+      },
+      {
+        "when": "len(data) == 0",
+        "then": "return nil, ErrClosed"
+      }
+    ],
+    "sideEffects": [
+      "errors.New"
+    ],
+    "failureModes": [
+      "ErrClosed",
+      "empty id"
+    ],
+    "constraints": []
+  },
+  {
+    "kind": "FunctionIntent",
+    "name": "Save",
+    "language": "go",
+    "visibility": "public",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "string"
+      },
+      {
+        "name": "data",
+        "type": "[]byte"
+      }
+    ],
+    "returns": {
+      "type": "error",
+      "explicit": true
+    },
+    "behavior": [
+      {
+        "when": "data == nil",
+        "then": "panic(\"nil data\")",
+        "whenExpr": {
+          "op": "==",
+          "args": [
+            {
+              "op": "path",
+              "text": "data"
+            },
+            {
+              "op": "lit",
+              "text": "nil"
+            }
+          ]
+        }
+      },
+      {
+        "when": "id == \"\"",
+        "then": "return fmt.Errorf(\"save %q: %w\", id, ErrClosed)",
+        "whenExpr": {
+          "op": "==",
+          "args": [
+            {
+              "op": "path",
+              "text": "id"
+            },
+            {
+              "op": "lit",
+              "text": "\"\""
+            }
+          ]
+        }
+      }
+    ],
+    "sideEffects": [
+      "fmt.Errorf"
+    ],
+    "failureModes": [
+      "nil data",
+      "save %q: %w"
+    ],
+    "constraints": []
+  },
+  {
+    "kind": "FunctionIntent",
+    "name": "pure",
+    "language": "go",
+    "visibility": "private",
+    "inputs": [
+      {
+        "name": "x",
+        "type": "int"
+      }
+    ],
+    "returns": {
+      "type": "int",
+      "explicit": true
+    },
+    "behavior": [],
+    "sideEffects": [],
+    "failureModes": [],
+    "constraints": []
+  },
+  {
+    "kind": "FunctionIntent",
+    "name": "read",
+    "language": "go",
+    "visibility": "private",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "string"
+      }
+    ],
+    "returns": {
+      "type": "([]byte, error)",
+      "explicit": true
+    },
+    "behavior": [],
+    "sideEffects": [],
+    "failureModes": [],
+    "constraints": []
+  }
+]

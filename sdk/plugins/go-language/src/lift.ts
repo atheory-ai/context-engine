@@ -1,7 +1,8 @@
 // Lift a Go function/method into an IIR FunctionIntent, mirroring Context
 // Engine's TS extractor but bound to Go's grammar (selector_expression member
-// access, nil/true/false as predeclared identifiers, panic as the failure
-// idiom). Go has no host-side extractor — the plugin is the sole IIR producer.
+// access, nil/true/false as predeclared identifiers). Failures follow Go's real
+// idiom — a returned error (errors.New / fmt.Errorf message, or an Err* sentinel)
+// — plus panic. Go has no host-side extractor — the plugin is the sole IIR producer.
 import type {
   FunctionIntent, IIRParam, IIRReturn, IIRExpr, IIRBehaviorClause, SyntaxNode,
 } from "@atheory-ai/ce-plugin-sdk"
@@ -45,7 +46,7 @@ export function liftGoFunction(name: string, fnNode: SyntaxNode, imports: Set<st
     returns:      liftResult(childByField(fnNode, "result")),
     behavior:     extractBehavior(body),
     sideEffects:  extractSideEffects(body, imports),
-    failureModes: extractFailureModes(body),
+    failureModes: extractFailureModes(body, childByField(fnNode, "result")),
     constraints:  [],
   }
 }
@@ -221,18 +222,70 @@ function matchesSideEffectVerb(method: string): boolean {
   return sideEffectVerbs.some(v => lower.includes(v))
 }
 
-// Go's failure idiom nearest to a thrown error is panic(...); capture its string
-// literal argument. Error returns are not modeled (too ambiguous).
-function extractFailureModes(body: SyntaxNode | null): string[] {
+// Go signals failure primarily by returning an error, secondarily by panic.
+// Capture both: panic("msg") anywhere, and — for functions that return an error
+// — each returned error's identity (the errors.New/fmt.Errorf message, or an
+// Err* sentinel name). A propagated variable (`return nil, err`) has no stable
+// name, so it is intentionally not emitted (keeps precision high; the comparator
+// treats undeclared effects/failures conservatively).
+function extractFailureModes(body: SyntaxNode | null, result: SyntaxNode | null): string[] {
   const seen = new Set<string>()
   if (!body) return []
+
   walk(body, (n) => {
     if (n.type !== "call_expression") return
     if (childByField(n, "function")?.text !== "panic") return
     const lit = firstStringLiteral(n)
     if (lit) seen.add(lit)
   })
+
+  if (returnsError(result)) {
+    walkWithinFunc(body, (n) => {
+      if (n.type !== "return_statement") return
+      for (const expr of returnExpressions(n)) collectReturnedFailure(expr, seen)
+    })
+  }
   return [...seen].sort()
+}
+
+// returnsError reports whether the function's result list includes an `error`.
+function returnsError(result: SyntaxNode | null): boolean {
+  if (!result) return false
+  if (result.type === "type_identifier") return result.text === "error"
+  for (const decl of childrenByType(result, "parameter_declaration")) {
+    if (childByField(decl, "type")?.text === "error") return true
+  }
+  return false
+}
+
+// returnExpressions returns the value expressions of a return statement, whether
+// it returns a single value or a comma-separated list.
+function returnExpressions(ret: SyntaxNode): SyntaxNode[] {
+  const list = (ret.children ?? []).find(c => c.type === "expression_list")
+  const src = list ? list.children : ret.children
+  return (src ?? []).filter(c => c.isNamed && c.type !== "return")
+}
+
+// Err* sentinel convention (ErrNotFound, ErrClosed, …).
+const sentinelRE = /^Err[A-Z0-9_]/
+
+function collectReturnedFailure(expr: SyntaxNode, seen: Set<string>): void {
+  if (expr.type === "call_expression") {
+    const callee = childByField(expr, "function")?.text ?? ""
+    if (callee === "errors.New" || callee === "fmt.Errorf") {
+      const lit = firstStringLiteral(expr)
+      if (lit) seen.add(lit)
+    }
+    return
+  }
+  if (expr.type === "identifier" && sentinelRE.test(expr.text)) {
+    seen.add(expr.text)
+    return
+  }
+  if (expr.type === "selector_expression") {
+    const field = childByField(expr, "field")?.text ?? ""
+    if (sentinelRE.test(field)) seen.add(field)
+  }
 }
 
 function firstStringLiteral(node: SyntaxNode): string {
