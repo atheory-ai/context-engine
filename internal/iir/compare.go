@@ -2,6 +2,7 @@ package iir
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -237,7 +238,7 @@ func compareInputs(intended, extracted *FunctionIntent, matches *[]Match, mismat
 			})
 			continue
 		}
-		if want.Type != TypeUnknown && got.Type != TypeUnknown && !typesEqual(want.Type, got.Type) {
+		if want.Type != TypeUnknown && got.Type != TypeUnknown && !typesEqual(want.Type, got.Type, intended.Language) {
 			*mismatches = append(*mismatches, Mismatch{
 				Kind:     MismatchInputType,
 				Severity: SeverityError,
@@ -289,7 +290,7 @@ func compareReturn(intended, extracted *FunctionIntent, matches *[]Match, mismat
 		})
 		return
 	}
-	if !typesEqual(intended.Returns.Type, extracted.Returns.Type) {
+	if !typesEqual(intended.Returns.Type, extracted.Returns.Type, intended.Language) {
 		*mismatches = append(*mismatches, Mismatch{
 			Kind:         MismatchReturnType,
 			Severity:     SeverityError,
@@ -417,13 +418,42 @@ func compareFailureModes(intended, extracted *FunctionIntent, matches *[]Match, 
 	})
 }
 
-// typesEqual compares type strings ignoring insignificant whitespace so that
-// formatting differences do not fail verification.
-func typesEqual(a, b string) bool {
-	return normalizeType(a) == normalizeType(b)
+// typesEqual compares two type strings for the given language, ignoring
+// insignificant whitespace and canonicalizing well-known equivalent spellings
+// (e.g. Go interface{} vs any, TS Array<T> vs T[], Python Optional[T] vs
+// T | None) so that a purely-syntactic difference doesn't fail verification.
+func typesEqual(a, b, language string) bool {
+	return canonicalType(a, language) == canonicalType(b, language)
 }
 
-func normalizeType(t string) string {
+func canonicalType(t, language string) string {
+	s := stripTypeWhitespace(t)
+	switch language {
+	case "go":
+		// The empty interface and its 1.18+ alias name the same type.
+		s = strings.ReplaceAll(s, "interface{}", "any")
+	case "typescript", "tsx", "javascript":
+		// Array<T> and T[] are the same type; canonicalize to the shorthand.
+		s = tsArrayRE.ReplaceAllString(s, "$1[]")
+	case "python":
+		// typing's capitalized generics alias the lowercase builtins (PEP 585),
+		// and Optional[T] is T | None (PEP 604).
+		s = pyGenericRE.ReplaceAllStringFunc(s, strings.ToLower)
+		s = pyOptionalRE.ReplaceAllString(s, "$1|None")
+	}
+	return s
+}
+
+var (
+	// Array<T> -> T[] (single, non-nested generic argument).
+	tsArrayRE = regexp.MustCompile(`Array<([^<>]+)>`)
+	// Capitalized typing generics immediately before their subscript.
+	pyGenericRE = regexp.MustCompile(`\b(List|Dict|Set|Tuple|FrozenSet|Type)\[`)
+	// Optional[T] -> T|None.
+	pyOptionalRE = regexp.MustCompile(`Optional\[([^\[\]]+)\]`)
+)
+
+func stripTypeWhitespace(t string) string {
 	var b strings.Builder
 	for _, r := range t {
 		if r == ' ' || r == '\t' || r == '\n' {

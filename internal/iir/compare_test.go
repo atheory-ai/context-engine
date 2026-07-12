@@ -146,6 +146,51 @@ func TestCompare_ExactMatchKind(t *testing.T) {
 	}
 }
 
+func TestTypesEqual_LanguageEquivalences(t *testing.T) {
+	cases := []struct {
+		lang, a, b string
+		want       bool
+	}{
+		// whitespace-only (language-agnostic)
+		{"typescript", "Map<string, number>", "Map<string,number>", true},
+		// Go: interface{} ≡ any, including inside compound types
+		{"go", "interface{}", "any", true},
+		{"go", "[]interface{}", "[]any", true},
+		{"go", "map[string]interface{}", "map[string]any", true},
+		{"go", "int", "string", false},
+		// TS: Array<T> ≡ T[]
+		{"typescript", "Array<string>", "string[]", true},
+		{"typescript", "Array<User>", "User[]", true},
+		{"typescript", "string", "number", false},
+		// Python: typing generics ≡ builtin generics; Optional[T] ≡ T | None
+		{"python", "List[int]", "list[int]", true},
+		{"python", "Dict[str, int]", "dict[str,int]", true},
+		{"python", "Optional[str]", "str | None", true},
+		{"python", "list[int]", "dict[int]", false},
+	}
+	for _, c := range cases {
+		if got := typesEqual(c.a, c.b, c.lang); got != c.want {
+			t.Errorf("typesEqual(%q, %q, %q) = %v, want %v", c.a, c.b, c.lang, got, c.want)
+		}
+	}
+}
+
+// An equivalence (not a whitespace-only diff) is reported as acceptable_equivalent
+// rather than a mismatch.
+func TestCompare_LanguageEquivalentTypeIsAcceptable(t *testing.T) {
+	intended := baseIntent() // typescript
+	intended.Returns.Type = "Array<string>"
+	extracted := baseIntent()
+	extracted.Returns.Type = "string[]"
+	matches, mismatches := Compare(intended, extracted)
+	if findMismatch(mismatches, MismatchReturnType) != nil {
+		t.Fatalf("Array<string> vs string[] must not mismatch: %+v", mismatches)
+	}
+	if m := findMatch(matches, "FunctionIntent.returns.type"); m == nil || m.Kind != MatchEquivalent {
+		t.Errorf("expected acceptable_equivalent, got %+v", m)
+	}
+}
+
 func TestCompare_AcceptableEquivalentType(t *testing.T) {
 	intended := baseIntent()
 	intended.Returns.Type = "Map<string, number>"
