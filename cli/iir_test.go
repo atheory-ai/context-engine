@@ -2,13 +2,54 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/atheory-ai/context-engine/internal/config"
+	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/iir"
+	"github.com/atheory-ai/context-engine/internal/runner"
 )
+
+var (
+	cliLiftOnce sync.Once
+	cliLiftOK   bool
+)
+
+// requirePluginLift skips a test when the CLI's plugin-backed IIR extraction
+// isn't available (the default plugins aren't built into this test binary).
+// The verify/repair/generate --verify commands all run source through plugin
+// lift now that the host TS extractor is retired.
+func requirePluginLift(t *testing.T) {
+	t.Helper()
+	cliLiftOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "ce-cli-lift-*")
+		if err != nil {
+			return
+		}
+		cfg := &config.Config{}
+		cfg.DataDir = dir
+		ch := core.NewAppChannels()
+		ext, cleanup, err := runner.NewIIRExtractor(context.Background(), cfg, &ch)
+		if err != nil {
+			return
+		}
+		defer cleanup()
+		res, err := ext.Extract(context.Background(), iir.ExtractionInput{
+			Language: "typescript", Source: []byte("export function probe(): void {}"), Target: "probe",
+		})
+		cliLiftOK = err == nil && res.Function != nil
+	})
+	if !cliLiftOK {
+		t.Skip("default plugins not built — run `make bundle-default-plugins`")
+	}
+}
 
 const testIntentYAML = `
 kind: FunctionIntent
@@ -74,6 +115,7 @@ func runGenerate(t *testing.T, args ...string) error {
 }
 
 func TestIirGenerate_RoundTripVerifyPasses(t *testing.T) {
+	requirePluginLift(t)
 	intent := writeTemp(t, "intent.yaml", testIntentYAML)
 	// Isolate cwd so --verify's rule discovery can't pick up a project rule
 	// pack that happens to live above the real working directory.
@@ -143,6 +185,7 @@ func runRepair(t *testing.T, args ...string) error {
 }
 
 func TestIirRepair_ConvergesFromBrokenSource(t *testing.T) {
+	requirePluginLift(t)
 	intent := writeTemp(t, "intent.yaml", testIntentYAML)
 	// Source with an undeclared side effect: fails, then the regenerate repair
 	// converges it.
@@ -177,6 +220,7 @@ func TestIirGenerate_InvalidRulesPathIsLoudError(t *testing.T) {
 }
 
 func TestIirVerify_PassExitsZero(t *testing.T) {
+	requirePluginLift(t)
 	intent := writeTemp(t, "intent.yaml", testIntentYAML)
 	src := writeTemp(t, "clean.ts", testCleanSource)
 	if err := runVerify(t, intent, src, "--json"); err != nil {
@@ -185,6 +229,7 @@ func TestIirVerify_PassExitsZero(t *testing.T) {
 }
 
 func TestIirVerify_FailReturnsSilentError(t *testing.T) {
+	requirePluginLift(t)
 	intent := writeTemp(t, "intent.yaml", testIntentYAML)
 	src := writeTemp(t, "dirty.ts", testDirtySource)
 	err := runVerify(t, intent, src, "--json")
@@ -234,6 +279,7 @@ rules:
 `
 
 func TestIirVerify_DiscoversAndLayersProjectRulePack(t *testing.T) {
+	requirePluginLift(t)
 	dir := t.TempDir()
 	intent := filepath.Join(dir, "intent.yaml")
 	src := filepath.Join(dir, "throws.ts")
