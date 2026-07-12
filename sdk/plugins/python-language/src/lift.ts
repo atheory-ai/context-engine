@@ -338,10 +338,23 @@ function extractFailureModes(body: SyntaxNode | null): string[] {
   if (!body) return []
   walk(body, (n) => {
     if (n.type !== "raise_statement") return
-    const lit = firstStringLiteral(n)
-    if (lit) seen.add(lit)
+    const fm = raiseFailureMode(n)
+    if (fm) seen.add(fm)
   })
   return [...seen].sort()
+}
+
+// raiseFailureMode names a raised failure: the string-literal message when
+// present (raise ValueError("msg")), else the exception type (raise NotFound /
+// raise NotFound()). A bare `raise` re-raise has no stable name and is skipped.
+function raiseFailureMode(node: SyntaxNode): string {
+  const lit = firstStringLiteral(node)
+  if (lit) return lit
+  const arg = (node.children ?? []).find(c => c.isNamed)
+  if (!arg) return ""
+  if (arg.type === "call") return childByField(arg, "function")?.text ?? ""
+  if (arg.type === "identifier" || arg.type === "attribute") return arg.text
+  return ""
 }
 
 function firstStringLiteral(node: SyntaxNode): string {

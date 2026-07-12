@@ -202,6 +202,14 @@ describe("liftPyFunction (behavior, effects, failures)", () => {
     expect(liftOf(module(fn))[0].intent.failureModes).toEqual(["nil_amount"])
   })
 
+  it("names a raised exception type without a message, and skips a bare re-raise", () => {
+    const raiseCall = n("raise_statement", { children: [n("call", { children: [withField(pid("NotFoundError"), "function"), n("argument_list")] })] })
+    const raiseName = n("raise_statement", { children: [pid("Closed")] })
+    const bareRaise = n("raise_statement", {})
+    const fn = pyBody("f", raiseCall, raiseName, bareRaise)
+    expect(liftOf(module(fn))[0].intent.failureModes).toEqual(["Closed", "NotFoundError"])
+  })
+
   it("does not count an if inside a nested def", () => {
     const nested = pyBody("inner", pif(cmp(pid("y"), ">", pid("z")), pret("return")))
     const outer = pif(cmp(pid("a"), "==", pid("b")), pret("return"))
