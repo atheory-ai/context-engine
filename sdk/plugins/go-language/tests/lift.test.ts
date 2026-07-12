@@ -164,10 +164,31 @@ describe("liftGoFunction (behavior, effects, failures)", () => {
     expect(intent.behavior[0].whenExpr).toEqual({ op: "==", args: [{ op: "path", text: "x" }, { op: "lit", text: "nil" }] })
   })
 
-  it("detects a call on an imported package as a side effect", () => {
+  it("detects a call on an imported package and classifies it (verb → mutation)", () => {
     const fn = goBody("Record", n("expression_statement", { children: [selCall("analytics", "Track")] }))
     const intent = liftOf(sourceFile(pkgClause("svc"), importOf("example.com/analytics"), fn))[0].intent
-    expect(intent.sideEffects).toEqual(["analytics.Track"])
+    expect(intent.sideEffects).toEqual([{ name: "analytics.Track", kind: "mutation", confidence: "high" }])
+  })
+
+  it("classifies by full import path — net/http → network (high confidence)", () => {
+    const fn = goBody("Fetch", n("expression_statement", { children: [selCall("http", "Get")] }))
+    const intent = liftOf(sourceFile(pkgClause("svc"), importOf("net/http"), fn))[0].intent
+    expect(intent.sideEffects).toEqual([{ name: "http.Get", kind: "network", confidence: "high" }])
+  })
+
+  it("does not misread a receiver root that merely contains a category word", () => {
+    // "catalog" contains "log" — a substring classifier would call this a log
+    // effect; structural matching on the root/method does not. The verb "Save"
+    // still marks it a mutation.
+    const fn = goBody("Store", n("expression_statement", { children: [selCall("catalog", "Save")] }))
+    const intent = liftOf(sourceFile(pkgClause("svc"), importOf("example.com/catalog"), fn))[0].intent
+    expect(intent.sideEffects).toEqual([{ name: "catalog.Save", kind: "mutation", confidence: "high" }])
+  })
+
+  it("marks an uncategorizable imported call low-confidence unclassified", () => {
+    const fn = goBody("Ping", n("expression_statement", { children: [selCall("widget", "Poke")] }))
+    const intent = liftOf(sourceFile(pkgClause("svc"), importOf("example.com/widget"), fn))[0].intent
+    expect(intent.sideEffects).toEqual([{ name: "widget.Poke", kind: "unclassified", confidence: "low" }])
   })
 
   it("excludes pure stdlib calls (fmt.Errorf, strings.*) from side effects", () => {
@@ -242,7 +263,7 @@ describe("liftGoFunction (behavior, effects, failures)", () => {
   it("resolves the package qualifier for a versioned module path", () => {
     const fn = goBody("Save", n("expression_statement", { children: [selCall("store", "Save")] }))
     const intent = liftOf(sourceFile(pkgClause("svc"), importOf("github.com/acme/store/v2"), fn))[0].intent
-    expect(intent.sideEffects).toEqual(["store.Save"])
+    expect(intent.sideEffects).toEqual([{ name: "store.Save", kind: "mutation", confidence: "high" }])
   })
 
   it("does not count an if inside a func literal (closure)", () => {

@@ -116,3 +116,16 @@ func TestCompareSideEffects_GradedByConfidence(t *testing.T) {
 		t.Errorf("unrecognized undeclared effect should be a warning, got %+v", mismatches)
 	}
 }
+
+// An effect that carries its own confidence (a plugin classified it at
+// extraction) is graded by that, not by re-classifying the name.
+func TestCompareSideEffects_HonorsSuppliedConfidence(t *testing.T) {
+	extracted := baseIntent()
+	// The name "db.query" would classify high, but the plugin marked it low.
+	extracted.SideEffects = []SideEffect{{Name: "db.query", Kind: "db", Confidence: ConfidenceLow}}
+	_, mismatches := Compare(baseIntent(), extracted)
+	m := findMismatch(mismatches, MismatchUndeclaredEffect)
+	if m == nil || m.Severity != SeverityWarning {
+		t.Errorf("supplied low confidence should be honored as a warning, got %+v", mismatches)
+	}
+}

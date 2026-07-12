@@ -48,6 +48,9 @@ export type {
   IIRReturn,
   IIRExpr,
   IIRBehaviorClause,
+  IIRSideEffect,
   FunctionIntent,
   ExtractedFunction,
 } from "./iir.js"
+export { classifyEffect } from "./effects.js"
+export type { EffectKind, EffectConfidence, EffectClassifierInput } from "./effects.js"

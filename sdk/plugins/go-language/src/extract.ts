@@ -13,7 +13,7 @@ export const extract: LanguageDefinition["extract"] = (
   const nodes: Node[] = []
   const edges: Edge[]  = []
   const iir:   ExtractedFunction[] = []
-  const imports = tree ? collectImports(tree) : new Set<string>()
+  const imports = tree ? collectImports(tree) : new Map<string, string>()
 
   const pkgDir = filePath.substring(0, filePath.lastIndexOf("/")) || "."
 

@@ -72,7 +72,11 @@
       }
     ],
     "sideEffects": [
-      "fmt.Println"
+      {
+        "name": "fmt.Println",
+        "kind": "log",
+        "confidence": "high"
+      }
     ],
     "failureModes": [],
     "constraints": []
