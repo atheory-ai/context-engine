@@ -1,17 +1,46 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/atheory-ai/context-engine/internal/config"
+	"github.com/atheory-ai/context-engine/internal/core"
 	"github.com/atheory-ai/context-engine/internal/iir"
+	"github.com/atheory-ai/context-engine/internal/runner"
 )
 
 // defaultRules is the rule-pack provider used by most handler tests.
 func defaultRules() iir.RulePack { return iir.DefaultRulePack() }
+
+// iirExtractor builds a plugin-backed extractor for the verify handler tests,
+// skipping when the default plugins aren't built.
+func iirExtractor(t *testing.T) iir.Extractor {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "ce-iir-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{}
+	cfg.DataDir = dir
+	ch := core.NewAppChannels()
+	ext, _, err := runner.NewIIRExtractor(context.Background(), cfg, &ch)
+	if err != nil {
+		t.Skipf("iir extractor unavailable: %v", err)
+	}
+	res, err := ext.Extract(context.Background(), iir.ExtractionInput{
+		Language: "typescript", Source: []byte("export function probe(): void {}"), Target: "probe",
+	})
+	if err != nil || res.Function == nil {
+		t.Skip("default plugins not built — run `make bundle-default-plugins`")
+	}
+	return ext
+}
 
 const validIntentJSON = `{
 	"kind": "FunctionIntent",
@@ -47,6 +76,7 @@ func TestIIRGenerate_ReturnsSource(t *testing.T) {
 }
 
 func TestIIRVerify_RoundTripsGeneratedSource(t *testing.T) {
+	ext := iirExtractor(t)
 	// Generate, then verify the generated source against the same intent.
 	genRec := postJSON(t, IIRGenerate(), `{"intent": `+validIntentJSON+`}`)
 	var gen struct {
@@ -58,7 +88,7 @@ func TestIIRVerify_RoundTripsGeneratedSource(t *testing.T) {
 		"intent": json.RawMessage(validIntentJSON),
 		"source": gen.Source,
 	})
-	rec := postJSON(t, IIRVerify(defaultRules), string(body))
+	rec := postJSON(t, IIRVerify(ext, defaultRules), string(body))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -101,6 +131,7 @@ func TestIIRHandlers_OversizedBodyRejected(t *testing.T) {
 }
 
 func TestIIRVerify_UsesProvidedRulePack(t *testing.T) {
+	ext := iirExtractor(t)
 	// A provider returning a pack with a uniquely-named rule proves the handler
 	// evaluates the supplied pack (plugin-merged) rather than only the defaults.
 	withPluginRule := func() iir.RulePack {
@@ -112,7 +143,7 @@ func TestIIRVerify_UsesProvidedRulePack(t *testing.T) {
 		"intent": json.RawMessage(validIntentJSON),
 		"source": `export function validateDonationAmount(amount: Money, campaign: Campaign): ValidationResult<Money> { return ok(amount); }`,
 	})
-	rec := postJSON(t, IIRVerify(withPluginRule), string(body))
+	rec := postJSON(t, IIRVerify(ext, withPluginRule), string(body))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -129,7 +160,7 @@ func TestIIRHandlers_BadRequests(t *testing.T) {
 	}{
 		{"malformed json", IIRGenerate(), `{not json`},
 		{"invalid intent", IIRGenerate(), `{"intent": {"kind": "FunctionIntent"}}`}, // missing name/language
-		{"empty body", IIRVerify(defaultRules), ``},
+		{"empty body", IIRVerify(nil, defaultRules), ``},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -1,7 +1,6 @@
 package iir
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 )
@@ -47,10 +46,12 @@ func TestParseIntentJSON_AcceptsAnyLanguage(t *testing.T) {
 // LoadIntent would reject — ParseIntentJSON must tolerate it so the round-trip
 // works.
 func TestParseIntentJSON_RoundTripsMarshaledIntent(t *testing.T) {
-	src := `export function f(a: number, b: string): void { return; }`
-	extracted, err := ExtractFunction(context.Background(), []byte(src), "f")
-	if err != nil {
-		t.Fatalf("ExtractFunction: %v", err)
+	// A lifted intent with an explicit return — json.Marshal emits
+	// returns.explicit, which the strict YAML loader rejects.
+	extracted := &FunctionIntent{
+		Kind: KindFunctionIntent, Name: "f", Language: "typescript",
+		Inputs:  []Param{{Name: "a", Type: "number"}, {Name: "b", Type: "string"}},
+		Returns: Return{Type: "void", Explicit: true},
 	}
 
 	raw, err := json.Marshal(extracted)

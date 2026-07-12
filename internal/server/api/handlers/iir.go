@@ -51,7 +51,7 @@ type iirIntentRequest struct {
 // rulePack supplies the effective rule pack (built-in defaults merged with any
 // plugin-contributed rules); it is evaluated per request so newly loaded plugins
 // take effect.
-func IIRVerify(rulePack func() iir.RulePack) http.HandlerFunc {
+func IIRVerify(extractor iir.Extractor, rulePack func() iir.RulePack) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req iirVerifyRequest
 		if !readJSONBody(w, r, &req) {
@@ -62,7 +62,7 @@ func IIRVerify(rulePack func() iir.RulePack) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		report, err := iir.VerifySource(r.Context(), intent, []byte(req.Source), rulePack())
+		report, err := iir.VerifySource(r.Context(), extractor, intent, []byte(req.Source), rulePack())
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return

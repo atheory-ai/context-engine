@@ -52,10 +52,14 @@ func Verify(intended, extracted *FunctionIntent, pack RulePack) *Report {
 }
 
 // VerifySource is the end-to-end helper: extract the intended function from
-// source, then verify. It is the path the CLI uses. Extraction goes through the
-// built-in extractor via the same plugin interface future extractors will.
-func VerifySource(ctx context.Context, intended *FunctionIntent, source []byte, pack RulePack) (*Report, error) {
-	extractor := BuiltinExtractor()
+// source with the provided extractor, then verify. The extractor is injected
+// (rather than a built-in) so extraction runs through the universal plugin lift
+// — the same frontend indexing uses — keeping this package free of the plugin
+// runtime.
+func VerifySource(ctx context.Context, extractor Extractor, intended *FunctionIntent, source []byte, pack RulePack) (*Report, error) {
+	if extractor == nil {
+		return nil, fmt.Errorf("no IIR extractor configured")
+	}
 	input := ExtractionInput{Language: intended.Language, Source: source, Target: intended.Name}
 	if !extractor.Supports(input) {
 		return nil, fmt.Errorf("no extractor supports language %q", intended.Language)

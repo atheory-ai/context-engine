@@ -45,11 +45,13 @@ func validateExtractLanguage(lang string) error {
 // distinguish success from failure by checking for the "error" key.
 
 // buildIIRHostFunctions returns the ce.iir_* host functions. Namespaced by the
-// caller (buildHostFunctions) alongside the other ce.* functions.
-func buildIIRHostFunctions() []extism.HostFunction {
+// caller (buildHostFunctions) alongside the other ce.* functions. The extract
+// and verify functions need an extractor (deps.IIRExtractor); generate/gentests
+// are pure computations over internal/iir.
+func buildIIRHostFunctions(deps HostDeps) []extism.HostFunction {
 	return []extism.HostFunction{
-		makeHostIIRExtract(),
-		makeHostIIRVerify(),
+		makeHostIIRExtract(deps),
+		makeHostIIRVerify(deps),
 		makeHostIIRGenerate(),
 		makeHostIIRGenTests(),
 	}
@@ -73,7 +75,7 @@ func writeErr(p *extism.CurrentPlugin, stack []uint64, msg string) {
 // makeHostIIRExtract creates ce.iir_extract(language_ptr, source_ptr, target_ptr)
 // → function_intent_json_ptr. Extracts IIR for the named function (or the first
 // exported one) from source.
-func makeHostIIRExtract() extism.HostFunction {
+func makeHostIIRExtract(deps HostDeps) extism.HostFunction {
 	return extism.NewHostFunctionWithStack(
 		"iir_extract",
 		func(ctx context.Context, p *extism.CurrentPlugin, stack []uint64) {
@@ -88,12 +90,16 @@ func makeHostIIRExtract() extism.HostFunction {
 				writeErr(p, stack, err.Error())
 				return
 			}
-			intent, err := iir.ExtractFunction(ctx, []byte(source), target)
+			if deps.IIRExtractor == nil {
+				writeErr(p, stack, "iir extraction is not available in this context")
+				return
+			}
+			res, err := deps.IIRExtractor.Extract(ctx, iir.ExtractionInput{Language: language, Source: []byte(source), Target: target})
 			if err != nil {
 				writeErr(p, stack, err.Error())
 				return
 			}
-			writeJSON(p, stack, intent)
+			writeJSON(p, stack, res.Function)
 		},
 		[]extism.ValueType{extism.ValueTypePTR, extism.ValueTypePTR, extism.ValueTypePTR},
 		[]extism.ValueType{extism.ValueTypePTR},
@@ -103,7 +109,7 @@ func makeHostIIRExtract() extism.HostFunction {
 // makeHostIIRVerify creates ce.iir_verify(intent_json_ptr, source_ptr) →
 // report_json_ptr. Verifies source against intended IIR using the built-in rule
 // pack.
-func makeHostIIRVerify() extism.HostFunction {
+func makeHostIIRVerify(deps HostDeps) extism.HostFunction {
 	return extism.NewHostFunctionWithStack(
 		"iir_verify",
 		func(ctx context.Context, p *extism.CurrentPlugin, stack []uint64) {
@@ -122,7 +128,11 @@ func makeHostIIRVerify() extism.HostFunction {
 				writeErr(p, stack, err.Error())
 				return
 			}
-			report, err := iir.VerifySource(ctx, intent, []byte(source), iir.DefaultRulePack())
+			if deps.IIRExtractor == nil {
+				writeErr(p, stack, "iir extraction is not available in this context")
+				return
+			}
+			report, err := iir.VerifySource(ctx, deps.IIRExtractor, intent, []byte(source), iir.DefaultRulePack())
 			if err != nil {
 				writeErr(p, stack, err.Error())
 				return

@@ -36,7 +36,7 @@ func New(cfg *config.Config, engine *runner.Engine) *Server {
 	apiMux.HandleFunc("POST /api/v1/query", handlers.Query(engine))
 	apiMux.HandleFunc("GET /api/v1/substrate/nodes", handlers.GetNodes(engine))
 	apiMux.HandleFunc("GET /api/v1/substrate/edges", handlers.GetEdges(engine))
-	apiMux.HandleFunc("POST /api/v1/iir/verify", handlers.IIRVerify(engine.IIRRulePack))
+	apiMux.HandleFunc("POST /api/v1/iir/verify", handlers.IIRVerify(engine.IIRExtractor(), engine.IIRRulePack))
 	apiMux.HandleFunc("POST /api/v1/iir/generate", handlers.IIRGenerate())
 	apiMux.HandleFunc("POST /api/v1/iir/gen-tests", handlers.IIRGenTests())
 	apiMux.HandleFunc("GET /api/v1/execlog", handlers.ListExecLog(engine))
