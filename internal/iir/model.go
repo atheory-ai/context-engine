@@ -53,8 +53,10 @@ type FunctionIntent struct {
 	Behavior []BehaviorClause `json:"behavior" yaml:"behavior"`
 
 	// SideEffects names observable effects (e.g. "analytics.track"). An empty
-	// non-nil slice means "explicitly declares no side effects".
-	SideEffects []string `json:"sideEffects" yaml:"sideEffects"`
+	// non-nil slice means "explicitly declares no side effects". Each effect is a
+	// bare name on the wire, or an object with an optional kind/confidence (see
+	// SideEffect).
+	SideEffects []SideEffect `json:"sideEffects" yaml:"sideEffects"`
 
 	// FailureModes names the expected failure outcomes (e.g. domain error tags).
 	FailureModes []string `json:"failureModes" yaml:"failureModes"`

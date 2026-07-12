@@ -38,6 +38,18 @@ export interface IIRBehaviorClause {
   whenExpr?: IIRExpr
 }
 
+/**
+ * An observable side effect. Either a bare name ("analytics.track") or an object
+ * carrying an optional kind (network | db | io | log | mutation | unclassified)
+ * and confidence (high | low). The host accepts both forms; a plugin that can
+ * categorize an effect may emit the object form, otherwise a bare string.
+ */
+export type IIRSideEffect = string | {
+  name:        string
+  kind?:       "network" | "db" | "io" | "log" | "mutation" | "unclassified"
+  confidence?: "high" | "low"
+}
+
 export interface FunctionIntent {
   kind:         "FunctionIntent"
   name:         string
@@ -46,7 +58,7 @@ export interface FunctionIntent {
   inputs:       IIRParam[]
   returns:      IIRReturn
   behavior:     IIRBehaviorClause[]
-  sideEffects:  string[]
+  sideEffects:  IIRSideEffect[]
   failureModes: string[]
   constraints:  string[]
 }

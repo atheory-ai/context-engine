@@ -14,7 +14,7 @@ func TestVerify_ReportShapeIsStable(t *testing.T) {
 		Visibility: VisibilityPublic,
 		Inputs:     []Param{{Name: "amount", Type: "Money"}},
 		Returns:    Return{Type: "ValidationResult<Money>", Explicit: true},
-		Behavior:   []BehaviorClause{}, SideEffects: []string{}, FailureModes: []string{}, Constraints: []string{},
+		Behavior:   []BehaviorClause{}, SideEffects: []SideEffect{}, FailureModes: []string{}, Constraints: []string{},
 	}
 	report := Verify(intent, extracted, DefaultRulePack())
 

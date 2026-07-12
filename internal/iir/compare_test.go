@@ -11,7 +11,7 @@ func baseIntent() *FunctionIntent {
 		Visibility:   VisibilityPublic,
 		Inputs:       []Param{{Name: "a", Type: "number"}},
 		Returns:      Return{Type: "number", Explicit: true},
-		SideEffects:  []string{},
+		SideEffects:  []SideEffect{},
 		FailureModes: []string{},
 	}
 }
@@ -105,7 +105,7 @@ func TestCompare_ReturnTypeWhitespaceEquivalent(t *testing.T) {
 
 func TestCompare_UndeclaredSideEffect(t *testing.T) {
 	extracted := baseIntent()
-	extracted.SideEffects = []string{"analytics.track"}
+	extracted.SideEffects = stringEffects("analytics.track")
 	_, mismatches := Compare(baseIntent(), extracted)
 	m := findMismatch(mismatches, MismatchUndeclaredEffect)
 	if m == nil || m.Severity != SeverityError {
@@ -259,7 +259,7 @@ func TestCompare_UnknownInputTypeIsExactNotEquivalent(t *testing.T) {
 
 func TestCompare_DeclaredButUndetectedEffectIsWarning(t *testing.T) {
 	intended := baseIntent()
-	intended.SideEffects = []string{"db.save"}
+	intended.SideEffects = stringEffects("db.save")
 	extracted := baseIntent() // no effects detected
 	_, mismatches := Compare(intended, extracted)
 	m := findMismatch(mismatches, MismatchUndetectedEffect)

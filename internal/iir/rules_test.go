@@ -30,7 +30,7 @@ func TestDefaultRules_PassForCompliantFunction(t *testing.T) {
 		Name:        "f",
 		Visibility:  VisibilityPublic,
 		Returns:     Return{Type: "number", Explicit: true},
-		SideEffects: []string{}, // declares "no side effects"
+		SideEffects: []SideEffect{}, // declares "no side effects"
 	}
 	results := EvaluateRules(DefaultRulePack(), intent)
 	for _, r := range results {
@@ -46,7 +46,7 @@ func TestDefaultRules_ExplicitReturnTypeFails(t *testing.T) {
 		Name:        "f",
 		Visibility:  VisibilityPublic,
 		Returns:     Return{Explicit: false},
-		SideEffects: []string{},
+		SideEffects: []SideEffect{},
 	}
 	results := EvaluateRules(DefaultRulePack(), intent)
 	r := resultByID(results, "function-explicit-return-type")
@@ -64,7 +64,7 @@ func TestRules_VisibilityWhenSkipsPrivate(t *testing.T) {
 		Name:        "f",
 		Visibility:  VisibilityPrivate, // rule targets public only
 		Returns:     Return{Explicit: false},
-		SideEffects: []string{},
+		SideEffects: []SideEffect{},
 	}
 	results := EvaluateRules(DefaultRulePack(), intent)
 	r := resultByID(results, "function-explicit-return-type")
@@ -128,7 +128,7 @@ func TestRules_ExplicitReturnTypeFalseIsHonored(t *testing.T) {
 	}}}
 	intent := &FunctionIntent{
 		Kind: KindFunctionIntent, Name: "f", Visibility: VisibilityPublic,
-		Returns: Return{Type: "number", Explicit: true}, SideEffects: []string{},
+		Returns: Return{Type: "number", Explicit: true}, SideEffects: []SideEffect{},
 	}
 	if r := resultByID(EvaluateRules(pack, intent), "no-explicit-return"); r == nil || r.Status != RuleFailed {
 		t.Errorf("expected false requirement to fail an explicit-return function, got %+v", r)
