@@ -4,38 +4,41 @@
 // idiom — a returned error (errors.New / fmt.Errorf message, or an Err* sentinel)
 // — plus panic. Go has no host-side extractor — the plugin is the sole IIR producer.
 import type {
-  FunctionIntent, IIRParam, IIRReturn, IIRExpr, IIRBehaviorClause, SyntaxNode,
+  FunctionIntent, IIRParam, IIRReturn, IIRExpr, IIRBehaviorClause, IIRSideEffect, SyntaxNode,
 } from "@atheory-ai/ce-plugin-sdk"
-import { IIRTypeUnknown, childByField, childrenByType, fieldText, walk } from "@atheory-ai/ce-plugin-sdk"
+import { IIRTypeUnknown, childByField, childrenByType, fieldText, walk, classifyEffect } from "@atheory-ai/ce-plugin-sdk"
 
 export function isExported(name: string): boolean {
   const first = name.charAt(0)
   return first !== "" && first === first.toUpperCase() && first !== first.toLowerCase()
 }
 
-// collectImports gathers imported package qualifiers (the alias, or the last
-// path segment) — the set used to decide whether a call is on an imported package.
-export function collectImports(tree: SyntaxNode): Set<string> {
-  const imports = new Set<string>()
+// collectImports maps each imported package qualifier (the alias, or the last
+// path segment) to its full import path. The qualifier decides whether a call is
+// on an imported package; the full path lets the effect classifier categorize it
+// (e.g. "net/http" → network) far more reliably than the local alias alone.
+export function collectImports(tree: SyntaxNode): Map<string, string> {
+  const imports = new Map<string, string>()
   walk(tree, (n) => {
     if (n.type !== "import_spec") return
+    const path = (childByField(n, "path")?.text ?? "").replace(/^["'`]|["'`]$/g, "")
     const alias = childByField(n, "name")?.text
     if (alias) {
-      if (alias !== "_" && alias !== ".") imports.add(alias)
+      if (alias !== "_" && alias !== ".") imports.set(alias, path)
       return
     }
-    const segs = (childByField(n, "path")?.text ?? "").replace(/^["'`]|["'`]$/g, "").split("/")
+    const segs = path.split("/")
     let pkg = segs.pop() ?? ""
     // A trailing /vN is a semantic-import-version dir, not the package name
     // (github.com/foo/bar/v2 → bar); a .vN suffix likewise (gopkg.in/yaml.v2 → yaml).
     if (/^v\d+$/.test(pkg)) pkg = segs.pop() ?? pkg
     pkg = pkg.replace(/\.v\d+$/, "")
-    if (pkg) imports.add(pkg)
+    if (pkg) imports.set(pkg, path)
   })
   return imports
 }
 
-export function liftGoFunction(name: string, fnNode: SyntaxNode, imports: Set<string>): FunctionIntent {
+export function liftGoFunction(name: string, fnNode: SyntaxNode, imports: Map<string, string>): FunctionIntent {
   const body = childByField(fnNode, "body")
   return {
     kind:         "FunctionIntent",
@@ -288,8 +291,8 @@ function isPureCall(root: string, full: string): boolean {
   return purePackages.has(root) || pureCalls.has(full)
 }
 
-function extractSideEffects(body: SyntaxNode | null, imports: Set<string>): string[] {
-  const seen = new Set<string>()
+function extractSideEffects(body: SyntaxNode | null, imports: Map<string, string>): IIRSideEffect[] {
+  const byName = new Map<string, IIRSideEffect>()
   if (!body) return []
   walk(body, (n) => {
     if (n.type !== "call_expression") return
@@ -297,9 +300,18 @@ function extractSideEffects(body: SyntaxNode | null, imports: Set<string>): stri
     if (!callee) return
     const { method, root, full } = calleeParts(callee)
     if (isPureCall(root, full)) return
-    if (imports.has(root) || matchesSideEffectVerb(method)) seen.add(full)
+    if (!imports.has(root) && !matchesSideEffectVerb(method)) return
+    if (byName.has(full)) return
+    // Classify at the source, using the full import path when the root is an
+    // imported package — a far stronger signal than the local qualifier.
+    const { kind, confidence } = classifyEffect({ method, root, importPath: imports.get(root) })
+    byName.set(full, { name: full, kind, confidence })
   })
-  return [...seen].sort()
+  return [...byName.values()].sort((a, b) => effectName(a).localeCompare(effectName(b)))
+}
+
+function effectName(e: IIRSideEffect): string {
+  return typeof e === "string" ? e : e.name
 }
 
 function calleeParts(callee: SyntaxNode): { method: string; root: string; full: string } {
