@@ -31,6 +31,10 @@
               "text": "0"
             }
           ]
+        },
+        "thenExpr": {
+          "op": "return",
+          "value": "\"negative\""
         }
       },
       {
@@ -48,11 +52,19 @@
               "text": "0"
             }
           ]
+        },
+        "thenExpr": {
+          "op": "return",
+          "value": "\"zero\""
         }
       },
       {
         "when": "else",
-        "then": "return \"positive\""
+        "then": "return \"positive\"",
+        "thenExpr": {
+          "op": "return",
+          "value": "\"positive\""
+        }
       }
     ],
     "sideEffects": [],
@@ -91,6 +103,10 @@
               "text": "100"
             }
           ]
+        },
+        "thenExpr": {
+          "op": "return",
+          "value": "\"perfect\""
         }
       },
       {
@@ -108,11 +124,19 @@
               "text": "0"
             }
           ]
+        },
+        "thenExpr": {
+          "op": "return",
+          "value": "\"zero\""
         }
       },
       {
         "when": "else",
-        "then": "return \"other\""
+        "then": "return \"other\"",
+        "thenExpr": {
+          "op": "return",
+          "value": "\"other\""
+        }
       }
     ],
     "sideEffects": [],

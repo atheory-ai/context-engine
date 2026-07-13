@@ -35,6 +35,10 @@
               "text": "\"\""
             }
           ]
+        },
+        "thenExpr": {
+          "op": "return",
+          "value": "nil, fmt.Errorf(\"empty id\")"
         }
       }
     ],

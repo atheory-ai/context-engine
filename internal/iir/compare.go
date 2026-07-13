@@ -162,27 +162,39 @@ func compareBehavior(intended, extracted *FunctionIntent, matches *[]Match, mism
 		})
 		return
 	}
-	// Counts align. Where both sides expose a normalized condition, compare the
-	// structured content positionally — this catches a flipped or altered
-	// condition (e.g. `<` vs `>`) that the count-only check passes silently.
-	// A clause missing WhenExpr on either side falls back to the count match.
+	// Counts align. Where both sides expose a normalized form, compare the
+	// structured content positionally — this catches a flipped condition (`<` vs
+	// `>`) or a diverged consequence (intent says throw, source returns) that the
+	// count-only check passes silently. A clause missing the normalized form on
+	// either side falls back to the count match.
 	contentMismatch := false
 	for i := range intended.Behavior {
-		want, got := intended.Behavior[i].WhenExpr, extracted.Behavior[i].WhenExpr
-		if want == nil || got == nil || want.Equal(got) {
-			continue
+		if want, got := intended.Behavior[i].WhenExpr, extracted.Behavior[i].WhenExpr; want != nil && got != nil && !want.Equal(got) {
+			contentMismatch = true
+			*mismatches = append(*mismatches, Mismatch{
+				Kind:     MismatchBehaviorContent,
+				Severity: SeverityWarning,
+				Path:     fmt.Sprintf("FunctionIntent.behavior[%d].when", i),
+				Message: fmt.Sprintf("behavior clause %d condition differs: intended %q, source %q",
+					i, intended.Behavior[i].When, extracted.Behavior[i].When),
+				Expected:     want,
+				Actual:       got,
+				RepairTarget: "Align the condition in source with the intent, or update the intent to match.",
+			})
 		}
-		contentMismatch = true
-		*mismatches = append(*mismatches, Mismatch{
-			Kind:     MismatchBehaviorContent,
-			Severity: SeverityWarning,
-			Path:     fmt.Sprintf("FunctionIntent.behavior[%d].when", i),
-			Message: fmt.Sprintf("behavior clause %d condition differs: intended %q, source %q",
-				i, intended.Behavior[i].When, extracted.Behavior[i].When),
-			Expected:     want,
-			Actual:       got,
-			RepairTarget: "Align the condition in source with the intent, or update the intent to match.",
-		})
+		if want, got := intended.Behavior[i].ThenExpr, extracted.Behavior[i].ThenExpr; want != nil && got != nil && !want.Equal(got) {
+			contentMismatch = true
+			*mismatches = append(*mismatches, Mismatch{
+				Kind:     MismatchBehaviorContent,
+				Severity: SeverityWarning,
+				Path:     fmt.Sprintf("FunctionIntent.behavior[%d].then", i),
+				Message: fmt.Sprintf("behavior clause %d consequence differs: intended %q, source %q",
+					i, intended.Behavior[i].Then, extracted.Behavior[i].Then),
+				Expected:     want,
+				Actual:       got,
+				RepairTarget: "Align the consequence in source with the intent, or update the intent to match.",
+			})
+		}
 	}
 	if contentMismatch {
 		return

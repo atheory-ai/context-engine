@@ -4,7 +4,7 @@
 // idiom — a returned error (errors.New / fmt.Errorf message, or an Err* sentinel)
 // — plus panic. Go has no host-side extractor — the plugin is the sole IIR producer.
 import type {
-  FunctionIntent, IIRParam, IIRReturn, IIRExpr, IIRBehaviorClause, IIRSideEffect, IIRFailureMode, SyntaxNode,
+  FunctionIntent, IIRParam, IIRReturn, IIRExpr, IIRBehaviorClause, IIRConsequence, IIRSideEffect, IIRFailureMode, SyntaxNode,
 } from "@atheory-ai/ce-plugin-sdk"
 import { IIRTypeUnknown, childByField, childrenByType, fieldText, walk, classifyEffect } from "@atheory-ai/ce-plugin-sdk"
 
@@ -98,10 +98,8 @@ function extractBehavior(body: SyntaxNode | null): IIRBehaviorClause[] {
 
 function pushIf(n: SyntaxNode, out: IIRBehaviorClause[]): void {
   const cond = childByField(n, "condition")
-  const clause: IIRBehaviorClause = {
-    when: cond ? normWs(cond.text) : "",
-    then: summarizeConsequence(childByField(n, "consequence")),
-  }
+  const clause: IIRBehaviorClause = { when: cond ? normWs(cond.text) : "", then: "" }
+  setThen(clause, salientBlockStmt(childByField(n, "consequence")))
   const whenExpr = normalizeCondition(cond)
   if (whenExpr) clause.whenExpr = whenExpr
   out.push(clause)
@@ -109,7 +107,9 @@ function pushIf(n: SyntaxNode, out: IIRBehaviorClause[]): void {
   // adds an otherwise-clause. tree-sitter-go models it as an `alternative` field.
   const alt = childByField(n, "alternative")
   if (alt && alt.type === "block") {
-    out.push({ when: "else", then: summarizeConsequence(alt) })
+    const elseClause: IIRBehaviorClause = { when: "else", then: "" }
+    setThen(elseClause, salientBlockStmt(alt))
+    out.push(elseClause)
   }
 }
 
@@ -124,17 +124,17 @@ function pushExprSwitch(sw: SyntaxNode, out: IIRBehaviorClause[]): void {
     if (c.type === "expression_case") {
       const values = caseValueNodes(childByField(c, "value"))
       const parts = values.map(v => caseCondition(subject, subjExpr, subjText, v))
-      const clause: IIRBehaviorClause = {
-        when: parts.map(p => p.text).join(" || ") || normWs(c.text),
-        then: summarizeCaseBody(c),
-      }
+      const clause: IIRBehaviorClause = { when: parts.map(p => p.text).join(" || ") || normWs(c.text), then: "" }
+      setThen(clause, salientCaseStmt(c))
       const exprs = parts.map(p => p.expr).filter((e): e is IIRExpr => !!e)
       if (exprs.length === values.length && exprs.length > 0) {
         clause.whenExpr = exprs.length === 1 ? exprs[0] : orFold(exprs)
       }
       out.push(clause)
     } else if (c.type === "default_case") {
-      out.push({ when: "else", then: summarizeCaseBody(c) })
+      const clause: IIRBehaviorClause = { when: "else", then: "" }
+      setThen(clause, salientCaseStmt(c))
+      out.push(clause)
     }
   }
 }
@@ -147,9 +147,13 @@ function pushTypeSwitch(sw: SyntaxNode, out: IIRBehaviorClause[]): void {
   for (const c of sw.children ?? []) {
     if (c.type === "type_case") {
       const t = childByField(c, "type")
-      out.push({ when: `${subjText} is ${t ? normWs(t.text) : "?"}`, then: summarizeCaseBody(c) })
+      const clause: IIRBehaviorClause = { when: `${subjText} is ${t ? normWs(t.text) : "?"}`, then: "" }
+      setThen(clause, salientCaseStmt(c))
+      out.push(clause)
     } else if (c.type === "default_case") {
-      out.push({ when: "else", then: summarizeCaseBody(c) })
+      const clause: IIRBehaviorClause = { when: "else", then: "" }
+      setThen(clause, salientCaseStmt(c))
+      out.push(clause)
     }
   }
 }
@@ -181,15 +185,17 @@ function orFold(exprs: IIRExpr[]): IIRExpr {
 
 // summarizeCaseBody summarizes a case's statements (which follow the value/type
 // as direct children), preferring a return statement.
-function summarizeCaseBody(c: SyntaxNode): string {
+// salientCaseStmt / salientBlockStmt find the statement that stands for a
+// branch's consequence: the first meaningful statement, preferring a return.
+function salientCaseStmt(c: SyntaxNode): SyntaxNode | undefined {
   let first: SyntaxNode | undefined
   for (const s of c.children ?? []) {
     if (!s.isNamed) continue
     if (s.fieldName === "value" || s.fieldName === "type" || s.type === "expression_list") continue
     if (!first) first = s
-    if (s.type === "return_statement") return normWs(s.text)
+    if (s.type === "return_statement") return s
   }
-  return first ? normWs(first.text) : ""
+  return first
 }
 
 // walkWithinFunc stops at nested func_literals so a closure's `if` is not counted
@@ -203,16 +209,47 @@ function walkWithinFunc(node: SyntaxNode | null, visit: (n: SyntaxNode) => void)
   }
 }
 
-function summarizeConsequence(block: SyntaxNode | null): string {
-  if (!block) return ""
-  if (block.type !== "block") return normWs(block.text)
+function salientBlockStmt(block: SyntaxNode | null): SyntaxNode | undefined {
+  if (!block) return undefined
+  if (block.type !== "block") return block
   let first: SyntaxNode | undefined
   for (const c of block.children ?? []) {
     if (!c.isNamed) continue
     if (!first) first = c
-    if (c.type === "return_statement") return normWs(c.text)
+    if (c.type === "return_statement") return c
   }
-  return first ? normWs(first.text) : ""
+  return first
+}
+
+// setThen fills a clause's raw `then` text and, when the consequence fits the
+// action grammar, its normalized thenExpr — both from the same salient statement.
+function setThen(clause: IIRBehaviorClause, salient: SyntaxNode | undefined): void {
+  clause.then = salient ? normWs(salient.text) : ""
+  const action = thenAction(salient)
+  if (action) clause.thenExpr = action
+}
+
+// thenAction classifies a salient statement into a normalized consequence:
+// return (with the returned expression), throw (Go panic, with its message), or
+// invoke (a call, with the callee).
+function thenAction(node: SyntaxNode | undefined): IIRConsequence | undefined {
+  if (!node) return undefined
+  if (node.type === "return_statement") {
+    const value = returnExpressions(node).map(e => normWs(e.text)).join(", ")
+    return value ? { op: "return", value } : { op: "return" }
+  }
+  if (node.type === "expression_statement") {
+    const call = (node.children ?? []).find(c => c.type === "call_expression")
+    if (call) {
+      const callee = normWs(childByField(call, "function")?.text ?? "")
+      if (callee === "panic") {
+        const lit = firstStringLiteral(call)
+        return lit ? { op: "throw", value: lit } : { op: "throw" }
+      }
+      return callee ? { op: "invoke", value: callee } : { op: "invoke" }
+    }
+  }
+  return undefined
 }
 
 const comparisonOps = new Set(["<", "<=", ">", ">=", "==", "!="])

@@ -107,15 +107,52 @@ type Return struct {
 
 // BehaviorClause is a single when/then expectation.
 //
-// When is always the raw, human-readable condition text (ground truth). WhenExpr
-// is an optional normalized form of that same condition — a deterministic AST
-// walk, no model — present only when the condition fits the bounded grammar
-// (see normalizeCondition). It is additive: absent WhenExpr means comparison
-// falls back to the raw count-based behavior, losing nothing.
+// When and Then are always the raw, human-readable condition and consequence
+// text (ground truth). WhenExpr and ThenExpr are optional normalized forms of
+// those — deterministic AST walks, no model — present only when the condition/
+// consequence fits the bounded grammar. Both are additive: an absent normalized
+// form means comparison falls back to the raw count-based behavior, losing
+// nothing.
 type BehaviorClause struct {
-	When     string `json:"when" yaml:"when"`
-	Then     string `json:"then" yaml:"then"`
-	WhenExpr *Expr  `json:"whenExpr,omitempty" yaml:"whenExpr,omitempty"`
+	When     string       `json:"when" yaml:"when"`
+	Then     string       `json:"then" yaml:"then"`
+	WhenExpr *Expr        `json:"whenExpr,omitempty" yaml:"whenExpr,omitempty"`
+	ThenExpr *Consequence `json:"thenExpr,omitempty" yaml:"thenExpr,omitempty"`
+}
+
+// Consequence action kinds — the normalized "then" of a behavior clause. Throw
+// folds Go panic, JS/TS throw, and Python raise into one cross-language notion of
+// "raises a failure".
+const (
+	ConsequenceReturn = "return"
+	ConsequenceThrow  = "throw"
+	ConsequenceInvoke = "invoke"
+)
+
+// Consequence is a normalized behavior consequence: what a clause *does* when its
+// condition holds, structured just enough to compare across languages. Op is the
+// action (return | throw | invoke). Value is an opaque canonical payload — the
+// returned expression, the thrown failure's identity, or the invoked callee — or
+// empty when the action carries none (a bare `return`).
+type Consequence struct {
+	Op    string `json:"op" yaml:"op"`
+	Value string `json:"value,omitempty" yaml:"value,omitempty"`
+}
+
+// Equal reports whether two consequences describe the same action. The Op must
+// match; a Value is compared only when both sides carry one, so a hand-authored
+// clause that names the action without its payload still matches source.
+func (c *Consequence) Equal(other *Consequence) bool {
+	if c == nil || other == nil {
+		return c == nil && other == nil
+	}
+	if c.Op != other.Op {
+		return false
+	}
+	if c.Value != "" && other.Value != "" && c.Value != other.Value {
+		return false
+	}
+	return true
 }
 
 // Expr is a normalized expression node: a small, uniform shape that can hold
