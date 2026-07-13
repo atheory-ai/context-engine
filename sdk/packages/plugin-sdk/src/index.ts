@@ -53,4 +53,4 @@ export type {
   ExtractedFunction,
 } from "./iir.js"
 export { classifyEffect } from "./effects.js"
-export type { EffectKind, EffectConfidence, EffectClassifierInput } from "./effects.js"
+export type { EffectKind, EffectBasis, EffectClassifierInput } from "./effects.js"

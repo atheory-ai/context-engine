@@ -1,13 +1,13 @@
 import { ok, err } from "./result";
-import { analytics } from "./analytics";
+import { db } from "./db";
 import { Money } from "./money";
 import { Campaign } from "./campaign";
 import { ValidationResult } from "./validation";
 
 // This implementation matches the declared name, inputs, and return type, but
-// it performs an UNDECLARED side effect: `analytics.track`. The intended IIR
-// declares `sideEffects: []`, so verification should fail with an
-// undeclared_side_effect mismatch.
+// it performs an UNDECLARED side effect: `db.query`, which the classifier
+// resolves to a database effect. The intended IIR declares `sideEffects: []`,
+// so verification should fail with an undeclared_side_effect mismatch.
 export function validateDonationAmount(
   amount: Money,
   campaign: Campaign,
@@ -16,7 +16,7 @@ export function validateDonationAmount(
     return err("amount_below_minimum");
   }
 
-  analytics.track("donation_validated", { amount });
+  db.query("insert into audit (event) values ('donation_validated')");
 
   return ok(amount);
 }

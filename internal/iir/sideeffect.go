@@ -18,9 +18,20 @@ const (
 	EffectUnclassified = "unclassified"
 )
 
-// Effect confidence levels. Detection that matches a curated effectful pattern is
-// high confidence; a purely heuristic detection is low. The comparator grades an
-// undeclared effect's severity by this: high → error, low → warning.
+// How an effect's kind was established. "resolved" means it matched a known
+// effectful API (an import path or recognized client) — deterministic knowledge,
+// not a probabilistic guess. "heuristic" means it was inferred from a method-name
+// verb or is uncategorized. The comparator grades an undeclared resolved effect
+// as an error and a heuristic one as a warning: it should not fail verification
+// on a guess.
+const (
+	BasisResolved  = "resolved"
+	BasisHeuristic = "heuristic"
+)
+
+// Effect confidence levels, retained for back-compat with IIR that graded
+// effects by confidence before basis existed. "high" maps to resolved, "low" to
+// heuristic.
 const (
 	ConfidenceHigh = "high"
 	ConfidenceLow  = "low"
@@ -28,17 +39,20 @@ const (
 
 // SideEffect is an observable effect a function performs. On the wire it is
 // either a bare string (the effect name, e.g. "analytics.track") or an object
-// carrying an optional kind and confidence — both forms parse, and a name-only
-// effect marshals back to a bare string so existing IIR stays byte-stable.
+// carrying an optional kind and basis — both forms parse, and a name-only effect
+// marshals back to a bare string so existing IIR stays byte-stable.
 type SideEffect struct {
-	Name       string `json:"name" yaml:"name"`
-	Kind       string `json:"kind,omitempty" yaml:"kind,omitempty"`
+	Name  string `json:"name" yaml:"name"`
+	Kind  string `json:"kind,omitempty" yaml:"kind,omitempty"`
+	Basis string `json:"basis,omitempty" yaml:"basis,omitempty"`
+	// Confidence is kept for back-compat with older effect objects and for the
+	// inferred-intent layer; new plugins emit basis instead.
 	Confidence string `json:"confidence,omitempty" yaml:"confidence,omitempty"`
 }
 
-// plain reports whether only the name is set (no kind/confidence), so the effect
-// round-trips as a bare string.
-func (e SideEffect) plain() bool { return e.Kind == "" && e.Confidence == "" }
+// plain reports whether only the name is set, so the effect round-trips as a
+// bare string.
+func (e SideEffect) plain() bool { return e.Kind == "" && e.Basis == "" && e.Confidence == "" }
 
 func (e SideEffect) MarshalJSON() ([]byte, error) {
 	if e.plain() {
@@ -98,9 +112,10 @@ func stringEffects(names ...string) []SideEffect {
 	return out
 }
 
-// effectCategories maps a curated substring to (kind, high confidence). An effect
-// name matching one is a recognized, real effect; anything else is heuristic-only
-// (low confidence), which the comparator treats as a warning rather than an error.
+// effectCategories maps a curated substring to a kind. An effect name matching
+// one is a recognized (resolved) effectful API. This host classifier is the
+// fallback for name-only effects (older IIR, hand-authored intents); plugins
+// classify structurally at extraction and carry the basis themselves.
 var effectCategories = []struct {
 	kind     string
 	patterns []string
@@ -109,34 +124,43 @@ var effectCategories = []struct {
 	{EffectDB, []string{"sql", "db.", ".db", "query", "redis", "mongo", "gorm", "database", "repository", "datastore"}},
 	{EffectIO, []string{"os.", "io.", "ioutil", "fs.", "file", "open(", "readfile", "writefile", "readall"}},
 	{EffectLog, []string{"log", "console", "print", "fmt.print", "slog"}},
-	{EffectMutation, sideEffectMutationVerbs},
 }
 
 // sideEffectMutationVerbs mirror the plugins' side-effect verbs — a method name
-// containing one signals an observable mutation/effect.
+// containing one is a heuristic mutation signal.
 var sideEffectMutationVerbs = []string{"track", "send", "emit", "publish", "save", "create", "update", "delete", "write"}
 
-// ClassifyEffect returns the (kind, confidence) for an effect name using the
-// curated category registry. A recognized effect is high confidence; an
-// unrecognized one is low-confidence "unclassified".
-func ClassifyEffect(name string) (kind, confidence string) {
+// ClassifyEffect returns the (kind, basis) for an effect name. A recognized
+// category is resolved; a verb-only or unrecognized name is heuristic.
+func ClassifyEffect(name string) (kind, basis string) {
 	n := strings.ToLower(name)
 	for _, cat := range effectCategories {
 		for _, p := range cat.patterns {
 			if strings.Contains(n, p) {
-				return cat.kind, ConfidenceHigh
+				return cat.kind, BasisResolved
 			}
 		}
 	}
-	return EffectUnclassified, ConfidenceLow
+	for _, v := range sideEffectMutationVerbs {
+		if strings.Contains(n, v) {
+			return EffectMutation, BasisHeuristic
+		}
+	}
+	return EffectUnclassified, BasisHeuristic
 }
 
-// effectConfidence prefers an effect's own declared confidence, falling back to
-// classification by name.
-func effectConfidence(e SideEffect) string {
-	if e.Confidence != "" {
-		return e.Confidence
+// effectBasis prefers an effect's declared basis, then maps a legacy confidence,
+// then classifies by name.
+func effectBasis(e SideEffect) string {
+	if e.Basis != "" {
+		return e.Basis
 	}
-	_, conf := ClassifyEffect(e.Name)
-	return conf
+	switch e.Confidence {
+	case ConfidenceHigh:
+		return BasisResolved
+	case ConfidenceLow:
+		return BasisHeuristic
+	}
+	_, basis := ClassifyEffect(e.Name)
+	return basis
 }

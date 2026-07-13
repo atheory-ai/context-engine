@@ -333,15 +333,15 @@ func compareSideEffects(intended, extracted *FunctionIntent, matches *[]Match, m
 	found := toSet(effectNames(extracted.SideEffects))
 
 	// Effects in source but not declared. Severity is graded by confidence: a
-	// high-confidence (recognized) effect is an error, a low-confidence
-	// (heuristic-only) one is a warning — so an over-eager heuristic detection
-	// doesn't fail verification outright.
+	// resolved (recognized) effect is an error, a heuristic (guessed) one is a
+	// warning — so an over-eager heuristic detection doesn't fail verification
+	// outright.
 	var undeclaredHigh, undeclaredLow []string
 	for _, e := range extracted.SideEffects {
 		if declared[e.Name] {
 			continue
 		}
-		if effectConfidence(e) == ConfidenceHigh {
+		if effectBasis(e) == BasisResolved {
 			undeclaredHigh = append(undeclaredHigh, e.Name)
 		} else {
 			undeclaredLow = append(undeclaredLow, e.Name)

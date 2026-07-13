@@ -39,7 +39,7 @@
       {
         "name": "analytics.track",
         "kind": "mutation",
-        "confidence": "high"
+        "basis": "heuristic"
       }
     ],
     "failureModes": [],

@@ -194,13 +194,13 @@ describe("liftPyFunction (behavior, effects, failures)", () => {
   it("detects a call on an imported module and classifies it (verb → mutation)", () => {
     const fn = pyBody("record", n("expression_statement", { children: [pcall("analytics", "track")] }))
     const intent = liftOf(module(importMod("analytics"), fn))[0].intent
-    expect(intent.sideEffects).toEqual([{ name: "analytics.track", kind: "mutation", confidence: "high" }])
+    expect(intent.sideEffects).toEqual([{ name: "analytics.track", kind: "mutation", basis: "heuristic" }])
   })
 
   it("classifies a call on an imported stdlib module (os → io)", () => {
     const fn = pyBody("cleanup", n("expression_statement", { children: [pcall("os", "remove")] }))
     const intent = liftOf(module(importMod("os"), fn))[0].intent
-    expect(intent.sideEffects).toEqual([{ name: "os.remove", kind: "io", confidence: "high" }])
+    expect(intent.sideEffects).toEqual([{ name: "os.remove", kind: "io", basis: "resolved" }])
   })
 
   it("captures a raised string literal as a failure mode", () => {

@@ -79,19 +79,21 @@ sideEffects:
 
 func TestClassifyEffect(t *testing.T) {
 	cases := []struct {
-		name, kind, conf string
+		name, kind, basis string
 	}{
-		{"http.Get", EffectNetwork, ConfidenceHigh},
-		{"db.Save", EffectDB, ConfidenceHigh},
-		{"os.WriteFile", EffectIO, ConfidenceHigh},
-		{"fmt.Println", EffectLog, ConfidenceHigh},
-		{"analytics.track", EffectMutation, ConfidenceHigh},
-		{"helper.compute", EffectUnclassified, ConfidenceLow},
+		// recognized categories → resolved
+		{"http.Get", EffectNetwork, BasisResolved},
+		{"db.Save", EffectDB, BasisResolved},
+		{"os.WriteFile", EffectIO, BasisResolved},
+		{"fmt.Println", EffectLog, BasisResolved},
+		// verb-only guess → heuristic
+		{"analytics.track", EffectMutation, BasisHeuristic},
+		{"helper.compute", EffectUnclassified, BasisHeuristic},
 	}
 	for _, c := range cases {
-		k, conf := ClassifyEffect(c.name)
-		if k != c.kind || conf != c.conf {
-			t.Errorf("ClassifyEffect(%q) = (%q,%q), want (%q,%q)", c.name, k, conf, c.kind, c.conf)
+		k, basis := ClassifyEffect(c.name)
+		if k != c.kind || basis != c.basis {
+			t.Errorf("ClassifyEffect(%q) = (%q,%q), want (%q,%q)", c.name, k, basis, c.kind, c.basis)
 		}
 	}
 }

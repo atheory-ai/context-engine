@@ -168,7 +168,7 @@ describe("liftFunction (behavior, effects, failures)", () => {
 
   it("detects a side effect from a verb method call and classifies it", () => {
     const intent = liftOf(program(fnWith(bodyOf(callExpr(member("analytics", "track")))))).at(0)!.intent
-    expect(intent.sideEffects).toEqual([{ name: "analytics.track", kind: "mutation", confidence: "high" }])
+    expect(intent.sideEffects).toEqual([{ name: "analytics.track", kind: "mutation", basis: "heuristic" }])
   })
 
   it("detects a call on an imported client and classifies by its root", () => {
@@ -180,7 +180,7 @@ describe("liftFunction (behavior, effects, failures)", () => {
     })
     const fn = fnWith(bodyOf(callExpr(member("db", "query"))))
     const intent = liftOf(program(imp, fn))[0].intent
-    expect(intent.sideEffects).toEqual([{ name: "db.query", kind: "db", confidence: "high" }])
+    expect(intent.sideEffects).toEqual([{ name: "db.query", kind: "db", basis: "resolved" }])
   })
 
   it("classifies a call on an imported network client (axios) as network", () => {
@@ -193,7 +193,7 @@ describe("liftFunction (behavior, effects, failures)", () => {
     })
     const fn = fnWith(bodyOf(callExpr(member("axios", "get"))))
     const intent = liftOf(program(imp, fn))[0].intent
-    expect(intent.sideEffects).toEqual([{ name: "axios.get", kind: "network", confidence: "high" }])
+    expect(intent.sideEffects).toEqual([{ name: "axios.get", kind: "network", basis: "resolved" }])
   })
 
   it("captures a thrown string literal as a failure mode", () => {
