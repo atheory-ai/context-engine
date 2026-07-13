@@ -48,6 +48,7 @@ export type {
   IIRReturn,
   IIRExpr,
   IIRBehaviorClause,
+  IIRConsequence,
   IIRSideEffect,
   IIRFailureMode,
   FunctionIntent,

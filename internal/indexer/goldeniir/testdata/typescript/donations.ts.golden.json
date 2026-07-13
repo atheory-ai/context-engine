@@ -83,6 +83,10 @@
               "text": "campaign.minimumDonation.cents"
             }
           ]
+        },
+        "thenExpr": {
+          "op": "throw",
+          "value": "below_minimum"
         }
       }
     ],

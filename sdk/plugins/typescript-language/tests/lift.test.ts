@@ -134,6 +134,7 @@ describe("liftFunction (behavior, effects, failures)", () => {
       when: "id == null",
       then: "return undefined",
       whenExpr: { op: "==", args: [{ op: "path", text: "id" }, { op: "lit", text: "null" }] },
+      thenExpr: { op: "return" },
     }])
   })
 
@@ -161,8 +162,8 @@ describe("liftFunction (behavior, effects, failures)", () => {
     })
     const intent = liftOf(program(fnWith(bodyOf(sw))))[0].intent
     expect(intent.behavior).toEqual([
-      { when: "x === 1", then: "return 'one'", whenExpr: { op: "===", args: [{ op: "path", text: "x" }, { op: "lit", text: "1" }] } },
-      { when: "else", then: "return 'other'" },
+      { when: "x === 1", then: "return 'one'", whenExpr: { op: "===", args: [{ op: "path", text: "x" }, { op: "lit", text: "1" }] }, thenExpr: { op: "return" } },
+      { when: "else", then: "return 'other'", thenExpr: { op: "return" } },
     ])
   })
 

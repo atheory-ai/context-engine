@@ -155,6 +155,7 @@ describe("liftGoFunction (behavior, effects, failures)", () => {
       when: "amount.Cents < limit",
       then: "return errBelow",
       whenExpr: { op: "<", args: [{ op: "path", text: "amount.Cents" }, { op: "path", text: "limit" }] },
+      thenExpr: { op: "return" },
     }])
   })
 
@@ -162,6 +163,20 @@ describe("liftGoFunction (behavior, effects, failures)", () => {
     const fn = goBody("f", gif(gbin(gid("x"), "==", gnil()), greturn("return")))
     const intent = liftOf(sourceFile(pkgClause("svc"), fn))[0].intent
     expect(intent.behavior[0].whenExpr).toEqual({ op: "==", args: [{ op: "path", text: "x" }, { op: "lit", text: "nil" }] })
+  })
+
+  it("normalizes a panic consequence to a throw action", () => {
+    const fn = goBody("f", gif(gbin(gid("x"), "<", n("int_literal", { text: "0" })),
+      n("expression_statement", { text: 'panic("boom")', children: [gpanic("boom")] })))
+    const intent = liftOf(sourceFile(pkgClause("svc"), fn))[0].intent
+    expect(intent.behavior[0].thenExpr).toEqual({ op: "throw", value: "boom" })
+  })
+
+  it("normalizes a bare call consequence to an invoke action", () => {
+    const fn = goBody("f", gif(gbin(gid("x"), "<", n("int_literal", { text: "0" })),
+      n("expression_statement", { text: "logger.Warn()", children: [selCall("logger", "Warn")] })))
+    const intent = liftOf(sourceFile(pkgClause("svc"), fn))[0].intent
+    expect(intent.behavior[0].thenExpr).toEqual({ op: "invoke", value: "logger.Warn" })
   })
 
   it("detects a call on an imported package and classifies it (verb → mutation)", () => {
@@ -224,8 +239,8 @@ describe("liftGoFunction (behavior, effects, failures)", () => {
     })
     const intent = liftOf(sourceFile(pkgClause("svc"), goBody("f", sw)))[0].intent
     expect(intent.behavior).toEqual([
-      { when: "x == 1", then: 'return "one"', whenExpr: { op: "==", args: [{ op: "path", text: "x" }, { op: "lit", text: "1" }] } },
-      { when: "else", then: 'return "other"' },
+      { when: "x == 1", then: 'return "one"', whenExpr: { op: "==", args: [{ op: "path", text: "x" }, { op: "lit", text: "1" }] }, thenExpr: { op: "return" } },
+      { when: "else", then: 'return "other"', thenExpr: { op: "return" } },
     ])
   })
 

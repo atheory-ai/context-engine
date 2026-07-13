@@ -244,6 +244,37 @@ func TestCompare_ExtraBehaviorIsInfo(t *testing.T) {
 	}
 }
 
+func TestCompare_DivergedConsequenceIsWarning(t *testing.T) {
+	// Same condition, but the intent says the branch throws while the source
+	// returns — a diverged consequence the count-only check would pass.
+	when := &Expr{Op: "==", Args: []*Expr{{Op: "path", Text: "id"}, {Op: "lit", Text: "null"}}}
+	intended := baseIntent()
+	intended.Behavior = []BehaviorClause{{When: "id == null", Then: "throw", WhenExpr: when, ThenExpr: &Consequence{Op: ConsequenceThrow}}}
+	extracted := baseIntent()
+	extracted.Behavior = []BehaviorClause{{When: "id == null", Then: "return undefined", WhenExpr: when, ThenExpr: &Consequence{Op: ConsequenceReturn}}}
+	_, mismatches := Compare(intended, extracted)
+	m := findMismatch(mismatches, MismatchBehaviorContent)
+	if m == nil || m.Severity != SeverityWarning {
+		t.Fatalf("expected warning mismatched_behavior for diverged consequence, got %+v", mismatches)
+	}
+	if m.Path != "FunctionIntent.behavior[0].then" {
+		t.Errorf("mismatch path = %q, want the .then path", m.Path)
+	}
+}
+
+func TestCompare_MatchingConsequencePasses(t *testing.T) {
+	// Same action; a Value present on only one side must not fail the match.
+	when := &Expr{Op: "==", Args: []*Expr{{Op: "path", Text: "id"}, {Op: "lit", Text: "null"}}}
+	intended := baseIntent()
+	intended.Behavior = []BehaviorClause{{When: "id == null", Then: "return", WhenExpr: when, ThenExpr: &Consequence{Op: ConsequenceReturn}}}
+	extracted := baseIntent()
+	extracted.Behavior = []BehaviorClause{{When: "id == null", Then: "return err", WhenExpr: when, ThenExpr: &Consequence{Op: ConsequenceReturn, Value: "err"}}}
+	_, mismatches := Compare(intended, extracted)
+	if findMismatch(mismatches, MismatchBehaviorContent) != nil {
+		t.Errorf("matching consequence (value on one side only) must not mismatch: %+v", mismatches)
+	}
+}
+
 func TestCompare_UnknownInputTypeIsExactNotEquivalent(t *testing.T) {
 	// When a type is unknown it was never compared, so the match must be exact
 	// (name agreement), not falsely labeled acceptable_equivalent.

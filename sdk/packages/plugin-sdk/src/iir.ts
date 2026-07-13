@@ -32,10 +32,23 @@ export interface IIRExpr {
   text?: string
 }
 
+/**
+ * A normalized behavior consequence — the `then` action of a clause, structured
+ * just enough to compare across languages. `op` is the action: "return", "throw"
+ * (Go panic / JS-TS throw / Python raise, folded), or "invoke" (a call). `value`
+ * is an opaque canonical payload (the returned expression, the thrown failure's
+ * identity, or the invoked callee), omitted when the action carries none.
+ */
+export interface IIRConsequence {
+  op:     "return" | "throw" | "invoke"
+  value?: string
+}
+
 export interface IIRBehaviorClause {
   when:      string
   then:      string
   whenExpr?: IIRExpr
+  thenExpr?: IIRConsequence
 }
 
 /**
