@@ -130,6 +130,7 @@ describe("liftPyFunction (behavior, effects, failures)", () => {
       when: "amount.cents < limit",
       then: "return err",
       whenExpr: { op: "<", args: [{ op: "path", text: "amount.cents" }, { op: "path", text: "limit" }] },
+      thenExpr: { op: "return" },
     }])
   })
 
@@ -171,8 +172,8 @@ describe("liftPyFunction (behavior, effects, failures)", () => {
     })
     const intent = liftOf(module(pyBody("f", match)))[0].intent
     expect(intent.behavior).toEqual([
-      { when: "score == 100", then: "return 'perfect'", whenExpr: { op: "==", args: [{ op: "path", text: "score" }, { op: "lit", text: "100" }] } },
-      { when: "else", then: "return 'other'" },
+      { when: "score == 100", then: "return 'perfect'", whenExpr: { op: "==", args: [{ op: "path", text: "score" }, { op: "lit", text: "100" }] }, thenExpr: { op: "return" } },
+      { when: "else", then: "return 'other'", thenExpr: { op: "return" } },
     ])
   })
 

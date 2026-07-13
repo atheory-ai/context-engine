@@ -4,7 +4,7 @@
 // failure idiom). Python has no host-side extractor — the plugin is the sole
 // IIR producer and owns the binding into the shared IIR model.
 import type {
-  FunctionIntent, IIRParam, IIRReturn, IIRExpr, IIRBehaviorClause, IIRSideEffect, IIRFailureMode, SyntaxNode,
+  FunctionIntent, IIRParam, IIRReturn, IIRExpr, IIRBehaviorClause, IIRConsequence, IIRSideEffect, IIRFailureMode, SyntaxNode,
 } from "@atheory-ai/ce-plugin-sdk"
 import { IIRTypeUnknown, childByField, fieldText, walk, classifyEffect } from "@atheory-ai/ce-plugin-sdk"
 
@@ -139,12 +139,17 @@ function extractBehavior(body: SyntaxNode | null): IIRBehaviorClause[] {
 }
 
 function condClause(cond: SyntaxNode | null, consequence: SyntaxNode | null): IIRBehaviorClause {
-  const clause: IIRBehaviorClause = {
-    when: cond ? normWs(cond.text) : "",
-    then: summarizeConsequence(consequence),
-  }
+  const clause: IIRBehaviorClause = { when: cond ? normWs(cond.text) : "", then: "" }
+  setThen(clause, salientConsequence(consequence))
   const whenExpr = normalizeCondition(cond)
   if (whenExpr) clause.whenExpr = whenExpr
+  return clause
+}
+
+// elseClause builds an otherwise-clause with its consequence normalized.
+function elseClause(consequence: SyntaxNode | null): IIRBehaviorClause {
+  const clause: IIRBehaviorClause = { when: "else", then: "" }
+  setThen(clause, salientConsequence(consequence))
   return clause
 }
 
@@ -157,7 +162,7 @@ function pushIf(n: SyntaxNode, out: IIRBehaviorClause[]): void {
     if (c.type === "elif_clause") {
       out.push(condClause(childByField(c, "condition"), childByField(c, "consequence")))
     } else if (c.type === "else_clause") {
-      out.push({ when: "else", then: summarizeConsequence(childByField(c, "body")) })
+      out.push(elseClause(childByField(c, "body")))
     }
   }
 }
@@ -175,15 +180,13 @@ function pushMatch(m: SyntaxNode, out: IIRBehaviorClause[]): void {
     const patText = pattern ? normWs(pattern.text) : ""
     const consequence = childByField(c, "consequence")
     if (patText === "_") {
-      out.push({ when: "else", then: summarizeConsequence(consequence) })
+      out.push(elseClause(consequence))
       continue
     }
     const inner = pattern ? (pattern.children ?? []).find(p => p.isNamed) : null
     const valExpr = normalizeCondition(inner ?? pattern)
-    const clause: IIRBehaviorClause = {
-      when: `${subjText} == ${patText}`,
-      then: summarizeConsequence(consequence),
-    }
+    const clause: IIRBehaviorClause = { when: `${subjText} == ${patText}`, then: "" }
+    setThen(clause, salientConsequence(consequence))
     if (subjExpr && valExpr) clause.whenExpr = { op: "==", args: [subjExpr, valExpr] }
     out.push(clause)
   }
@@ -200,16 +203,51 @@ function walkWithinFunc(node: SyntaxNode | null, visit: (n: SyntaxNode) => void)
   }
 }
 
-function summarizeConsequence(block: SyntaxNode | null): string {
-  if (!block) return ""
-  if (block.type !== "block") return normWs(block.text)
+// salientConsequence finds the statement that stands for a branch's consequence:
+// the first meaningful statement, preferring a return or raise.
+function salientConsequence(block: SyntaxNode | null): SyntaxNode | undefined {
+  if (!block) return undefined
+  if (block.type !== "block") return block
   let first: SyntaxNode | undefined
   for (const c of block.children ?? []) {
     if (!c.isNamed) continue
     if (!first) first = c
-    if (c.type === "return_statement" || c.type === "raise_statement") return normWs(c.text)
+    if (c.type === "return_statement" || c.type === "raise_statement") return c
   }
-  return first ? normWs(first.text) : ""
+  return first
+}
+
+// setThen fills a clause's raw `then` text and, when the consequence fits the
+// action grammar, its normalized thenExpr — both from the same salient statement.
+function setThen(clause: IIRBehaviorClause, salient: SyntaxNode | undefined): void {
+  clause.then = salient ? normWs(salient.text) : ""
+  const action = thenAction(salient)
+  if (action) clause.thenExpr = action
+}
+
+// thenAction classifies a salient statement into a normalized consequence:
+// return (with the returned expression), throw (Python raise, with the failure's
+// identity), or invoke (a call, with the callee).
+function thenAction(node: SyntaxNode | undefined): IIRConsequence | undefined {
+  if (!node) return undefined
+  if (node.type === "return_statement") {
+    const val = (node.children ?? []).find(c => c.isNamed)
+    const value = val ? normWs(val.text) : ""
+    return value ? { op: "return", value } : { op: "return" }
+  }
+  if (node.type === "raise_statement") {
+    const fm = raiseFailureMode(node)
+    const value = fm ? (typeof fm === "string" ? fm : fm.code) : undefined
+    return value ? { op: "throw", value } : { op: "throw" }
+  }
+  if (node.type === "expression_statement") {
+    const call = (node.children ?? []).find(c => c.type === "call")
+    if (call) {
+      const callee = normWs(childByField(call, "function")?.text ?? "")
+      return callee ? { op: "invoke", value: callee } : { op: "invoke" }
+    }
+  }
+  return undefined
 }
 
 // Python comparison tokens map straight to the shared IL, except `is`/`is not`

@@ -31,11 +31,19 @@
               "text": "0"
             }
           ]
+        },
+        "thenExpr": {
+          "op": "return",
+          "value": "\"negative\""
         }
       },
       {
         "when": "else",
-        "then": "fmt.Println(\"non-negative\")"
+        "then": "fmt.Println(\"non-negative\")",
+        "thenExpr": {
+          "op": "invoke",
+          "value": "fmt.Println"
+        }
       },
       {
         "when": "n == 0",
@@ -52,6 +60,10 @@
               "text": "0"
             }
           ]
+        },
+        "thenExpr": {
+          "op": "return",
+          "value": "\"zero\""
         }
       },
       {
@@ -69,6 +81,10 @@
               "text": "100"
             }
           ]
+        },
+        "thenExpr": {
+          "op": "return",
+          "value": "\"big\""
         }
       }
     ],
@@ -114,6 +130,10 @@
               "text": "100"
             }
           ]
+        },
+        "thenExpr": {
+          "op": "return",
+          "value": "\"A+\""
         }
       },
       {
@@ -149,11 +169,19 @@
               ]
             }
           ]
+        },
+        "thenExpr": {
+          "op": "return",
+          "value": "\"pass\""
         }
       },
       {
         "when": "else",
-        "then": "return \"fail\""
+        "then": "return \"fail\"",
+        "thenExpr": {
+          "op": "return",
+          "value": "\"fail\""
+        }
       }
     ],
     "sideEffects": [],
@@ -179,15 +207,27 @@
     "behavior": [
       {
         "when": "v is int",
-        "then": "return \"int\""
+        "then": "return \"int\"",
+        "thenExpr": {
+          "op": "return",
+          "value": "\"int\""
+        }
       },
       {
         "when": "v is string",
-        "then": "return \"string\""
+        "then": "return \"string\"",
+        "thenExpr": {
+          "op": "return",
+          "value": "\"string\""
+        }
       },
       {
         "when": "else",
-        "then": "return \"other\""
+        "then": "return \"other\"",
+        "thenExpr": {
+          "op": "return",
+          "value": "\"other\""
+        }
       }
     ],
     "sideEffects": [],

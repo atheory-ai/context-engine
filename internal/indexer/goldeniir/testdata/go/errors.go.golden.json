@@ -31,6 +31,10 @@
               "text": "\"\""
             }
           ]
+        },
+        "thenExpr": {
+          "op": "return",
+          "value": "nil, errors.New(\"empty id\")"
         }
       },
       {
@@ -48,11 +52,19 @@
               "text": "nil"
             }
           ]
+        },
+        "thenExpr": {
+          "op": "return",
+          "value": "nil, err"
         }
       },
       {
         "when": "len(data) == 0",
-        "then": "return nil, ErrClosed"
+        "then": "return nil, ErrClosed",
+        "thenExpr": {
+          "op": "return",
+          "value": "nil, ErrClosed"
+        }
       }
     ],
     "sideEffects": [],
@@ -109,6 +121,10 @@
               "text": "nil"
             }
           ]
+        },
+        "thenExpr": {
+          "op": "throw",
+          "value": "nil data"
         }
       },
       {
@@ -126,6 +142,10 @@
               "text": "\"\""
             }
           ]
+        },
+        "thenExpr": {
+          "op": "return",
+          "value": "fmt.Errorf(\"save %q: %w\", id, ErrClosed)"
         }
       }
     ],
