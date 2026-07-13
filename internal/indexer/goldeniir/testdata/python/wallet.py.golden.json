@@ -59,7 +59,10 @@
     ],
     "sideEffects": [],
     "failureModes": [
-      "missing_id"
+      {
+        "code": "missing_id",
+        "kind": "constructed"
+      }
     ],
     "constraints": []
   }

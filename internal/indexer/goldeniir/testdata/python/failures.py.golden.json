@@ -69,8 +69,14 @@
     ],
     "sideEffects": [],
     "failureModes": [
-      "NotFoundError",
-      "empty_id"
+      {
+        "code": "NotFoundError",
+        "kind": "sentinel"
+      },
+      {
+        "code": "empty_id",
+        "kind": "constructed"
+      }
     ],
     "constraints": []
   },
@@ -91,7 +97,12 @@
     },
     "behavior": [],
     "sideEffects": [],
-    "failureModes": [],
+    "failureModes": [
+      {
+        "code": "propagated",
+        "kind": "propagated"
+      }
+    ],
     "constraints": []
   }
 ]

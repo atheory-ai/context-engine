@@ -56,8 +56,19 @@
     ],
     "sideEffects": [],
     "failureModes": [
-      "ErrClosed",
-      "empty id"
+      {
+        "code": "ErrClosed",
+        "kind": "sentinel"
+      },
+      {
+        "code": "empty id",
+        "kind": "constructed"
+      },
+      {
+        "code": "err",
+        "kind": "propagated",
+        "source": "err"
+      }
     ],
     "constraints": []
   },
@@ -118,8 +129,14 @@
     ],
     "sideEffects": [],
     "failureModes": [
-      "nil data",
-      "save %q: %w"
+      {
+        "code": "nil data",
+        "kind": "constructed"
+      },
+      {
+        "code": "save %q: %w",
+        "kind": "constructed"
+      }
     ],
     "constraints": []
   },

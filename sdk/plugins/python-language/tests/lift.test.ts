@@ -203,17 +203,21 @@ describe("liftPyFunction (behavior, effects, failures)", () => {
     expect(intent.sideEffects).toEqual([{ name: "os.remove", kind: "io", basis: "resolved" }])
   })
 
-  it("captures a raised string literal as a failure mode", () => {
+  it("captures a raised string literal as a constructed failure mode", () => {
     const fn = pyBody("f", praise("nil_amount"))
-    expect(liftOf(module(fn))[0].intent.failureModes).toEqual(["nil_amount"])
+    expect(liftOf(module(fn))[0].intent.failureModes).toEqual([{ code: "nil_amount", kind: "constructed" }])
   })
 
-  it("names a raised exception type without a message, and skips a bare re-raise", () => {
+  it("classifies raised exception types as sentinels and a bare re-raise as propagated", () => {
     const raiseCall = n("raise_statement", { children: [n("call", { children: [withField(pid("NotFoundError"), "function"), n("argument_list")] })] })
     const raiseName = n("raise_statement", { children: [pid("Closed")] })
     const bareRaise = n("raise_statement", {})
     const fn = pyBody("f", raiseCall, raiseName, bareRaise)
-    expect(liftOf(module(fn))[0].intent.failureModes).toEqual(["Closed", "NotFoundError"])
+    expect(liftOf(module(fn))[0].intent.failureModes).toEqual([
+      { code: "Closed", kind: "sentinel" },
+      { code: "NotFoundError", kind: "sentinel" },
+      { code: "propagated", kind: "propagated" },
+    ])
   })
 
   it("does not count an if inside a nested def", () => {

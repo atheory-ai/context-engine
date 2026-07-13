@@ -4,7 +4,7 @@
 // failure idiom). Python has no host-side extractor — the plugin is the sole
 // IIR producer and owns the binding into the shared IIR model.
 import type {
-  FunctionIntent, IIRParam, IIRReturn, IIRExpr, IIRBehaviorClause, IIRSideEffect, SyntaxNode,
+  FunctionIntent, IIRParam, IIRReturn, IIRExpr, IIRBehaviorClause, IIRSideEffect, IIRFailureMode, SyntaxNode,
 } from "@atheory-ai/ce-plugin-sdk"
 import { IIRTypeUnknown, childByField, fieldText, walk, classifyEffect } from "@atheory-ai/ce-plugin-sdk"
 
@@ -348,29 +348,38 @@ function matchesSideEffectVerb(method: string): boolean {
   return sideEffectVerbs.some(v => lower.includes(v))
 }
 
-// Python's failure idiom is `raise Error("msg")` — capture the string literal.
-function extractFailureModes(body: SyntaxNode | null): string[] {
-  const seen = new Set<string>()
+// Python's failure idiom is `raise Error("msg")`. Classify each raise: a
+// string-literal message is constructed; a named exception type is a sentinel; a
+// bare `raise` re-raise or a lower-case bound name forwards an upstream failure
+// (propagated).
+function extractFailureModes(body: SyntaxNode | null): IIRFailureMode[] {
+  const byCode = new Map<string, IIRFailureMode>()
   if (!body) return []
   walk(body, (n) => {
     if (n.type !== "raise_statement") return
     const fm = raiseFailureMode(n)
-    if (fm) seen.add(fm)
+    if (fm) byCode.set(fm.code, fm)
   })
-  return [...seen].sort()
+  return [...byCode.keys()].sort().map(k => byCode.get(k)!)
 }
 
-// raiseFailureMode names a raised failure: the string-literal message when
-// present (raise ValueError("msg")), else the exception type (raise NotFound /
-// raise NotFound()). A bare `raise` re-raise has no stable name and is skipped.
-function raiseFailureMode(node: SyntaxNode): string {
+function raiseFailureMode(node: SyntaxNode): IIRFailureMode | null {
   const lit = firstStringLiteral(node)
-  if (lit) return lit
+  if (lit) return { code: lit, kind: "constructed" }
   const arg = (node.children ?? []).find(c => c.isNamed)
-  if (!arg) return ""
-  if (arg.type === "call") return childByField(arg, "function")?.text ?? ""
-  if (arg.type === "identifier" || arg.type === "attribute") return arg.text
-  return ""
+  if (!arg) return { code: "propagated", kind: "propagated" } // bare `raise` re-raise
+  if (arg.type === "call") {
+    const fn = childByField(arg, "function")?.text ?? ""
+    return fn ? { code: fn, kind: "sentinel" } : null
+  }
+  if (arg.type === "identifier" || arg.type === "attribute") {
+    // Upper-case leaf → an exception class (sentinel); a lower-case bound name
+    // → a forwarded exception variable (propagated).
+    const leaf = arg.text.split(".").pop() ?? arg.text
+    if (/^[A-Z]/.test(leaf)) return { code: arg.text, kind: "sentinel" }
+    return { code: arg.text, kind: "propagated", source: arg.text }
+  }
+  return null
 }
 
 function firstStringLiteral(node: SyntaxNode): string {

@@ -406,8 +406,8 @@ func compareFailureModes(intended, extracted *FunctionIntent, matches *[]Match, 
 	if len(intended.FailureModes) == 0 {
 		return
 	}
-	declared := toSet(intended.FailureModes)
-	found := toSet(extracted.FailureModes)
+	declared := toSet(failureCodes(intended.FailureModes))
+	found := toSet(failureCodes(extracted.FailureModes))
 
 	var undetected []string
 	for m := range declared {

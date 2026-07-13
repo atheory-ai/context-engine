@@ -11,7 +11,7 @@ func testableIntent() *FunctionIntent {
 		Name:         "f",
 		Language:     "typescript",
 		Behavior:     []BehaviorClause{{When: "x is negative", Then: "return neg"}},
-		FailureModes: []string{"bad_input"},
+		FailureModes: stringFailures("bad_input"),
 		SideEffects:  stringEffects("analytics.track"),
 	}
 }

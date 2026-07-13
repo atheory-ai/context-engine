@@ -148,7 +148,7 @@ func writeBehavior(b *strings.Builder, intent *FunctionIntent, resultStrategy bo
 			fmt.Fprintf(b, "%s%s// then: %s\n", genIndent, genIndent, clause.Then)
 		}
 		if i < len(intent.FailureModes) {
-			fmt.Fprintf(b, "%s%s%s\n", genIndent, genIndent, failureStatement(intent.FailureModes[i], resultStrategy))
+			fmt.Fprintf(b, "%s%s%s\n", genIndent, genIndent, failureStatement(intent.FailureModes[i].Code, resultStrategy))
 		}
 		b.WriteString(genIndent + "}\n\n")
 	}
@@ -162,7 +162,7 @@ func writeUnmatchedFailures(b *strings.Builder, intent *FunctionIntent, resultSt
 		return
 	}
 	for i := len(intent.Behavior); i < len(intent.FailureModes); i++ {
-		fmt.Fprintf(b, "%sthrow new Error(%q);\n\n", genIndent, intent.FailureModes[i])
+		fmt.Fprintf(b, "%sthrow new Error(%q);\n\n", genIndent, intent.FailureModes[i].Code)
 	}
 }
 

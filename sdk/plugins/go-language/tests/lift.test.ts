@@ -207,7 +207,7 @@ describe("liftGoFunction (behavior, effects, failures)", () => {
   it("captures a panic string literal as a failure mode", () => {
     const fn = goBody("f", n("expression_statement", { children: [gpanic("nil_amount")] }))
     const intent = liftOf(sourceFile(pkgClause("svc"), fn))[0].intent
-    expect(intent.failureModes).toEqual(["nil_amount"])
+    expect(intent.failureModes).toEqual([{ code: "nil_amount", kind: "constructed" }])
   })
 
   it("lifts a switch into one equality clause per case, default as else", () => {
@@ -241,16 +241,20 @@ describe("liftGoFunction (behavior, effects, failures)", () => {
     expect(intent.behavior.map(b => b.when)).toEqual(["else"])
   })
 
-  it("captures returned errors.New / fmt.Errorf messages and Err* sentinels", () => {
+  it("classifies returned errors: constructed message, Err* sentinel, propagated variable", () => {
     // func f() (T, error) with: return nil, errors.New("empty id");
-    // return nil, ErrClosed; return nil, err (propagated, excluded).
+    // return nil, ErrClosed; return nil, err (a forwarded upstream error).
     const fn = goBodyErr("Load",
       retErr(errCall("errors", "New", "empty id")),
       retErr(gid("ErrClosed")),
-      retErr(gid("err")), // propagated variable — no stable name, excluded
+      retErr(gid("err")), // propagated variable — forwarded upstream error
     )
     const intent = liftOf(sourceFile(pkgClause("svc"), fn))[0].intent
-    expect(intent.failureModes).toEqual(["ErrClosed", "empty id"])
+    expect(intent.failureModes).toEqual([
+      { code: "ErrClosed", kind: "sentinel" },
+      { code: "empty id", kind: "constructed" },
+      { code: "err", kind: "propagated", source: "err" },
+    ])
   })
 
   it("does not treat returned values as failures when the function returns no error", () => {

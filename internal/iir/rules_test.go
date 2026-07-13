@@ -101,7 +101,7 @@ func TestRules_ResultTypeStrategy(t *testing.T) {
 
 	thrown := &FunctionIntent{
 		Kind: KindFunctionIntent, Name: "f", Visibility: VisibilityPublic,
-		Returns: Return{Type: "void", Explicit: true}, FailureModes: []string{"bad"},
+		Returns: Return{Type: "void", Explicit: true}, FailureModes: stringFailures("bad"),
 	}
 	results := EvaluateRules(pack, thrown)
 	if r := resultByID(results, "expected-failures-use-result"); r == nil || r.Status != RuleWarned {
@@ -110,7 +110,7 @@ func TestRules_ResultTypeStrategy(t *testing.T) {
 
 	result := &FunctionIntent{
 		Kind: KindFunctionIntent, Name: "f", Visibility: VisibilityPublic,
-		Returns: Return{Type: "ValidationResult<Money>", Explicit: true}, FailureModes: []string{"bad"},
+		Returns: Return{Type: "ValidationResult<Money>", Explicit: true}, FailureModes: stringFailures("bad"),
 	}
 	results = EvaluateRules(pack, result)
 	if r := resultByID(results, "expected-failures-use-result"); r == nil || r.Status != RulePassed {

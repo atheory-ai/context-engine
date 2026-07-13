@@ -39,7 +39,10 @@
     ],
     "sideEffects": [],
     "failureModes": [
-      "empty id"
+      {
+        "code": "empty id",
+        "kind": "constructed"
+      }
     ],
     "constraints": []
   },

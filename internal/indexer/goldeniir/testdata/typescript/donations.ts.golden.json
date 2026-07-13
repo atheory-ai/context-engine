@@ -85,7 +85,10 @@
     ],
     "sideEffects": [],
     "failureModes": [
-      "below_minimum"
+      {
+        "code": "below_minimum",
+        "kind": "constructed"
+      }
     ],
     "constraints": []
   }

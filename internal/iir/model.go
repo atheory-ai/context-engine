@@ -59,7 +59,9 @@ type FunctionIntent struct {
 	SideEffects []SideEffect `json:"sideEffects" yaml:"sideEffects"`
 
 	// FailureModes names the expected failure outcomes (e.g. domain error tags).
-	FailureModes []string `json:"failureModes" yaml:"failureModes"`
+	// Each is a bare code on the wire, or an object with an optional kind
+	// (constructed/sentinel/propagated) and source (see FailureMode).
+	FailureModes []FailureMode `json:"failureModes" yaml:"failureModes"`
 
 	// Constraints are free-form durable expectations. They are advisory in
 	// Slice 1 and carried through to the report for context.

@@ -1,5 +1,6 @@
-// Custom error classes without a string message must still yield a failure mode
-// (the class name); Error("msg") keeps yielding the message; a re-throw is skipped.
+// Error("msg") yields a constructed failure (the message); a custom error class
+// without a message yields a sentinel (the class name); a re-throw yields a
+// propagated failure (the forwarded identifier).
 class NotFoundError extends Error {}
 
 export function loadUser(id: string): string {
@@ -16,6 +17,6 @@ export function retry(fn: () => void): void {
   try {
     fn()
   } catch (err) {
-    throw err // re-throw — no stable name, not a declared failure mode
+    throw err // re-throw — a propagated failure (source: err)
   }
 }

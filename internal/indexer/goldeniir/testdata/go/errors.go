@@ -8,15 +8,15 @@ import (
 // ErrClosed is a sentinel returned when the store is closed.
 var ErrClosed = errors.New("store closed")
 
-// Load returns a sentinel error and a constructed error — both become failure
-// modes. The propagated `err` return does not (it has no stable name).
+// Load returns a sentinel error, a constructed error, and a propagated error —
+// each becomes a failure mode tagged with its kind.
 func Load(id string) ([]byte, error) {
 	if id == "" {
 		return nil, errors.New("empty id")
 	}
 	data, err := read(id)
 	if err != nil {
-		return nil, err // propagated — intentionally not a named failure mode
+		return nil, err // propagated — a forwarded upstream error
 	}
 	if len(data) == 0 {
 		return nil, ErrClosed
