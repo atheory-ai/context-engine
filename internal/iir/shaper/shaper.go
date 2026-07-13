@@ -66,6 +66,9 @@ func (s *Shaper) Shape(ctx context.Context, description string) (*iir.FunctionIn
 			lastErr = err
 			continue
 		}
+		// The shaper infers this intent from a natural-language description via a
+		// model — mark it inferred so downstream tools know to confirm it.
+		intent.Origin = iir.OriginInferred
 		return intent, nil
 	}
 

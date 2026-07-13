@@ -44,6 +44,7 @@ export function liftGoFunction(name: string, fnNode: SyntaxNode, imports: Map<st
     kind:         "FunctionIntent",
     name,
     language:     "go",
+    origin:       "observed",
     visibility:   isExported(name) ? "public" : "private",
     inputs:       liftParams(childByField(fnNode, "parameters")),
     returns:      liftResult(childByField(fnNode, "result")),

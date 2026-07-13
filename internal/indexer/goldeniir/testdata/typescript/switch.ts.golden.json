@@ -3,6 +3,7 @@
     "kind": "FunctionIntent",
     "name": "describe",
     "language": "typescript",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {
@@ -45,6 +46,7 @@
     "kind": "FunctionIntent",
     "name": "grade",
     "language": "typescript",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {

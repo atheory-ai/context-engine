@@ -3,6 +3,7 @@
     "kind": "FunctionIntent",
     "name": "describe",
     "language": "python",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {
@@ -62,6 +63,7 @@
     "kind": "FunctionIntent",
     "name": "grade",
     "language": "python",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {

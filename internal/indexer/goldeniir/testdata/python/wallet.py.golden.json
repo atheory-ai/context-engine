@@ -3,6 +3,7 @@
     "kind": "FunctionIntent",
     "name": "charge",
     "language": "python",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {
@@ -23,6 +24,7 @@
     "kind": "FunctionIntent",
     "name": "find_user",
     "language": "python",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {

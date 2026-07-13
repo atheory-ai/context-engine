@@ -3,6 +3,7 @@
     "kind": "FunctionIntent",
     "name": "Load",
     "language": "go",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {
@@ -76,6 +77,7 @@
     "kind": "FunctionIntent",
     "name": "Save",
     "language": "go",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {
@@ -144,6 +146,7 @@
     "kind": "FunctionIntent",
     "name": "pure",
     "language": "go",
+    "origin": "observed",
     "visibility": "private",
     "inputs": [
       {
@@ -164,6 +167,7 @@
     "kind": "FunctionIntent",
     "name": "read",
     "language": "go",
+    "origin": "observed",
     "visibility": "private",
     "inputs": [
       {

@@ -70,6 +70,12 @@ export interface FunctionIntent {
   kind:         "FunctionIntent"
   name:         string
   language:     string
+  /**
+   * The epistemic layer this intent comes from. A plugin lift emits "observed"
+   * (ground truth about what the code does); a hand-authored spec is "declared";
+   * the shaper emits "inferred". The host defaults an absent origin to declared.
+   */
+  origin?:      "observed" | "declared" | "inferred"
   visibility?:  IIRVisibility
   inputs:       IIRParam[]
   returns:      IIRReturn

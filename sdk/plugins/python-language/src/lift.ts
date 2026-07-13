@@ -55,6 +55,7 @@ export function liftPyFunction(
     kind:         "FunctionIntent",
     name,
     language:     "python",
+    origin:       "observed",
     visibility:   isPrivate ? "private" : "public",
     inputs:       liftParams(childByField(fnNode, "parameters"), isMethod),
     returns:      liftReturn(childByField(fnNode, "return_type")),
