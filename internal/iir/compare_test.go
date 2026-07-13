@@ -105,7 +105,8 @@ func TestCompare_ReturnTypeWhitespaceEquivalent(t *testing.T) {
 
 func TestCompare_UndeclaredSideEffect(t *testing.T) {
 	extracted := baseIntent()
-	extracted.SideEffects = stringEffects("analytics.track")
+	// A resolved effect that isn't declared is a hard error.
+	extracted.SideEffects = []SideEffect{{Name: "analytics.track", Kind: EffectMutation, Basis: BasisResolved}}
 	_, mismatches := Compare(baseIntent(), extracted)
 	m := findMismatch(mismatches, MismatchUndeclaredEffect)
 	if m == nil || m.Severity != SeverityError {

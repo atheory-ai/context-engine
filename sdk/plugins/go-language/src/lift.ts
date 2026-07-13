@@ -304,8 +304,8 @@ function extractSideEffects(body: SyntaxNode | null, imports: Map<string, string
     if (byName.has(full)) return
     // Classify at the source, using the full import path when the root is an
     // imported package — a far stronger signal than the local qualifier.
-    const { kind, confidence } = classifyEffect({ method, root, importPath: imports.get(root) })
-    byName.set(full, { name: full, kind, confidence })
+    const { kind, basis } = classifyEffect({ method, root, importPath: imports.get(root) })
+    byName.set(full, { name: full, kind, basis })
   })
   return [...byName.values()].sort((a, b) => effectName(a).localeCompare(effectName(b)))
 }

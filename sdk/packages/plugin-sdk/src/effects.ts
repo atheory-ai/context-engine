@@ -9,7 +9,13 @@
 // "catalog.save" being read as a log effect because the name contains "log".
 
 export type EffectKind = "network" | "db" | "io" | "log" | "mutation" | "unclassified"
-export type EffectConfidence = "high" | "low"
+// How an effect's kind was established. "resolved" means it matched a known
+// effectful API (an import path or a recognized client root) — deterministic
+// knowledge, not a probabilistic guess. "heuristic" means it was inferred from a
+// method-name verb or is uncategorized. The comparator treats an undeclared
+// resolved effect as an error and an undeclared heuristic one as a warning: it
+// should not fail verification on a guess.
+export type EffectBasis = "resolved" | "heuristic"
 
 export interface EffectClassifierInput {
   /** The called method / function name, e.g. "Get", "track". */
@@ -43,22 +49,22 @@ const rootCategories: [EffectKind, string[]][] = [
 const mutationVerbs = ["track", "send", "emit", "publish", "save", "create", "update", "delete", "write"]
 
 /**
- * classifyEffect returns the (kind, confidence) for a detected effectful call.
- * A recognized category is high confidence; an uncategorizable call is
- * low-confidence "unclassified" (the comparator treats an undeclared
- * low-confidence effect as a warning rather than an error).
+ * classifyEffect returns the (kind, basis) for a detected effectful call. A call
+ * matched against a known effectful API — by import path or a recognized client
+ * root — is "resolved" (deterministic). A call categorized only from a
+ * method-name verb, or left uncategorized, is "heuristic" (a guess).
  */
-export function classifyEffect(input: EffectClassifierInput): { kind: EffectKind; confidence: EffectConfidence } {
+export function classifyEffect(input: EffectClassifierInput): { kind: EffectKind; basis: EffectBasis } {
   const path = (input.importPath ?? "").toLowerCase()
   const root = (input.root ?? "").toLowerCase()
   const method = (input.method ?? "").toLowerCase()
 
   for (const [kind, prefixes] of pathCategories) {
-    if (prefixes.some(p => path === p || path.startsWith(p + "/"))) return { kind, confidence: "high" }
+    if (prefixes.some(p => path === p || path.startsWith(p + "/"))) return { kind, basis: "resolved" }
   }
   for (const [kind, roots] of rootCategories) {
-    if (roots.includes(root)) return { kind, confidence: "high" }
+    if (roots.includes(root)) return { kind, basis: "resolved" }
   }
-  if (mutationVerbs.some(v => method.includes(v))) return { kind: "mutation", confidence: "high" }
-  return { kind: "unclassified", confidence: "low" }
+  if (mutationVerbs.some(v => method.includes(v))) return { kind: "mutation", basis: "heuristic" }
+  return { kind: "unclassified", basis: "heuristic" }
 }

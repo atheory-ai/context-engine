@@ -41,13 +41,15 @@ export interface IIRBehaviorClause {
 /**
  * An observable side effect. Either a bare name ("analytics.track") or an object
  * carrying an optional kind (network | db | io | log | mutation | unclassified)
- * and confidence (high | low). The host accepts both forms; a plugin that can
- * categorize an effect may emit the object form, otherwise a bare string.
+ * and basis — "resolved" when the kind came from a known effectful API (an
+ * import path or recognized client), "heuristic" when it was guessed from a
+ * method-name verb. The host accepts both forms; a plugin that can categorize an
+ * effect emits the object form, otherwise a bare string.
  */
 export type IIRSideEffect = string | {
-  name:        string
-  kind?:       "network" | "db" | "io" | "log" | "mutation" | "unclassified"
-  confidence?: "high" | "low"
+  name:  string
+  kind?: "network" | "db" | "io" | "log" | "mutation" | "unclassified"
+  basis?: "resolved" | "heuristic"
 }
 
 export interface FunctionIntent {

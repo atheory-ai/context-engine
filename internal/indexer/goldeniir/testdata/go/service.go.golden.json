@@ -63,7 +63,7 @@
       {
         "name": "fmt.Println",
         "kind": "log",
-        "confidence": "high"
+        "basis": "resolved"
       }
     ],
     "failureModes": [],

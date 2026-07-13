@@ -281,8 +281,8 @@ function extractSideEffects(body: SyntaxNode | null, imports: Map<string, string
     if (purePackages.has(rootObj)) return
     if (!imports.has(rootObj) && !matchesSideEffectVerb(method)) return
     if (byName.has(full)) return
-    const { kind, confidence } = classifyEffect({ method, root: rootObj, importPath: imports.get(rootObj) })
-    byName.set(full, { name: full, kind, confidence })
+    const { kind, basis } = classifyEffect({ method, root: rootObj, importPath: imports.get(rootObj) })
+    byName.set(full, { name: full, kind, basis })
   })
   return [...byName.values()].sort((a, b) => effectName(a).localeCompare(effectName(b)))
 }

@@ -73,10 +73,10 @@ export function validateDonationAmount(amount: Money, campaign: Campaign): Valid
 `
 
 const testDirtySource = `
-import { analytics } from "./analytics";
+import { db } from "./db";
 import { ok } from "./result";
 export function validateDonationAmount(amount: Money, campaign: Campaign): ValidationResult<Money> {
-  analytics.track("validated");
+  db.query("insert audit");
   return ok(amount);
 }
 `

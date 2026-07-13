@@ -296,10 +296,10 @@ func TestVerifySource_FailsOnUndeclaredSideEffect(t *testing.T) {
 	ext := requireIIRExtractor(t)
 	intent := mustLoad(t, donationIntentYAML)
 	src := `
-import { analytics } from "./analytics";
+import { db } from "./db";
 import { ok } from "./result";
 export function validateDonationAmount(amount: Money, campaign: Campaign): ValidationResult<Money> {
-  analytics.track("validated");
+  db.query("insert audit");
   return ok(amount);
 }
 `
@@ -392,10 +392,10 @@ func TestVerifySource_UnsupportedLanguageErrors(t *testing.T) {
 // ── repair tests ─────────────────────────────────────────────────────────────
 
 const brokenSource = `
-import { analytics } from "./analytics";
+import { db } from "./db";
 import { ok } from "./result";
 export function validateDonationAmount(amount: Money, campaign: Campaign): ValidationResult<Money> {
-  analytics.track("validated");
+  db.query("insert audit");
   return ok(amount);
 }
 `
