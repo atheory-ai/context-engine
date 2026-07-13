@@ -68,10 +68,32 @@ export type IIRFailureMode = string | {
   source?: string
 }
 
+/**
+ * An expected failure outcome. Either a bare code ("amount_below_minimum") or an
+ * object carrying an optional kind and source. The kind names *how* the function
+ * signals the failure: "constructed" (created inline, e.g. throw new Error("msg")
+ * / errors.New), "sentinel" (a named error value/type, e.g. ErrClosed or a custom
+ * error class), or "propagated" (an upstream failure forwarded on — a re-throw or
+ * `return nil, err`). For a propagated failure, `source` names the forwarded
+ * identifier. The host accepts both forms; a code-only failure round-trips as a
+ * bare string.
+ */
+export type IIRFailureMode = string | {
+  code:    string
+  kind?:   "constructed" | "sentinel" | "propagated"
+  source?: string
+}
+
 export interface FunctionIntent {
   kind:         "FunctionIntent"
   name:         string
   language:     string
+  /**
+   * The epistemic layer this intent comes from. A plugin lift emits "observed"
+   * (ground truth about what the code does); a hand-authored spec is "declared";
+   * the shaper emits "inferred". The host defaults an absent origin to declared.
+   */
+  origin?:      "observed" | "declared" | "inferred"
   visibility?:  IIRVisibility
   inputs:       IIRParam[]
   returns:      IIRReturn

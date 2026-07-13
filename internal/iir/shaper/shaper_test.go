@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/atheory-ai/context-engine/internal/core"
+	"github.com/atheory-ai/context-engine/internal/iir"
 )
 
 // fakeLLM returns canned responses in order, recording each request so tests can
@@ -50,6 +51,10 @@ func TestShape_HappyPath(t *testing.T) {
 	}
 	if intent.Name != "validateAmount" || intent.Language != "typescript" {
 		t.Errorf("unexpected intent: %+v", intent)
+	}
+	// A shaped intent is inferred from a description by a model — not declared.
+	if intent.Origin != iir.OriginInferred {
+		t.Errorf("origin = %q, want inferred", intent.Origin)
 	}
 	if len(llm.requests) != 1 {
 		t.Errorf("expected 1 model call, got %d", len(llm.requests))

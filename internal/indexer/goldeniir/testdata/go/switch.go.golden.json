@@ -3,6 +3,7 @@
     "kind": "FunctionIntent",
     "name": "Describe",
     "language": "go",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {
@@ -85,6 +86,7 @@
     "kind": "FunctionIntent",
     "name": "Grade",
     "language": "go",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {
@@ -162,6 +164,7 @@
     "kind": "FunctionIntent",
     "name": "Kind",
     "language": "go",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {

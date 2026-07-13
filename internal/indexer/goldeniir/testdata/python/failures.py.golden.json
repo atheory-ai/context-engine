@@ -3,6 +3,7 @@
     "kind": "FunctionIntent",
     "name": "load_user",
     "language": "python",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {
@@ -84,6 +85,7 @@
     "kind": "FunctionIntent",
     "name": "retry",
     "language": "python",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {

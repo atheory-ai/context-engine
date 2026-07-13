@@ -3,6 +3,7 @@
     "kind": "FunctionIntent",
     "name": "loadUser",
     "language": "typescript",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {
@@ -67,6 +68,7 @@
     "kind": "FunctionIntent",
     "name": "retry",
     "language": "typescript",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {

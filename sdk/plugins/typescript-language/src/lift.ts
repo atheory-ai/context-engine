@@ -50,6 +50,7 @@ export function liftFunction(name: string, fnNode: SyntaxNode, exported: boolean
     kind:         "FunctionIntent",
     name,
     language:     "typescript",
+    origin:       "observed",
     visibility:   exported ? "public" : "private",
     inputs:       liftParams(fnNode),
     returns:      liftReturn(fnNode),

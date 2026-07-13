@@ -63,6 +63,11 @@ func normalizeIntent(intent *FunctionIntent) {
 	if intent.Visibility == "" {
 		intent.Visibility = VisibilityPublic
 	}
+	// An intent is a declaration unless a producer stamped its provenance (a
+	// plugin lift → observed, the shaper → inferred).
+	if intent.Origin == "" {
+		intent.Origin = OriginDeclared
+	}
 	intent.Returns.Explicit = intent.Returns.Type != ""
 	for i := range intent.Inputs {
 		if intent.Inputs[i].Type == "" {
@@ -94,6 +99,12 @@ func validateIntent(intent *FunctionIntent) error {
 	default:
 		return fmt.Errorf("invalid IIR: unknown visibility %q (expected \"public\" or \"private\")",
 			intent.Visibility)
+	}
+	switch intent.Origin {
+	case OriginObserved, OriginDeclared, OriginInferred:
+	default:
+		return fmt.Errorf("invalid IIR: unknown origin %q (expected \"observed\", \"declared\", or \"inferred\")",
+			intent.Origin)
 	}
 	for i, p := range intent.Inputs {
 		if strings.TrimSpace(p.Name) == "" {

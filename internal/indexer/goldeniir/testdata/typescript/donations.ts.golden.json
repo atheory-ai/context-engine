@@ -3,6 +3,7 @@
     "kind": "FunctionIntent",
     "name": "internalHelper",
     "language": "typescript",
+    "origin": "observed",
     "visibility": "private",
     "inputs": [
       {
@@ -23,6 +24,7 @@
     "kind": "FunctionIntent",
     "name": "recordDonation",
     "language": "typescript",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {
@@ -49,6 +51,7 @@
     "kind": "FunctionIntent",
     "name": "validateDonationAmount",
     "language": "typescript",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {

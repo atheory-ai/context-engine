@@ -32,6 +32,23 @@ const (
 // can distinguish "unknown" from "absent".
 const TypeUnknown = "unknown"
 
+// Origin names the epistemic layer an intent comes from — how much to trust it
+// and against what it should be read:
+//   - observed: lifted from real source by a plugin. Ground truth about what the
+//     code actually does.
+//   - declared: a human/agent-authored spec. What the code is supposed to do.
+//   - inferred: produced by the shaper from a natural-language description. A
+//     model's guess, to be confirmed.
+//
+// It defaults to declared: a FunctionIntent is a declaration unless a machine
+// producer stamps its provenance (the plugin lift → observed, the shaper →
+// inferred).
+const (
+	OriginObserved = "observed"
+	OriginDeclared = "declared"
+	OriginInferred = "inferred"
+)
+
 // FunctionIntent is the minimum IIR node: a semantic description of a single
 // function's contract and behavior. It is produced two ways — declared by a
 // human/agent (intended) and extracted from source (actual) — then compared.
@@ -39,6 +56,10 @@ type FunctionIntent struct {
 	Kind     Kind   `json:"kind" yaml:"kind"`
 	Name     string `json:"name" yaml:"name"`
 	Language string `json:"language" yaml:"language"`
+
+	// Origin is the epistemic layer this intent comes from (see Origin consts).
+	// Loaders default an absent origin to "declared".
+	Origin string `json:"origin,omitempty" yaml:"origin,omitempty"`
 
 	// Visibility is "public" for exported functions. When intended IIR omits
 	// it, loaders default to public because IIR is written to describe API.

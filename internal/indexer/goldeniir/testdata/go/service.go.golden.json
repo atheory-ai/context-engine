@@ -3,6 +3,7 @@
     "kind": "FunctionIntent",
     "name": "FindUser",
     "language": "go",
+    "origin": "observed",
     "visibility": "public",
     "inputs": [
       {
@@ -50,6 +51,7 @@
     "kind": "FunctionIntent",
     "name": "recordEvent",
     "language": "go",
+    "origin": "observed",
     "visibility": "private",
     "inputs": [
       {
