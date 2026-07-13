@@ -2,7 +2,7 @@
 // Engine's internal/iir extractor so plugin-produced IIR can reach parity with
 // (and eventually replace) the host's Go lift. Deterministic AST walk, no model.
 import type {
-  FunctionIntent, IIRParam, IIRReturn, IIRExpr, IIRBehaviorClause, IIRSideEffect, SyntaxNode,
+  FunctionIntent, IIRParam, IIRReturn, IIRExpr, IIRBehaviorClause, IIRSideEffect, IIRFailureMode, SyntaxNode,
 } from "@atheory-ai/ce-plugin-sdk"
 import { IIRTypeUnknown, childByField, childrenByType, fieldText, walk, walkTopLevel, classifyEffect } from "@atheory-ai/ce-plugin-sdk"
 
@@ -316,26 +316,32 @@ function matchesSideEffectVerb(method: string): boolean {
   return sideEffectVerbs.some(v => lower.includes(v))
 }
 
-function extractFailureModes(body: SyntaxNode | null): string[] {
-  const seen = new Set<string>()
+function extractFailureModes(body: SyntaxNode | null): IIRFailureMode[] {
+  const byCode = new Map<string, IIRFailureMode>()
   if (!body) return []
   walk(body, (n) => {
     if (n.type !== "throw_statement") return
     const fm = throwFailureMode(n)
-    if (fm) seen.add(fm)
+    if (fm) byCode.set(fm.code, fm)
   })
-  return [...seen].sort()
+  return [...byCode.keys()].sort().map(k => byCode.get(k)!)
 }
 
-// throwFailureMode names a thrown failure: the string-literal message when
-// present (throw new Error("msg")), else the error class (throw new
-// NotFoundError()). A bare `throw err` re-throw has no stable name and is skipped.
-function throwFailureMode(node: SyntaxNode): string {
+// throwFailureMode classifies a thrown failure: a string-literal message
+// (throw new Error("msg") / throw "msg") is constructed; a custom error class
+// with no message (throw new NotFoundError()) is a sentinel; a bare `throw err`
+// re-throw forwards an upstream failure (propagated, source = the identifier).
+function throwFailureMode(node: SyntaxNode): IIRFailureMode | null {
   const lit = firstStringLiteral(node)
-  if (lit) return lit
+  if (lit) return { code: lit, kind: "constructed" }
   const arg = (node.children ?? []).find(c => c.isNamed)
-  if (arg?.type === "new_expression") return childByField(arg, "constructor")?.text ?? ""
-  return ""
+  if (!arg) return null
+  if (arg.type === "new_expression") {
+    const cls = childByField(arg, "constructor")?.text ?? ""
+    return cls ? { code: cls, kind: "sentinel" } : null
+  }
+  if (arg.type === "identifier") return { code: arg.text, kind: "propagated", source: arg.text }
+  return null
 }
 
 function firstStringLiteral(node: SyntaxNode): string {

@@ -4,7 +4,7 @@
 // idiom — a returned error (errors.New / fmt.Errorf message, or an Err* sentinel)
 // — plus panic. Go has no host-side extractor — the plugin is the sole IIR producer.
 import type {
-  FunctionIntent, IIRParam, IIRReturn, IIRExpr, IIRBehaviorClause, IIRSideEffect, SyntaxNode,
+  FunctionIntent, IIRParam, IIRReturn, IIRExpr, IIRBehaviorClause, IIRSideEffect, IIRFailureMode, SyntaxNode,
 } from "@atheory-ai/ce-plugin-sdk"
 import { IIRTypeUnknown, childByField, childrenByType, fieldText, walk, classifyEffect } from "@atheory-ai/ce-plugin-sdk"
 
@@ -339,29 +339,30 @@ function matchesSideEffectVerb(method: string): boolean {
 }
 
 // Go signals failure primarily by returning an error, secondarily by panic.
-// Capture both: panic("msg") anywhere, and — for functions that return an error
-// — each returned error's identity (the errors.New/fmt.Errorf message, or an
-// Err* sentinel name). A propagated variable (`return nil, err`) has no stable
-// name, so it is intentionally not emitted (keeps precision high; the comparator
-// treats undeclared effects/failures conservatively).
-function extractFailureModes(body: SyntaxNode | null, result: SyntaxNode | null): string[] {
-  const seen = new Set<string>()
+// Capture both: panic("msg") anywhere (constructed), and — for functions that
+// return an error — the identity of each return's error operand (Go convention:
+// the error is the last operand): errors.New/fmt.Errorf message (constructed), an
+// Err* sentinel (sentinel), or a forwarded error variable (propagated, e.g.
+// `return nil, err`). A `return …, nil` is a success path and contributes none.
+function extractFailureModes(body: SyntaxNode | null, result: SyntaxNode | null): IIRFailureMode[] {
+  const byCode = new Map<string, IIRFailureMode>()
   if (!body) return []
 
   walk(body, (n) => {
     if (n.type !== "call_expression") return
     if (childByField(n, "function")?.text !== "panic") return
     const lit = firstStringLiteral(n)
-    if (lit) seen.add(lit)
+    if (lit) byCode.set(lit, { code: lit, kind: "constructed" })
   })
 
   if (returnsError(result)) {
     walkWithinFunc(body, (n) => {
       if (n.type !== "return_statement") return
-      for (const expr of returnExpressions(n)) collectReturnedFailure(expr, seen)
+      const fm = returnedFailure(n)
+      if (fm) byCode.set(fm.code, fm)
     })
   }
-  return [...seen].sort()
+  return [...byCode.keys()].sort().map(k => byCode.get(k)!)
 }
 
 // returnsError reports whether the function's result list includes an `error`.
@@ -385,23 +386,31 @@ function returnExpressions(ret: SyntaxNode): SyntaxNode[] {
 // Err* sentinel convention (ErrNotFound, ErrClosed, …).
 const sentinelRE = /^Err[A-Z0-9_]/
 
-function collectReturnedFailure(expr: SyntaxNode, seen: Set<string>): void {
-  if (expr.type === "call_expression") {
-    const callee = childByField(expr, "function")?.text ?? ""
+// returnedFailure names the failure carried by a return's error operand — the
+// last operand, per Go's `(T, error)` convention. A `nil` there is success.
+function returnedFailure(ret: SyntaxNode): IIRFailureMode | null {
+  const exprs = returnExpressions(ret)
+  if (exprs.length === 0) return null
+  const err = exprs[exprs.length - 1]
+
+  if (err.type === "call_expression") {
+    const callee = childByField(err, "function")?.text ?? ""
     if (callee === "errors.New" || callee === "fmt.Errorf") {
-      const lit = firstStringLiteral(expr)
-      if (lit) seen.add(lit)
+      const lit = firstStringLiteral(err)
+      if (lit) return { code: lit, kind: "constructed" }
     }
-    return
+    return null
   }
-  if (expr.type === "identifier" && sentinelRE.test(expr.text)) {
-    seen.add(expr.text)
-    return
+  if (err.type === "identifier") {
+    if (sentinelRE.test(err.text)) return { code: err.text, kind: "sentinel" }
+    if (err.text === "nil") return null
+    return { code: err.text, kind: "propagated", source: err.text }
   }
-  if (expr.type === "selector_expression") {
-    const field = childByField(expr, "field")?.text ?? ""
-    if (sentinelRE.test(field)) seen.add(field)
+  if (err.type === "selector_expression") {
+    const field = childByField(err, "field")?.text ?? ""
+    if (sentinelRE.test(field)) return { code: field, kind: "sentinel" }
   }
+  return null
 }
 
 function firstStringLiteral(node: SyntaxNode): string {

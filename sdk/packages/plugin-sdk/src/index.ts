@@ -49,6 +49,7 @@ export type {
   IIRExpr,
   IIRBehaviorClause,
   IIRSideEffect,
+  IIRFailureMode,
   FunctionIntent,
   ExtractedFunction,
 } from "./iir.js"

@@ -12,7 +12,7 @@ func baseIntent() *FunctionIntent {
 		Inputs:       []Param{{Name: "a", Type: "number"}},
 		Returns:      Return{Type: "number", Explicit: true},
 		SideEffects:  []SideEffect{},
-		FailureModes: []string{},
+		FailureModes: []FailureMode{},
 	}
 }
 

@@ -3,8 +3,9 @@ class NotFoundError(Exception):
 
 
 def load_user(user_id):
-    # ValueError("msg") -> message; a bare custom class / call with no message ->
-    # the exception type name; a bare `raise` re-raise is skipped.
+    # ValueError("msg") -> constructed (message); a bare custom class / call with
+    # no message -> sentinel (exception type); a bare `raise` re-raise ->
+    # propagated.
     if user_id == "":
         raise ValueError("empty_id")
     if user_id == "missing":
@@ -18,4 +19,4 @@ def retry(fn):
     try:
         fn()
     except Exception:
-        raise  # re-raise — no stable name, not a declared failure mode
+        raise  # re-raise — a propagated failure (anonymous, code "propagated")

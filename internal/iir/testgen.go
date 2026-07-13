@@ -142,10 +142,10 @@ func planCoverage(intent *FunctionIntent) []TestCoverage {
 
 	for _, mode := range intent.FailureModes {
 		out = append(out, TestCoverage{
-			NodeID:   fmt.Sprintf("%s.failureMode.%s", intent.Name, mode),
+			NodeID:   fmt.Sprintf("%s.failureMode.%s", intent.Name, mode.Code),
 			Kind:     CoverageFailureMode,
 			Covered:  true,
-			TestName: "fails with " + mode,
+			TestName: "fails with " + mode.Code,
 		})
 	}
 

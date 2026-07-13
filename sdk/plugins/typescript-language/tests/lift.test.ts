@@ -198,16 +198,19 @@ describe("liftFunction (behavior, effects, failures)", () => {
 
   it("captures a thrown string literal as a failure mode", () => {
     const intent = liftOf(program(fnWith(bodyOf(throwStr("amount_below_minimum"))))).at(0)!.intent
-    expect(intent.failureModes).toEqual(["amount_below_minimum"])
+    expect(intent.failureModes).toEqual([{ code: "amount_below_minimum", kind: "constructed" }])
   })
 
-  it("names a custom error class thrown without a message, and skips a re-throw", () => {
+  it("classifies a custom error class as a sentinel and a re-throw as propagated", () => {
     const throwNew = (cls: string) => n("throw_statement", {
       children: [n("new_expression", { children: [withField(ident(cls), "constructor"), n("arguments")] })],
     })
     const rethrow = n("throw_statement", { children: [ident("err")] })
     const intent = liftOf(program(fnWith(bodyOf(throwNew("NotFoundError"), rethrow)))).at(0)!.intent
-    expect(intent.failureModes).toEqual(["NotFoundError"])
+    expect(intent.failureModes).toEqual([
+      { code: "NotFoundError", kind: "sentinel" },
+      { code: "err", kind: "propagated", source: "err" },
+    ])
   })
 
   it("does not descend into nested closures for behavior", () => {
