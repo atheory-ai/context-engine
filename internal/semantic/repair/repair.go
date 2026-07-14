@@ -155,10 +155,10 @@ func verificationID(report *semanticverify.Report) string {
 	return "verification-" + hex.EncodeToString(sum[:12])
 }
 func makeID(repair *Plan) string {
-	copy := *repair
-	copy.ID = ""
-	copy.Status = StatusProposed
-	payload, _ := json.Marshal(copy)
+	clonedRepair := *repair
+	clonedRepair.ID = ""
+	clonedRepair.Status = StatusProposed
+	payload, _ := json.Marshal(clonedRepair)
 	sum := sha256.Sum256(payload)
 	return "repair-" + hex.EncodeToString(sum[:16])
 }
