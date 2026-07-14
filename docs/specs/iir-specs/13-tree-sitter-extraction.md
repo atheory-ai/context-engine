@@ -1,8 +1,9 @@
 # Plan: One Tree-Sitter Parse, Consumed by Everything
 
-Status: proposed. Resolves a design error found while validating IIR against the
-real TypeScript plugin: **structural extraction is done with regex, and IIR
-re-parses independently — three parses where there should be one.**
+Status: historical design note. The premise is superseded: the current engine
+uses pure-Go WASM tree-sitter parsing on wazero and plugin-owned node-attached
+IIR lift; it does not run the described CGO host extractor. Read this document
+for the original parsing rationale, not as a current implementation plan.
 
 ## The error
 

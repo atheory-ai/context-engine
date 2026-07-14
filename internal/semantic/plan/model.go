@@ -27,6 +27,9 @@ type Lifecycle string
 const (
 	LifecycleDeclared  Lifecycle = "declared"
 	LifecycleResolving Lifecycle = "resolving"
+	// LifecycleBlocked identifies a plan with an explicit policy or resolution
+	// conflict that must be addressed before lowering can continue.
+	LifecycleBlocked   Lifecycle = "blocked"
 	LifecycleResolved  Lifecycle = "resolved"
 	LifecycleGenerated Lifecycle = "generated"
 	LifecycleObserved  Lifecycle = "observed"
@@ -98,6 +101,7 @@ type Evidence struct {
 	ID          string      `json:"id"`
 	Source      string      `json:"source"`
 	Producer    string      `json:"producer"`
+	Field       string      `json:"field,omitempty"`
 	NodeID      core.NodeID `json:"nodeId,omitempty"`
 	SourceRef   *SourceRef  `json:"sourceRef,omitempty"`
 	Confidence  Confidence  `json:"confidence,omitempty"`
@@ -149,11 +153,21 @@ type Decision struct {
 
 // OpenQuestion represents information needed before a plan can be lowered.
 type OpenQuestion struct {
-	ID       string         `json:"id"`
-	Prompt   string         `json:"prompt"`
-	Blocking bool           `json:"blocking"`
-	State    KnowledgeState `json:"state"`
-	Evidence []Evidence     `json:"evidence"`
+	ID         string         `json:"id"`
+	Prompt     string         `json:"prompt"`
+	Blocking   bool           `json:"blocking"`
+	State      KnowledgeState `json:"state"`
+	Evidence   []Evidence     `json:"evidence"`
+	Candidates []Candidate    `json:"candidates"`
+}
+
+// Candidate is a deterministic resolution candidate retained on unresolved
+// questions so an agent or user can make an informed later selection.
+type Candidate struct {
+	NodeID      core.NodeID `json:"nodeId,omitempty"`
+	CanonicalID string      `json:"canonicalId,omitempty"`
+	Score       float64     `json:"score"`
+	Evidence    []Evidence  `json:"evidence"`
 }
 
 // PassRecord records the deterministic pass that produced a plan revision.
@@ -200,13 +214,7 @@ func NewPlan(projectID core.ProjectID, unit SemanticUnit, intent *iir.FunctionIn
 		OpenQuestions: []OpenQuestion{},
 		PassRecords:   []PassRecord{},
 		Lifecycle:     LifecycleDeclared,
-		Provenance: []Evidence{{
-			ID:          "intent",
-			Source:      "user",
-			Producer:    "semantic.plan",
-			Confidence:  ConfidenceHigh,
-			Explanation: "Initial declared intent.",
-		}},
+		Provenance:    []Evidence{initialIntentEvidence(canonicalIntent)},
 	}
 	plan.ID, err = MakePlanID(plan)
 	if err != nil {
@@ -216,6 +224,29 @@ func NewPlan(projectID core.ProjectID, unit SemanticUnit, intent *iir.FunctionIn
 		return nil, err
 	}
 	return plan, nil
+}
+
+func initialIntentEvidence(intent *iir.FunctionIntent) Evidence {
+	evidence := Evidence{
+		ID:          "intent",
+		Field:       "intent",
+		Source:      "user",
+		Producer:    "semantic.plan",
+		Confidence:  ConfidenceHigh,
+		Explanation: "Initial declared intent.",
+	}
+	switch intent.Origin {
+	case iir.OriginInferred:
+		evidence.Source = "model"
+		evidence.Producer = "iir.shaper"
+		evidence.Confidence = ConfidenceMedium
+		evidence.Explanation = "Initial intent inferred from natural-language input."
+	case iir.OriginObserved:
+		evidence.Source = "plugin"
+		evidence.Producer = "iir.lift"
+		evidence.Explanation = "Initial intent observed from source by a language plugin."
+	}
+	return evidence
 }
 
 // NewRevision derives an immutable revision from parent. Parent provenance is
@@ -368,6 +399,17 @@ func (p *SemanticPlan) Validate() error {
 		if err := validateStateEvidence("open question", question.ID, question.State, question.Evidence); err != nil {
 			return err
 		}
+		for _, candidate := range question.Candidates {
+			if candidate.NodeID == "" && strings.TrimSpace(candidate.CanonicalID) == "" {
+				return fmt.Errorf("open question %q candidate requires nodeId or canonicalId", question.ID)
+			}
+			if candidate.Score < 0 || candidate.Score > 1 {
+				return fmt.Errorf("open question %q candidate score must be between zero and one", question.ID)
+			}
+			if err := validateEvidenceSet("open question "+question.ID+" candidate evidence", candidate.Evidence, true); err != nil {
+				return err
+			}
+		}
 		if p.Lifecycle == LifecycleResolved && question.Blocking {
 			return fmt.Errorf("resolved semantic plan has blocking open question %q", question.ID)
 		}
@@ -496,7 +538,7 @@ func validateDecisionGraph(decisions map[string]Decision) error {
 
 func validLifecycle(lifecycle Lifecycle) bool {
 	switch lifecycle {
-	case LifecycleDeclared, LifecycleResolving, LifecycleResolved, LifecycleGenerated, LifecycleObserved, LifecycleVerified:
+	case LifecycleDeclared, LifecycleResolving, LifecycleBlocked, LifecycleResolved, LifecycleGenerated, LifecycleObserved, LifecycleVerified:
 		return true
 	default:
 		return false
@@ -594,6 +636,7 @@ func canonicalize(plan *SemanticPlan) {
 	sort.Slice(plan.OpenQuestions, func(i, j int) bool { return plan.OpenQuestions[i].ID < plan.OpenQuestions[j].ID })
 	for i := range plan.OpenQuestions {
 		plan.OpenQuestions[i].Evidence = canonicalEvidence(plan.OpenQuestions[i].Evidence)
+		plan.OpenQuestions[i].Candidates = canonicalCandidates(plan.OpenQuestions[i].Candidates)
 	}
 	sort.Slice(plan.PassRecords, func(i, j int) bool { return plan.PassRecords[i].ID < plan.PassRecords[j].ID })
 	for i := range plan.PassRecords {
@@ -603,6 +646,24 @@ func canonicalize(plan *SemanticPlan) {
 		sort.Strings(plan.PassRecords[i].Outputs)
 		plan.PassRecords[i].Evidence = canonicalEvidence(plan.PassRecords[i].Evidence)
 	}
+}
+
+func canonicalCandidates(candidates []Candidate) []Candidate {
+	candidates = nonNil(candidates)
+	for i := range candidates {
+		candidates[i].Evidence = canonicalEvidence(candidates[i].Evidence)
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		left, right := candidates[i], candidates[j]
+		if left.Score != right.Score {
+			return left.Score > right.Score
+		}
+		if left.CanonicalID != right.CanonicalID {
+			return left.CanonicalID < right.CanonicalID
+		}
+		return left.NodeID < right.NodeID
+	})
+	return candidates
 }
 
 func canonicalEvidence(evidence []Evidence) []Evidence {

@@ -4,6 +4,11 @@
 
 ---
 
+> **Historical/superseded parsing design.** The CGO clauses below are retained
+> for decision history only. [Spec 18](18-spec-wasm-grammar-loader.md) is the
+> current authority: Context Engine is pure Go (`CGO_ENABLED=0`) and tree-sitter
+> runs as WASM on wazero.
+
 > This spec amends prior specs where noted. Amendments are authoritative
 > over the original spec text. Read the amendments section first.
 > Companion: Context Engine PRD v0.5 Section 13. Decisions Log v1.0.
@@ -152,13 +157,12 @@ Plugin loading is one path for all plugins — no special cases for defaults.
 Users can replace default plugins by installing a custom plugin that handles
 the same extensions. The last-registered plugin for an extension wins.
 
-### New Constraint — CGO Permitted for Tree-sitter
+### Historical Constraint — CGO Tree-sitter (superseded)
 
-CGO is permitted specifically for the tree-sitter runtime and grammar
-bindings. All other packages remain pure Go. Cross-compilation is handled
-via Goreleaser + GitHub Actions matrix build. `go install` is not supported
-for end users — distribution is via release binaries, Homebrew, and
-package managers only.
+The original implementation plan allowed CGO for tree-sitter runtime and
+grammar bindings. That is no longer permitted: all current parsing is WASM on
+wazero and cross-compiles as pure Go. The remaining text documents the prior
+design only.
 
 ---
 
@@ -1442,7 +1446,7 @@ internal/indexer/
 
 | Decision | Value |
 |----------|-------|
-| CGO | Permitted for tree-sitter only |
+| CGO | Historical plan allowed it for tree-sitter; current engine forbids it |
 | Language support delivery | All via plugins — no native handlers in engine |
 | Default plugins | Embedded via go:embed, extracted on first run |
 | Default plugin override | Last-registered plugin for extension wins |

@@ -68,6 +68,21 @@
       "idx_nodes_source_class",
       "idx_nodes_source_file",
       "idx_nodes_type",
+      "idx_semantic_approvals_plan",
+      "idx_semantic_artifacts_node",
+      "idx_semantic_artifacts_plan",
+      "idx_semantic_artifacts_recipe",
+      "idx_semantic_artifacts_stale",
+      "idx_semantic_plans_node",
+      "idx_semantic_plans_parent",
+      "idx_semantic_plans_unit",
+      "idx_semantic_recipes_plan",
+      "idx_semantic_repairs_plan",
+      "idx_semantic_repairs_verification",
+      "idx_semantic_test_plans_plan",
+      "idx_semantic_verifications_artifact",
+      "idx_semantic_verifications_plan",
+      "idx_semantic_verifications_verdict",
       "version_unique"
     ],
     "table": [
@@ -81,7 +96,14 @@
       "node_activation",
       "nodes",
       "schema_migrations_graph",
-      "schema_version"
+      "schema_version",
+      "semantic_approvals",
+      "semantic_artifacts",
+      "semantic_plans",
+      "semantic_recipes",
+      "semantic_repairs",
+      "semantic_test_plans",
+      "semantic_verifications"
     ]
   },
   "isolation": {
@@ -151,6 +173,21 @@
       "idx_nodes_source_class",
       "idx_nodes_source_file",
       "idx_nodes_type",
+      "idx_semantic_approvals_plan",
+      "idx_semantic_artifacts_node",
+      "idx_semantic_artifacts_plan",
+      "idx_semantic_artifacts_recipe",
+      "idx_semantic_artifacts_stale",
+      "idx_semantic_plans_node",
+      "idx_semantic_plans_parent",
+      "idx_semantic_plans_unit",
+      "idx_semantic_recipes_plan",
+      "idx_semantic_repairs_plan",
+      "idx_semantic_repairs_verification",
+      "idx_semantic_test_plans_plan",
+      "idx_semantic_verifications_artifact",
+      "idx_semantic_verifications_plan",
+      "idx_semantic_verifications_verdict",
       "version_unique"
     ],
     "table": [
@@ -167,7 +204,14 @@
       "org_concept_seeds",
       "schema_migrations_graph",
       "schema_migrations_org",
-      "schema_version"
+      "schema_version",
+      "semantic_approvals",
+      "semantic_artifacts",
+      "semantic_plans",
+      "semantic_recipes",
+      "semantic_repairs",
+      "semantic_test_plans",
+      "semantic_verifications"
     ]
   }
 }
