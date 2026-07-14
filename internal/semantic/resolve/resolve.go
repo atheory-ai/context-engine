@@ -196,11 +196,11 @@ func (r *Resolver) graphCandidates(ctx context.Context, semanticPlan *plan.Seman
 			seen[node.ID] = candidate
 		}
 	}
-	if node, err := r.reader.GetNodeByCanonicalID(ctx, semanticPlan.ProjectID, query); err != nil {
+	node, err := r.reader.GetNodeByCanonicalID(ctx, semanticPlan.ProjectID, query)
+	if err != nil {
 		return nil, err
-	} else {
-		add(node, 1, "canonical")
 	}
+	add(node, 1, "canonical")
 	if semanticPlan.Unit.NodeID != "" {
 		edges, err := r.reader.GetEdgesFrom(ctx, semanticPlan.ProjectID, semanticPlan.Unit.NodeID)
 		if err != nil {
