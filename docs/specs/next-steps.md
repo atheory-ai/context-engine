@@ -20,21 +20,21 @@ source. The specs below close that gap in dependency order.
 
 ## Ordered work
 
-| Order | Spec | Outcome | Owner | Status |
-| --- | --- | --- | --- | --- |
-| 1 | [19 — Semantic plan](19-spec-semantic-plan.md) | A versioned, evidence-bearing contract between intent and generation. | Semantic compiler | implemented |
-| 2 | [26 — Intent shaping and normalization](26-spec-intent-shaping-and-normalization.md) | Prose and declared intent become validated, canonical plan input. | Semantic compiler | implemented |
-| 3 | [20 — Resolution pass](20-spec-semantic-resolution.md) | Intent is bound to real graph symbols and unknowns are explicit. | Semantic compiler | implemented |
-| 4 | [27 — Semantic enrichment](27-spec-semantic-enrichment.md) | Relevant semantic facts are derived with explicit evidence and uncertainty. | Semantic compiler | implemented |
-| 5 | [21 — Policy-pass pipeline](21-spec-semantic-policy-passes.md) | Deterministic policies add and check traceable obligations. | Semantic compiler | implemented |
-| 6 | [28 — Recipe lowering](28-spec-implementation-recipe-lowering.md) | A resolved plan becomes a compact, target-aware renderer contract. | Semantic compiler | implemented |
-| 7 | [29 — Source lift contract](29-spec-source-lift-contract.md) | Plugin lifts remain a trustworthy, parity-tested verification frontend. | Plugin/runtime | implemented |
-| 8 | [22 — Vertical slice](22-spec-semantic-mutation-slice.md) | One user-visible TypeScript mutation flow proves the architecture end to end. | CLI/compiler | implemented |
-| 9 | [23 — Verification](23-spec-semantic-verification.md) | Fidelity reports are evidence-backed and distinguish unknown from verified. | Semantic compiler | implemented |
-| 10 | [30 — Repair planning](30-spec-semantic-repair-planning.md) | Failures become minimal semantic changes before a renderer retries. | Semantic compiler | implemented |
-| 11 | [31 — Test-plan lowering](31-spec-test-plan-lowering.md) | Tests and coverage derive from the plan and its verification gaps. | Semantic compiler | implemented |
-| 12 | [24 — Semantic build graph](24-spec-semantic-build-graph.md) | Plans, versions, provenance, runs, and diffs become durable graph artifacts. | Storage/compiler | implemented |
-| 13 | [25 — Documentation and delivery](25-spec-semantic-platform-documentation.md) | Specs, public docs, SDK contracts, and release gates describe one current architecture. | Documentation/release | implemented |
+| Order | Spec | Outcome | Owner | Status | Implementation |
+| --- | --- | --- | --- | --- | --- |
+| 1 | [19 — Semantic plan](19-spec-semantic-plan.md) | A versioned, evidence-bearing contract between intent and generation. | Semantic compiler | implemented | [PR #80](https://github.com/atheory-ai/context-engine/pull/80) |
+| 2 | [26 — Intent shaping and normalization](26-spec-intent-shaping-and-normalization.md) | Prose and declared intent become validated, canonical plan input. | Semantic compiler | implemented | [PR #81](https://github.com/atheory-ai/context-engine/pull/81) |
+| 3 | [20 — Resolution pass](20-spec-semantic-resolution.md) | Intent is bound to real graph symbols and unknowns are explicit. | Semantic compiler | implemented | [PR #82](https://github.com/atheory-ai/context-engine/pull/82) |
+| 4 | [27 — Semantic enrichment](27-spec-semantic-enrichment.md) | Relevant semantic facts are derived with explicit evidence and uncertainty. | Semantic compiler | implemented | [PR #83](https://github.com/atheory-ai/context-engine/pull/83) |
+| 5 | [21 — Policy-pass pipeline](21-spec-semantic-policy-passes.md) | Deterministic policies add and check traceable obligations. | Semantic compiler | implemented | [PR #84](https://github.com/atheory-ai/context-engine/pull/84) |
+| 6 | [28 — Recipe lowering](28-spec-implementation-recipe-lowering.md) | A resolved plan becomes a compact, target-aware renderer contract. | Semantic compiler | implemented | [PR #85](https://github.com/atheory-ai/context-engine/pull/85) |
+| 7 | [29 — Source lift contract](29-spec-source-lift-contract.md) | Plugin lifts remain a trustworthy, parity-tested verification frontend. | Plugin/runtime | implemented | [PR #86](https://github.com/atheory-ai/context-engine/pull/86) |
+| 8 | [22 — Vertical slice](22-spec-semantic-mutation-slice.md) | One user-visible TypeScript mutation flow proves the architecture end to end. | CLI/compiler | implemented | [PR #87](https://github.com/atheory-ai/context-engine/pull/87) |
+| 9 | [23 — Verification](23-spec-semantic-verification.md) | Fidelity reports are evidence-backed and distinguish unknown from verified. | Semantic compiler | implemented | [PR #88](https://github.com/atheory-ai/context-engine/pull/88) |
+| 10 | [30 — Repair planning](30-spec-semantic-repair-planning.md) | Failures become minimal semantic changes before a renderer retries. | Semantic compiler | implemented | [PR #89](https://github.com/atheory-ai/context-engine/pull/89) |
+| 11 | [31 — Test-plan lowering](31-spec-test-plan-lowering.md) | Tests and coverage derive from the plan and its verification gaps. | Semantic compiler | implemented | [PR #90](https://github.com/atheory-ai/context-engine/pull/90) |
+| 12 | [24 — Semantic build graph](24-spec-semantic-build-graph.md) | Plans, versions, provenance, runs, and diffs become durable graph artifacts. | Storage/compiler | implemented | [PR #91](https://github.com/atheory-ai/context-engine/pull/91) |
+| 13 | [25 — Documentation and delivery](25-spec-semantic-platform-documentation.md) | Specs, public docs, SDK contracts, and release gates describe one current architecture. | Documentation/release | implemented | [PR #92](https://github.com/atheory-ai/context-engine/pull/92) |
 
 ## Sequencing rules
 
