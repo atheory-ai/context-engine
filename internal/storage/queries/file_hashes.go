@@ -92,17 +92,25 @@ func (q *IndexQueries) PruneFileNodes(ctx context.Context, projectID, relPath st
 	}
 	defer tx.Rollback() //nolint:errcheck // no-op after a successful Commit
 
-	// The two queries below are assembled only from string literals and bound "?"
+	// The queries below are assembled only from string literals and bound "?"
 	// placeholders (keepIDs are passed as args, never interpolated), so gosec's
 	// SQL-string-concatenation warning (G202) is a false positive here.
 
-	// 1. IIR has no FK cascade — delete rows for the doomed nodes explicitly.
+	// 1. Semantic artifacts are retained for provenance but marked stale before
+	// their sole source unit is removed. V1 retains stale records indefinitely;
+	// a policy-driven compactor can introduce a bounded retention window later.
+	staleArtifacts := "UPDATE semantic_artifacts SET stale_at = ? WHERE project_id = ? AND unit_node_id IN (SELECT id FROM nodes WHERE " + where + ") AND stale_at IS NULL" //nolint:gosec // literals + bound placeholders only
+	if _, err := tx.ExecContext(ctx, staleArtifacts, append([]any{time.Now().UnixMilli(), projectID}, args...)...); err != nil {
+		return 0, fmt.Errorf("mark stale semantic artifacts for %s: %w", relPath, err)
+	}
+
+	// 2. IIR has no FK cascade — delete rows for the doomed nodes explicitly.
 	iirDelete := "DELETE FROM iir WHERE project_id = ? AND node_id IN (SELECT id FROM nodes WHERE " + where + ")" //nolint:gosec // G202: literals + bound placeholders only
 	if _, err := tx.ExecContext(ctx, iirDelete, append([]any{projectID}, args...)...); err != nil {
 		return 0, fmt.Errorf("prune iir for %s: %w", relPath, err)
 	}
 
-	// 2. Delete the nodes; edges, edge_weight and node_activation cascade.
+	// 3. Delete the nodes; edges, edge_weight and node_activation cascade.
 	nodeDelete := "DELETE FROM nodes WHERE " + where //nolint:gosec // G202: literals + bound placeholders only
 	res, err := tx.ExecContext(ctx, nodeDelete, args...)
 	if err != nil {

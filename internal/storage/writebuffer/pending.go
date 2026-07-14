@@ -94,8 +94,20 @@ func flushOrder(opType OpType) int {
 		return 50
 	case OpUpsertIIR:
 		return 55 // after nodes (IIR references node ids), before enrichments
-	case OpRecordEnrichment:
+	case OpUpsertSemanticPlan:
+		return 56 // after IIR and nodes; recipes and descendants reference it
+	case OpUpsertSemanticRecipe:
+		return 57
+	case OpUpsertSemanticArtifact, OpUpsertSemanticTestPlan:
+		return 58
+	case OpRecordSemanticVerification:
+		return 59
+	case OpUpsertSemanticRepair:
 		return 60
+	case OpRecordSemanticApproval:
+		return 61
+	case OpRecordEnrichment:
+		return 70
 	default:
 		return 100
 	}
@@ -118,6 +130,20 @@ func keyFor(op WriteOp) pendingKey {
 		entityID = op.Payload.(ConceptUpsert).ID
 	case OpUpsertIIR:
 		entityID = op.Payload.(IIRUpsert).ID
+	case OpUpsertSemanticPlan:
+		entityID = op.Payload.(SemanticPlanUpsert).ID
+	case OpUpsertSemanticRecipe:
+		entityID = op.Payload.(SemanticRecipeUpsert).ID
+	case OpUpsertSemanticArtifact:
+		entityID = op.Payload.(SemanticArtifactUpsert).ID
+	case OpRecordSemanticVerification:
+		entityID = op.Payload.(SemanticVerificationRecord).ID
+	case OpRecordSemanticApproval:
+		entityID = op.Payload.(SemanticApprovalRecord).ID
+	case OpUpsertSemanticTestPlan:
+		entityID = op.Payload.(SemanticTestPlanUpsert).ID
+	case OpUpsertSemanticRepair:
+		entityID = op.Payload.(SemanticRepairUpsert).ID
 	}
 	return pendingKey{
 		opType:    op.Type,

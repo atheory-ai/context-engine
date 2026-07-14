@@ -264,6 +264,8 @@ type SubstrateWriter interface {
 	// IIR upsert — extracted/intended intent per function node (write buffer)
 	UpsertIIR(ctx context.Context, record IIRRecord) error
 
+	SemanticWriter
+
 	// Activation updates (high frequency — write buffer deduplicates)
 	UpdateActivation(ctx context.Context, nodeID NodeID, activation float64) error
 
@@ -281,6 +283,19 @@ type SubstrateWriter interface {
 
 	// Flush blocks until write buffer is empty.
 	Flush(ctx context.Context) error
+}
+
+// SemanticWriter is the durable write boundary for semantic-development
+// records. Implementations enqueue every operation through the write buffer;
+// callers cannot use it to issue direct graph-DB mutations.
+type SemanticWriter interface {
+	UpsertSemanticPlan(ctx context.Context, record SemanticPlanRecord) error
+	UpsertSemanticRecipe(ctx context.Context, record SemanticRecipeRecord) error
+	UpsertSemanticArtifact(ctx context.Context, record SemanticArtifactRecord) error
+	RecordSemanticVerification(ctx context.Context, record SemanticVerificationRecord) error
+	RecordSemanticApproval(ctx context.Context, record SemanticApprovalRecord) error
+	UpsertSemanticTestPlan(ctx context.Context, record SemanticTestPlanRecord) error
+	UpsertSemanticRepair(ctx context.Context, record SemanticRepairRecord) error
 }
 
 // SubstrateAccessor combines read and write substrate access.
