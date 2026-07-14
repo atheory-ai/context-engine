@@ -67,6 +67,15 @@ func TestPruneFileNodes_ChangedFile(t *testing.T) {
 	insertActivation(t, d, "removed")
 	seedIIR(t, d, proj, "removed", queries.IIRKindExtracted, `{"name":"removed"}`)
 	seedIIR(t, d, proj, "survivor", queries.IIRKindExtracted, `{"name":"survivor"}`)
+	if _, err := d.Exec(`INSERT INTO semantic_plans (id, project_id, unit_id, unit_node_id, revision, lifecycle, schema_version, payload, created_at) VALUES ('plan', ?, 'unit', 'removed', 1, 'resolved', 'v1', '{}', 1)`, proj); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Exec(`INSERT INTO semantic_recipes (id, project_id, plan_revision_id, schema_version, target_language, renderer_profile, payload, created_at) VALUES ('recipe', ?, 'plan', 'v1', 'typescript', '{}', '{}', 1)`, proj); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Exec(`INSERT INTO semantic_artifacts (id, project_id, plan_revision_id, recipe_id, unit_node_id, kind, content_hash, target_language, target_path, created_at) VALUES ('artifact', ?, 'plan', 'recipe', 'removed', 'source', 'hash', 'typescript', 'a.ts', 1)`, proj); err != nil {
+		t.Fatal(err)
+	}
 
 	n, err := queries.NewIndexQueries(d).PruneFileNodes(ctx, proj, "a.go", []string{"survivor", "ns"})
 	if err != nil {
@@ -100,6 +109,14 @@ func TestPruneFileNodes_ChangedFile(t *testing.T) {
 	}
 	if c := count(t, d, `SELECT COUNT(*) FROM iir WHERE node_id = 'survivor'`); c != 1 {
 		t.Errorf("iir for survivor must be kept, found %d", c)
+	}
+	var staleAt int64
+	var unitNodeID sql.NullString
+	if err := d.QueryRow(`SELECT COALESCE(stale_at, 0), unit_node_id FROM semantic_artifacts WHERE id = 'artifact'`).Scan(&staleAt, &unitNodeID); err != nil {
+		t.Fatal(err)
+	}
+	if staleAt == 0 || unitNodeID.Valid {
+		t.Fatalf("artifact should be stale and detached after prune: staleAt=%d unitNode=%+v", staleAt, unitNodeID)
 	}
 }
 
