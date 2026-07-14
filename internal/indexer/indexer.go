@@ -514,7 +514,7 @@ func remapIDs(
 			if !ok {
 				nodeID = e.NodeID // reference outside this extraction — keep as-is
 			}
-			iirOut = append(iirOut, core.IIRExtracted{NodeID: nodeID, Intent: e.Intent})
+			iirOut = append(iirOut, core.IIRExtracted{NodeID: nodeID, SchemaVersion: e.SchemaVersion, Coverage: e.Coverage, Intent: e.Intent, Claims: e.Claims, Evidence: e.Evidence})
 		}
 	}
 

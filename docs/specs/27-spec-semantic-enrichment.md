@@ -2,7 +2,13 @@
 
 ## Implementation spec — derive relevant facts before policy and generation
 
-Status: proposed. Depends on Specs 19, 20, and 26.
+Status: implemented (foundation, 2026-07-14). Depends on Specs 19, 20, and 26.
+
+Current implementation: `internal/semantic/enrich` derives bounded direct
+dependency, architectural-boundary, caller, observed-effect, and failure claims
+from read-only graph and IIR sources. It records classifier basis and emits
+evidence-backed `unknown` claims when observations are unavailable. Caching and
+production storage adapters remain later work.
 
 ## Goal
 
