@@ -50,3 +50,36 @@ func TestVerifyPartialObservationIsInconclusive(t *testing.T) {
 		t.Fatalf("report=%+v err=%v", report, err)
 	}
 }
+
+func TestVerifyMissingRequiredBoundaryCallIsInconclusiveWithEvidence(t *testing.T) {
+	p, r, observed := fixture(t)
+	r.Steps = []recipe.Step{{Order: 1, Operation: "boundary call", RequiredCall: "repository.save", PlanRecordID: "binding-repository"}}
+	report, err := Verify(p, r, observed)
+	if err != nil || report.Status != StatusInconclusive {
+		t.Fatalf("report=%+v err=%v", report, err)
+	}
+	for _, finding := range report.Findings {
+		if finding.PlanRecordID == "binding-repository" {
+			if finding.Result != ResultUnsupported || finding.RepairTarget == "" || len(finding.Evidence) == 0 {
+				t.Fatalf("boundary finding must retain plan/source evidence: %+v", finding)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing direct-boundary finding: %+v", report.Findings)
+}
+
+func TestVerifyPartialEvidenceNeverPassesAcrossPluginLiftLanguages(t *testing.T) {
+	for _, language := range []string{"go", "python"} {
+		t.Run(language, func(t *testing.T) {
+			p, r, observed := fixture(t)
+			observed.Language = language
+			observed.Observed.Language = language
+			observed.Coverage = lift.CoveragePartial
+			report, err := Verify(p, r, observed)
+			if err != nil || report.Status != StatusInconclusive {
+				t.Fatalf("partial %s observation must not pass: report=%+v err=%v", language, report, err)
+			}
+		})
+	}
+}
