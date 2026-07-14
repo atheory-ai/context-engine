@@ -2,8 +2,14 @@
 
 ## Implementation spec — a versioned contract between intent and generation
 
-Status: proposed. Depends on Spec 2, the existing IIR model, and
-[`north-star.md`](../../north-star.md). This is the first post-IIR foundation.
+Status: implemented (foundation, 2026-07-14). Depends on Spec 2, the existing
+IIR model, and [`north-star.md`](../../north-star.md). This is the first
+post-IIR foundation.
+
+Current implementation: `internal/semantic/plan` provides the versioned model,
+strict JSON parsing, canonical marshaling, validation, deterministic revision
+identity, and immutable revision construction. Storage, resolution, and public
+surfaces remain the responsibility of later specs.
 
 ## Goal
 
