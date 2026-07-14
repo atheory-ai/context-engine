@@ -27,6 +27,9 @@ type Lifecycle string
 const (
 	LifecycleDeclared  Lifecycle = "declared"
 	LifecycleResolving Lifecycle = "resolving"
+	// LifecycleBlocked identifies a plan with an explicit policy or resolution
+	// conflict that must be addressed before lowering can continue.
+	LifecycleBlocked   Lifecycle = "blocked"
 	LifecycleResolved  Lifecycle = "resolved"
 	LifecycleGenerated Lifecycle = "generated"
 	LifecycleObserved  Lifecycle = "observed"
@@ -535,7 +538,7 @@ func validateDecisionGraph(decisions map[string]Decision) error {
 
 func validLifecycle(lifecycle Lifecycle) bool {
 	switch lifecycle {
-	case LifecycleDeclared, LifecycleResolving, LifecycleResolved, LifecycleGenerated, LifecycleObserved, LifecycleVerified:
+	case LifecycleDeclared, LifecycleResolving, LifecycleBlocked, LifecycleResolved, LifecycleGenerated, LifecycleObserved, LifecycleVerified:
 		return true
 	default:
 		return false
