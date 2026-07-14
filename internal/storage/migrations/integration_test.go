@@ -57,6 +57,31 @@ func TestMigrationSchemasGolden(t *testing.T) {
 	assertGolden(t, "schemas", out)
 }
 
+func TestSemanticBuildGraphMigrationConstraintsAndRollback(t *testing.T) {
+	database := openMigrated(t, filepath.Join(t.TempDir(), "graph.db"), migrations.RunGraph)
+	if !tableExists(t, database, "semantic_plans") {
+		t.Fatal("semantic plans migration did not apply")
+	}
+	if _, err := database.Exec(`INSERT INTO semantic_plans (id, project_id, unit_id, revision, lifecycle, schema_version, payload, created_at) VALUES ('bad-schema', 'p', 'u', 1, 'resolved', 'v2', '{}', 1)`); err == nil {
+		t.Fatal("semantic plan schema-version check accepted v2")
+	}
+	if _, err := database.Exec(`INSERT INTO semantic_recipes (id, project_id, plan_revision_id, schema_version, target_language, renderer_profile, payload, created_at) VALUES ('orphan', 'p', 'missing', 'v1', 'typescript', '{}', '{}', 1)`); err == nil {
+		t.Fatal("semantic recipe foreign key accepted missing plan")
+	}
+	if err := migrations.RollbackGraph(database, 1); err != nil {
+		t.Fatalf("rollback semantic build graph: %v", err)
+	}
+	if tableExists(t, database, "semantic_plans") {
+		t.Fatal("semantic plans table remained after rollback")
+	}
+	if err := migrations.RunGraph(database); err != nil {
+		t.Fatalf("reapply semantic build graph: %v", err)
+	}
+	if !tableExists(t, database, "semantic_plans") {
+		t.Fatal("semantic plans table absent after reapply")
+	}
+}
+
 func openMigrated(t *testing.T, path string, migrate func(*sql.DB) error) *sql.DB {
 	t.Helper()
 	database, err := db.Open(path)

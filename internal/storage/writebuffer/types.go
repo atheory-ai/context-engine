@@ -10,13 +10,20 @@ import "database/sql"
 type OpType string
 
 const (
-	OpUpsertNode       OpType = "upsert_node"
-	OpUpsertEdge       OpType = "upsert_edge"
-	OpUpdateActivation OpType = "update_activation"
-	OpUpdateWeight     OpType = "update_weight"
-	OpUpsertConcept    OpType = "upsert_concept"
-	OpUpsertIIR        OpType = "upsert_iir"
-	OpRecordEnrichment OpType = "record_enrichment"
+	OpUpsertNode                 OpType = "upsert_node"
+	OpUpsertEdge                 OpType = "upsert_edge"
+	OpUpdateActivation           OpType = "update_activation"
+	OpUpdateWeight               OpType = "update_weight"
+	OpUpsertConcept              OpType = "upsert_concept"
+	OpUpsertIIR                  OpType = "upsert_iir"
+	OpUpsertSemanticPlan         OpType = "upsert_semantic_plan"
+	OpUpsertSemanticRecipe       OpType = "upsert_semantic_recipe"
+	OpUpsertSemanticArtifact     OpType = "upsert_semantic_artifact"
+	OpRecordSemanticVerification OpType = "record_semantic_verification"
+	OpRecordSemanticApproval     OpType = "record_semantic_approval"
+	OpUpsertSemanticTestPlan     OpType = "upsert_semantic_test_plan"
+	OpUpsertSemanticRepair       OpType = "upsert_semantic_repair"
+	OpRecordEnrichment           OpType = "record_enrichment"
 )
 
 // WriteOp is the unit of work the buffer accepts.
@@ -102,6 +109,74 @@ type IIRUpsert struct {
 	RunID      string
 	CreatedAt  int64
 	UpdatedAt  int64
+}
+
+// Semantic records are immutable. Their deterministic IDs are idempotency
+// keys, so the buffer inserts them once and preserves provenance on replay.
+type SemanticPlanUpsert struct {
+	ID            string
+	ProjectID     string
+	UnitID        string
+	UnitNodeID    string
+	ParentPlanID  string
+	Lifecycle     string
+	SchemaVersion string
+	Payload       string
+	RunID         string
+	TurnID        string
+	Revision      int
+	CreatedAt     int64
+}
+
+type SemanticRecipeUpsert struct {
+	ID              string
+	ProjectID       string
+	PlanRevisionID  string
+	SchemaVersion   string
+	TargetLanguage  string
+	RendererProfile string
+	Payload         string
+	RunID           string
+	TurnID          string
+	CreatedAt       int64
+}
+
+type SemanticArtifactUpsert struct {
+	ID                   string
+	ProjectID            string
+	PlanRevisionID       string
+	RecipeID             string
+	UnitNodeID           string
+	Kind                 string
+	ContentHash          string
+	TargetLanguage       string
+	TargetPath           string
+	SourceRef            string
+	SourceContent        string
+	SourceContentAllowed bool
+	RunID                string
+	TurnID               string
+	CreatedAt            int64
+}
+
+type SemanticVerificationRecord struct {
+	ID, ProjectID, PlanRevisionID, RecipeID, ArtifactID, ObservedIIRID, Verdict, VerifierVersion, Payload, RunID, TurnID string
+	CreatedAt                                                                                                            int64
+}
+
+type SemanticApprovalRecord struct {
+	ID, ProjectID, PlanRevisionID, Scope, Decision, Rationale, ActorID, RunID, TurnID string
+	CreatedAt                                                                         int64
+}
+
+type SemanticTestPlanUpsert struct {
+	ID, ProjectID, PlanRevisionID, RecipeID, Payload, RunID, TurnID string
+	CreatedAt                                                       int64
+}
+
+type SemanticRepairUpsert struct {
+	ID, ProjectID, PlanRevisionID, RecipeID, VerificationID, Status, Payload, RunID, TurnID string
+	CreatedAt                                                                               int64
 }
 
 // EnrichmentRecord is an enrichment entry. Never deduplicated — each is distinct.

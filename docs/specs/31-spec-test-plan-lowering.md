@@ -2,8 +2,14 @@
 
 ## Implementation spec — derive tests and coverage from resolved semantics
 
-Status: proposed. Depends on Specs 19, 23, and 28, and evolves the existing
-FunctionIntent-based test generator.
+Status: implemented (foundation, 2026-07-14). Depends on Specs 19, 23, and 28,
+and evolves the existing FunctionIntent-based test generator.
+
+Implementation: `internal/semantic/testplan` provides deterministic resolved
+plan/recipe lowering, explicit coverage and execution-evidence states, static
+verification gaps, a Vitest skeleton renderer, and regression cases from
+actionable repair plans. `iir.GenerateTests(FunctionIntent)` remains the
+compatible narrow path for plans that do not yet exist.
 
 ## Goal
 
