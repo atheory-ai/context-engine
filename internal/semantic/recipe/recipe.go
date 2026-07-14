@@ -190,18 +190,18 @@ func MarshalCanonical(recipe *ImplementationRecipe) ([]byte, error) {
 	if recipe == nil {
 		return nil, fmt.Errorf("canonical recipe: recipe is required")
 	}
-	copy := *recipe
-	if err := canonicalize(&copy); err != nil {
+	clonedRecipe := *recipe
+	if err := canonicalize(&clonedRecipe); err != nil {
 		return nil, err
 	}
-	if copy.ID == "" {
-		id, err := recipeID(&copy)
+	if clonedRecipe.ID == "" {
+		id, err := recipeID(&clonedRecipe)
 		if err != nil {
 			return nil, err
 		}
-		copy.ID = id
+		clonedRecipe.ID = id
 	}
-	return json.Marshal(copy)
+	return json.Marshal(clonedRecipe)
 }
 
 func targetFor(source *plan.SemanticPlan) Target {
@@ -385,12 +385,12 @@ func canonicalize(recipe *ImplementationRecipe) error {
 }
 
 func recipeID(recipe *ImplementationRecipe) (string, error) {
-	copy := *recipe
-	copy.ID = ""
-	if err := canonicalize(&copy); err != nil {
+	clonedRecipe := *recipe
+	clonedRecipe.ID = ""
+	if err := canonicalize(&clonedRecipe); err != nil {
 		return "", err
 	}
-	payload, err := json.Marshal(copy)
+	payload, err := json.Marshal(clonedRecipe)
 	if err != nil {
 		return "", err
 	}
