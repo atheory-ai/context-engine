@@ -2,7 +2,15 @@
 
 ## Implementation spec — bind intent to project knowledge before generation
 
-Status: proposed. Depends on Spec 19 and the indexed substrate.
+Status: implemented (foundation, 2026-07-14). Depends on Spec 19 and the
+indexed substrate.
+
+Current implementation: `internal/semantic/resolve` resolves open questions
+through a narrow read-only graph interface, records canonical, relationship, and
+suffix-match candidates with evidence, and only selects a unique candidate above
+the configured threshold. Ambiguous, missing, and incompatible results remain
+explicit open questions in an immutable plan revision. CLI/MCP/API wiring and
+project rule-pack identity are deferred to later stages.
 
 ## Goal
 

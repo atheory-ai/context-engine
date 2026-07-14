@@ -150,11 +150,21 @@ type Decision struct {
 
 // OpenQuestion represents information needed before a plan can be lowered.
 type OpenQuestion struct {
-	ID       string         `json:"id"`
-	Prompt   string         `json:"prompt"`
-	Blocking bool           `json:"blocking"`
-	State    KnowledgeState `json:"state"`
-	Evidence []Evidence     `json:"evidence"`
+	ID         string         `json:"id"`
+	Prompt     string         `json:"prompt"`
+	Blocking   bool           `json:"blocking"`
+	State      KnowledgeState `json:"state"`
+	Evidence   []Evidence     `json:"evidence"`
+	Candidates []Candidate    `json:"candidates"`
+}
+
+// Candidate is a deterministic resolution candidate retained on unresolved
+// questions so an agent or user can make an informed later selection.
+type Candidate struct {
+	NodeID      core.NodeID `json:"nodeId,omitempty"`
+	CanonicalID string      `json:"canonicalId,omitempty"`
+	Score       float64     `json:"score"`
+	Evidence    []Evidence  `json:"evidence"`
 }
 
 // PassRecord records the deterministic pass that produced a plan revision.
@@ -386,6 +396,17 @@ func (p *SemanticPlan) Validate() error {
 		if err := validateStateEvidence("open question", question.ID, question.State, question.Evidence); err != nil {
 			return err
 		}
+		for _, candidate := range question.Candidates {
+			if candidate.NodeID == "" && strings.TrimSpace(candidate.CanonicalID) == "" {
+				return fmt.Errorf("open question %q candidate requires nodeId or canonicalId", question.ID)
+			}
+			if candidate.Score < 0 || candidate.Score > 1 {
+				return fmt.Errorf("open question %q candidate score must be between zero and one", question.ID)
+			}
+			if err := validateEvidenceSet("open question "+question.ID+" candidate evidence", candidate.Evidence, true); err != nil {
+				return err
+			}
+		}
 		if p.Lifecycle == LifecycleResolved && question.Blocking {
 			return fmt.Errorf("resolved semantic plan has blocking open question %q", question.ID)
 		}
@@ -612,6 +633,7 @@ func canonicalize(plan *SemanticPlan) {
 	sort.Slice(plan.OpenQuestions, func(i, j int) bool { return plan.OpenQuestions[i].ID < plan.OpenQuestions[j].ID })
 	for i := range plan.OpenQuestions {
 		plan.OpenQuestions[i].Evidence = canonicalEvidence(plan.OpenQuestions[i].Evidence)
+		plan.OpenQuestions[i].Candidates = canonicalCandidates(plan.OpenQuestions[i].Candidates)
 	}
 	sort.Slice(plan.PassRecords, func(i, j int) bool { return plan.PassRecords[i].ID < plan.PassRecords[j].ID })
 	for i := range plan.PassRecords {
@@ -621,6 +643,24 @@ func canonicalize(plan *SemanticPlan) {
 		sort.Strings(plan.PassRecords[i].Outputs)
 		plan.PassRecords[i].Evidence = canonicalEvidence(plan.PassRecords[i].Evidence)
 	}
+}
+
+func canonicalCandidates(candidates []Candidate) []Candidate {
+	candidates = nonNil(candidates)
+	for i := range candidates {
+		candidates[i].Evidence = canonicalEvidence(candidates[i].Evidence)
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		left, right := candidates[i], candidates[j]
+		if left.Score != right.Score {
+			return left.Score > right.Score
+		}
+		if left.CanonicalID != right.CanonicalID {
+			return left.CanonicalID < right.CanonicalID
+		}
+		return left.NodeID < right.NodeID
+	})
+	return candidates
 }
 
 func canonicalEvidence(evidence []Evidence) []Evidence {
