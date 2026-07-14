@@ -2,8 +2,15 @@
 
 ## Implementation spec — repair the plan or recipe before retrying generation
 
-Status: proposed. Depends on Specs 23 and 28, and replaces blind regeneration as
-the default repair strategy for plan-backed work.
+Status: implemented (foundation, 2026-07-14). Depends on Specs 23 and 28, and
+replaces blind regeneration as the default repair strategy for plan-backed work.
+
+Current implementation: `internal/semantic/repair` classifies verification
+findings into implementation divergence, insufficient evidence, policy/resolution
+defect, or user-decision-required paths. It produces immutable, traceable recipe
+patches or plan questions and exhausts repeated equivalent repair identities.
+Renderer retry orchestration and durable repair-history storage are integrated
+with the later build-graph slice.
 
 ## Goal
 

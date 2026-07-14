@@ -2,8 +2,15 @@
 
 ## Implementation spec — strengthen fidelity without false certainty
 
-Status: proposed. Depends on Specs 19, 22, and 29, plus the existing IIR
-comparator.
+Status: implemented (foundation, 2026-07-14). Depends on Specs 19, 22, and 29,
+plus the existing IIR comparator.
+
+Current implementation: `internal/semantic/verify` adds a plan-and-recipe
+report without changing `iir.Report`. It evaluates modeled lifts for required
+effects and failure behavior, attaches stable plan/recipe IDs and source
+evidence, and reports partial/unsupported lifting as `inconclusive`. Bounded
+interprocedural traversal and language-plugin parity corpus expansion remain
+subsequent capability work.
 
 ## Goal
 

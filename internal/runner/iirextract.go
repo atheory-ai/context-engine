@@ -12,6 +12,7 @@ import (
 	"github.com/atheory-ai/context-engine/internal/indexer"
 	"github.com/atheory-ai/context-engine/internal/indexer/wasmparse"
 	"github.com/atheory-ai/context-engine/internal/plugins"
+	"github.com/atheory-ai/context-engine/internal/semantic/lift"
 )
 
 // pluginExtractor implements iir.Extractor by parsing source with the pure-Go
@@ -115,10 +116,11 @@ func (p *pluginExtractor) Extract(ctx context.Context, input iir.ExtractionInput
 			return iir.ExtractionResult{}, fmt.Errorf("plugin extract: %w", err)
 		}
 		for _, e := range res.IIR {
-			fi, err := iir.ParseIntentJSON(e.Intent)
+			unit, err := lift.Normalize(e)
 			if err != nil {
 				continue
 			}
+			fi := unit.Observed
 			if input.Target != "" && fi.Name == input.Target {
 				return iir.ExtractionResult{Function: fi}, nil
 			}

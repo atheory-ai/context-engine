@@ -1,5 +1,11 @@
 # Intent Representation (IIR)
 
+This is the current capability guide. Start with the [semantic-platform north
+star](../north-star.md), then the [capability matrix](./iir-capabilities.md) and
+the [executable roadmap](./specs/next-steps.md). Historical design RFCs live in
+[`docs/specs/iir-specs/`](./specs/iir-specs/) and are not the current runtime
+contract.
+
 IIR — **Intermediate Intent Representation** — is a structured description of
 what a piece of code is *intended* to do. It sits **above the AST** (more
 semantic than syntax) and **below natural language** (more verifiable than
@@ -49,13 +55,16 @@ Two orthogonal gates operate over IIR:
   returns, forbidden condition shapes, …)? Rules target an intent *kind*, not a
   language, so a rule written once applies across all languages.
 
-**Extraction is plugin-owned.** During `ce index`, each language plugin lifts its
-functions to IIR as part of the same tree-sitter pass it uses for structural
-extraction, and attaches each `FunctionIntent` to the symbol node it came from.
-The host stores it in the `iir` table keyed by `(project_id, node_id, kind)`.
-Go, TypeScript, and Python are at parity (contract + behavior + whenExpr +
-effects + failure modes). Enable index-time extraction with `iir.enabled: true`
-in `ce.yaml`.
+**Indexed source lift is plugin-owned.** During `ce index`, a language plugin
+may attach observed `FunctionIntent` records to its symbol nodes. The host
+validates the payload and stores it in `iir`, keyed by `(project_id, node_id,
+kind)`. The bundled Go, Python, and TypeScript plugins ship this legacy
+intent-only lift; it is conservatively treated as **partial** semantic evidence
+until a plugin emits the v1 claims, evidence, and coverage fields. See the
+[capability matrix](./iir-capabilities.md) for exact current support.
+
+The engine is pure Go: tree-sitter parsing runs as WASM on wazero, and plugins
+run through wazero plus Extism. CGO is not supported.
 
 ## CLI
 
@@ -65,11 +74,14 @@ ce iir generate <intent-file> [--verify]    # emit TypeScript from intent (round
 ce iir gen-tests <intent-file> [--coverage] # emit tests (Vitest/Jest) from intent
 ce iir repair <intent-file> <source-file>   # iteratively repair source to match intent
 ce iir shape "<description>" [--generate]   # natural language → IIR (uses the model)
+ce iir implement <description> [--write]    # semantic-plan mutation slice (TypeScript)
 ```
 
-Intent files are JSON/YAML `FunctionIntent`s. `verify`/`generate`/`gen-tests`
-are deterministic; only `shape` calls a model, and its output is always run back
-through the deterministic parser before use.
+Intent files are JSON/YAML `FunctionIntent`s. `generate` and `gen-tests` are
+deterministic TypeScript emitters. `verify` and `repair` depend on an installed
+language plugin; `shape` is the model-backed hop and always revalidates its
+output before use. `implement` is an experimental, explicit-write TypeScript
+mutation slice; without `--write` it is read-only.
 
 ## Conformance rules
 
@@ -82,15 +94,16 @@ of a normalized condition (`require.forbidConditionShape`) — e.g. forbid
 
 ## Calling IIR programmatically
 
-IIR is a **host capability**, not a plugin — plugins *call* it and *extend* it,
-they don't reimplement it:
+The standalone IIR helpers are host functions that WASM plugins can call.
+Indexed lifting is separately plugin-owned: plugins emit observed IIR and the
+host validates, canonicalizes, and persists it.
 
 - **Host functions** for WASM plugins: `ce.iir_extract`, `ce.iir_verify`,
   `ce.iir_generate`, `ce.iir_gen_tests`.
-- **MCP tools** and **REST** endpoints: `ce_iir_verify` / `POST
-  /api/v1/iir/{verify,generate,gen-tests}`.
+- **MCP tools** and **REST** endpoints: `ce_iir_verify`, `ce_iir_generate`, and
+  `ce_iir_gen_tests`; `POST /api/v1/iir/{verify,generate,gen-tests}`.
 
-See [docs/iir-plugins.md](./iir-plugins.md) for the plugin surface, and the
-[`docs/specs/iir-specs/`](./specs/iir-specs/) directory for the authoritative
-specs (start with `00-overview.md`, then `15-universal-il-and-conformance.md`
-for the universal-IL direction).
+See [IIR plugin contracts](./iir-plugins.md) and [plugin authoring](./plugin-authoring.md)
+for the runtime/SDK boundary. The semantic-plan work is specified in
+[`docs/specs/`](./specs/), while the historical RFC directory preserves the
+earlier design record.
