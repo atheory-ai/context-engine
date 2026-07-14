@@ -56,6 +56,33 @@ func TestSemanticBuildWritesAreOrderedAndIdempotent(t *testing.T) {
 	}
 }
 
+func TestSemanticPlanParentsAreWrittenBeforeChildren(t *testing.T) {
+	graphDB := setupGraphDB(t)
+	ctx := context.Background()
+	buf := newTestBuffer(ctx, &testProvider{db: graphDB})
+	defer buf.Close(ctx)
+
+	for _, op := range []writebuffer.WriteOp{
+		{Type: writebuffer.OpUpsertSemanticPlan, ProjectID: "project", Payload: writebuffer.SemanticPlanUpsert{ID: "plan-2", ProjectID: "project", UnitID: "unit", ParentPlanID: "plan-1", Revision: 2, Lifecycle: "resolved", SchemaVersion: "v1", Payload: `{}`, CreatedAt: 2}},
+		{Type: writebuffer.OpUpsertSemanticPlan, ProjectID: "project", Payload: writebuffer.SemanticPlanUpsert{ID: "plan-1", ProjectID: "project", UnitID: "unit", Revision: 1, Lifecycle: "resolved", SchemaVersion: "v1", Payload: `{}`, CreatedAt: 1}},
+	} {
+		if err := buf.Send(op); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := buf.Flush(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var parentID string
+	if err := graphDB.QueryRow(`SELECT parent_plan_id FROM semantic_plans WHERE id = 'plan-2'`).Scan(&parentID); err != nil {
+		t.Fatal(err)
+	}
+	if parentID != "plan-1" {
+		t.Fatalf("parent_plan_id = %q, want plan-1", parentID)
+	}
+}
+
 func TestSemanticArtifactRejectsUnpermittedContent(t *testing.T) {
 	graphDB := setupGraphDB(t)
 	ctx := context.Background()
