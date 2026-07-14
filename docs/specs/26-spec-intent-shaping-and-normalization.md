@@ -2,7 +2,14 @@
 
 ## Implementation spec — establish trustworthy semantic-plan input
 
-Status: proposed. Depends on Spec 19 and extends the existing `internal/iir/shaper`.
+Status: implemented (foundation, 2026-07-14). Depends on Spec 19 and extends
+the existing `internal/iir/shaper`.
+
+Current implementation: `internal/semantic/shaping` accepts declared intent or
+natural-language input, delegates model work to the existing validated IIR
+shaper, creates canonical plan input, records model field provenance, and emits
+explicit open questions for provisional targets and caller-declared missing
+bindings or failure strategy. Resolution and persistence remain later stages.
 
 ## Goal
 

@@ -98,6 +98,7 @@ type Evidence struct {
 	ID          string      `json:"id"`
 	Source      string      `json:"source"`
 	Producer    string      `json:"producer"`
+	Field       string      `json:"field,omitempty"`
 	NodeID      core.NodeID `json:"nodeId,omitempty"`
 	SourceRef   *SourceRef  `json:"sourceRef,omitempty"`
 	Confidence  Confidence  `json:"confidence,omitempty"`
@@ -200,13 +201,7 @@ func NewPlan(projectID core.ProjectID, unit SemanticUnit, intent *iir.FunctionIn
 		OpenQuestions: []OpenQuestion{},
 		PassRecords:   []PassRecord{},
 		Lifecycle:     LifecycleDeclared,
-		Provenance: []Evidence{{
-			ID:          "intent",
-			Source:      "user",
-			Producer:    "semantic.plan",
-			Confidence:  ConfidenceHigh,
-			Explanation: "Initial declared intent.",
-		}},
+		Provenance:    []Evidence{initialIntentEvidence(canonicalIntent)},
 	}
 	plan.ID, err = MakePlanID(plan)
 	if err != nil {
@@ -216,6 +211,29 @@ func NewPlan(projectID core.ProjectID, unit SemanticUnit, intent *iir.FunctionIn
 		return nil, err
 	}
 	return plan, nil
+}
+
+func initialIntentEvidence(intent *iir.FunctionIntent) Evidence {
+	evidence := Evidence{
+		ID:          "intent",
+		Field:       "intent",
+		Source:      "user",
+		Producer:    "semantic.plan",
+		Confidence:  ConfidenceHigh,
+		Explanation: "Initial declared intent.",
+	}
+	switch intent.Origin {
+	case iir.OriginInferred:
+		evidence.Source = "model"
+		evidence.Producer = "iir.shaper"
+		evidence.Confidence = ConfidenceMedium
+		evidence.Explanation = "Initial intent inferred from natural-language input."
+	case iir.OriginObserved:
+		evidence.Source = "plugin"
+		evidence.Producer = "iir.lift"
+		evidence.Explanation = "Initial intent observed from source by a language plugin."
+	}
+	return evidence
 }
 
 // NewRevision derives an immutable revision from parent. Parent provenance is
