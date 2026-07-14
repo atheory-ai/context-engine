@@ -66,14 +66,51 @@ type IIRRecord struct {
 	UpdatedAt  int64
 }
 
+// IIRSourceEvidence anchors a plugin's semantic observation to source and its
+// classifier basis. It deliberately remains a core-only wire shape; semantic
+// packages translate it to richer evidence after host validation.
+type IIRSourceEvidence struct {
+	Path      string `json:"path,omitempty"`
+	StartByte int    `json:"startByte,omitempty"`
+	EndByte   int    `json:"endByte,omitempty"`
+	Basis     string `json:"basis,omitempty"`
+}
+
+// IIRClaim is an optional observed semantic claim emitted beside a lifted
+// FunctionIntent. Its vocabulary and validation are host-owned in
+// internal/semantic/lift; core keeps the plugin wire contract dependency-free.
+type IIRClaim struct {
+	ID        string              `json:"id"`
+	Kind      string              `json:"kind"`
+	Statement string              `json:"statement"`
+	Evidence  []IIRSourceEvidence `json:"evidence,omitempty"`
+}
+
+// IIRCoverage tells the host whether a plugin modeled all supported semantic
+// constructs in a lifted unit. Missing coverage is compatibility-mapped to
+// partial by the host and can never satisfy a mandatory verification claim.
+type IIRCoverage string
+
+const (
+	IIRCoverageModeled     IIRCoverage = "modeled"
+	IIRCoveragePartial     IIRCoverage = "partial"
+	IIRCoverageUnsupported IIRCoverage = "unsupported"
+)
+
 // IIRExtracted is a lifted FunctionIntent a language plugin attached to one of
-// its symbol nodes during extraction. Intent is the raw FunctionIntent JSON; the
-// host validates it (iir.ParseIntentJSON) before storing. NodeID is the plugin's
-// node id — the host remaps it alongside the plugin's nodes, so no
-// (name, start_byte) correlation is needed.
+// its symbol nodes during extraction. Intent is the raw FunctionIntent JSON;
+// the host validates and canonicalizes it before storage. NodeID is the
+// plugin's node id — the host remaps it alongside the plugin's nodes, so no
+// (name, start_byte) correlation is needed. SchemaVersion, coverage, claims,
+// and evidence form the plan-aware source-lift contract; older plugins omit
+// them and are conservatively treated as partial observations.
 type IIRExtracted struct {
-	NodeID NodeID          `json:"nodeId"`
-	Intent json.RawMessage `json:"intent"`
+	NodeID        NodeID              `json:"nodeId"`
+	SchemaVersion string              `json:"schemaVersion,omitempty"`
+	Coverage      IIRCoverage         `json:"coverage,omitempty"`
+	Intent        json.RawMessage     `json:"intent"`
+	Claims        []IIRClaim          `json:"claims,omitempty"`
+	Evidence      []IIRSourceEvidence `json:"evidence,omitempty"`
 }
 
 // Anchor is a resolved substrate reference.

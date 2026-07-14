@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/atheory-ai/context-engine/internal/core"
-	"github.com/atheory-ai/context-engine/internal/iir"
+	"github.com/atheory-ai/context-engine/internal/semantic/lift"
 	"github.com/atheory-ai/context-engine/internal/storage/queries"
 )
 
@@ -28,13 +28,13 @@ func (idx *Indexer) writePluginIIR(
 	now int64,
 ) {
 	for _, e := range entries {
-		intent, err := iir.ParseIntentJSON(e.Intent)
+		unit, err := lift.Normalize(e)
 		if err != nil {
-			idx.emitWarning(fmt.Sprintf("plugin iir for %s: %v", e.NodeID, err))
+			idx.emitWarning(fmt.Sprintf("plugin source lift for %s: %v", e.NodeID, err))
 			continue
 		}
 		// Re-marshal the validated intent so the stored payload is canonical.
-		payload, err := json.Marshal(intent)
+		payload, err := json.Marshal(unit.Observed)
 		if err != nil {
 			idx.emitWarning(fmt.Sprintf("plugin iir marshal %s: %v", e.NodeID, err))
 			continue
@@ -43,7 +43,7 @@ func (idx *Indexer) writePluginIIR(
 			ProjectID:  projectID,
 			NodeID:     e.NodeID,
 			Kind:       queries.IIRKindExtracted,
-			Language:   intent.Language,
+			Language:   unit.Language,
 			Payload:    string(payload),
 			SourceHash: sourceHash,
 			CreatedAt:  now,
