@@ -2,8 +2,9 @@
 
 ## Implementation roadmap from the IIR foundation to the north star
 
-Status: proposed. Companion to [north-star.md](../../north-star.md). This is an
-execution index, not a replacement for the IIR RFCs in `iir-specs/`.
+Status: implemented roadmap foundation (2026-07-14). Companion to
+[north-star.md](../../north-star.md). This is an execution index, not a
+replacement for the IIR RFCs in `iir-specs/`.
 
 ## Current position
 
@@ -19,21 +20,21 @@ source. The specs below close that gap in dependency order.
 
 ## Ordered work
 
-| Order | Spec | Outcome |
-| --- | --- | --- |
-| 1 | [19 — Semantic plan](19-spec-semantic-plan.md) | A versioned, evidence-bearing contract between intent and generation. |
-| 2 | [26 — Intent shaping and normalization](26-spec-intent-shaping-and-normalization.md) | Prose and declared intent become validated, canonical plan input. |
-| 3 | [20 — Resolution pass](20-spec-semantic-resolution.md) | Intent is bound to real graph symbols and unknowns are explicit. |
-| 4 | [27 — Semantic enrichment](27-spec-semantic-enrichment.md) | Relevant semantic facts are derived with explicit evidence and uncertainty. |
-| 5 | [21 — Policy-pass pipeline](21-spec-semantic-policy-passes.md) | Deterministic policies add and check traceable obligations. |
-| 6 | [28 — Recipe lowering](28-spec-implementation-recipe-lowering.md) | A resolved plan becomes a compact, target-aware renderer contract. |
-| 7 | [29 — Source lift contract](29-spec-source-lift-contract.md) | Plugin lifts remain a trustworthy, parity-tested verification frontend. |
-| 8 | [22 — Vertical slice](22-spec-semantic-mutation-slice.md) | One user-visible TypeScript mutation flow proves the architecture end to end. |
-| 9 | [23 — Verification](23-spec-semantic-verification.md) | Fidelity reports are evidence-backed and distinguish unknown from verified. |
-| 10 | [30 — Repair planning](30-spec-semantic-repair-planning.md) | Failures become minimal semantic changes before a renderer retries. |
-| 11 | [31 — Test-plan lowering](31-spec-test-plan-lowering.md) | Tests and coverage derive from the plan and its verification gaps. |
-| 12 | [24 — Semantic build graph](24-spec-semantic-build-graph.md) | Plans, versions, provenance, runs, and diffs become durable graph artifacts. |
-| 13 | [25 — Documentation and delivery](25-spec-semantic-platform-documentation.md) | Specs, public docs, SDK contracts, and release gates describe one current architecture. |
+| Order | Spec | Outcome | Owner | Status |
+| --- | --- | --- | --- | --- |
+| 1 | [19 — Semantic plan](19-spec-semantic-plan.md) | A versioned, evidence-bearing contract between intent and generation. | Semantic compiler | implemented |
+| 2 | [26 — Intent shaping and normalization](26-spec-intent-shaping-and-normalization.md) | Prose and declared intent become validated, canonical plan input. | Semantic compiler | implemented |
+| 3 | [20 — Resolution pass](20-spec-semantic-resolution.md) | Intent is bound to real graph symbols and unknowns are explicit. | Semantic compiler | implemented |
+| 4 | [27 — Semantic enrichment](27-spec-semantic-enrichment.md) | Relevant semantic facts are derived with explicit evidence and uncertainty. | Semantic compiler | implemented |
+| 5 | [21 — Policy-pass pipeline](21-spec-semantic-policy-passes.md) | Deterministic policies add and check traceable obligations. | Semantic compiler | implemented |
+| 6 | [28 — Recipe lowering](28-spec-implementation-recipe-lowering.md) | A resolved plan becomes a compact, target-aware renderer contract. | Semantic compiler | implemented |
+| 7 | [29 — Source lift contract](29-spec-source-lift-contract.md) | Plugin lifts remain a trustworthy, parity-tested verification frontend. | Plugin/runtime | implemented |
+| 8 | [22 — Vertical slice](22-spec-semantic-mutation-slice.md) | One user-visible TypeScript mutation flow proves the architecture end to end. | CLI/compiler | implemented |
+| 9 | [23 — Verification](23-spec-semantic-verification.md) | Fidelity reports are evidence-backed and distinguish unknown from verified. | Semantic compiler | implemented |
+| 10 | [30 — Repair planning](30-spec-semantic-repair-planning.md) | Failures become minimal semantic changes before a renderer retries. | Semantic compiler | implemented |
+| 11 | [31 — Test-plan lowering](31-spec-test-plan-lowering.md) | Tests and coverage derive from the plan and its verification gaps. | Semantic compiler | implemented |
+| 12 | [24 — Semantic build graph](24-spec-semantic-build-graph.md) | Plans, versions, provenance, runs, and diffs become durable graph artifacts. | Storage/compiler | implemented |
+| 13 | [25 — Documentation and delivery](25-spec-semantic-platform-documentation.md) | Specs, public docs, SDK contracts, and release gates describe one current architecture. | Documentation/release | implemented |
 
 ## Sequencing rules
 
