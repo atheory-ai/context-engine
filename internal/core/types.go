@@ -66,6 +66,117 @@ type IIRRecord struct {
 	UpdatedAt  int64
 }
 
+// SemanticPlanRecord is the durable, substrate-facing envelope for an
+// immutable semantic-plan revision. Payload is canonical semantic-plan JSON;
+// internal/semantic owns its interpretation and validation.
+type SemanticPlanRecord struct {
+	ID            string
+	ProjectID     ProjectID
+	UnitID        string
+	UnitNodeID    NodeID
+	ParentPlanID  string
+	Revision      int
+	Lifecycle     string
+	SchemaVersion string
+	Payload       string
+	RunID         RunID
+	TurnID        TurnID
+	CreatedAt     int64
+}
+
+// SemanticRecipeRecord is an immutable generator-facing lowering linked to
+// exactly one semantic-plan revision.
+type SemanticRecipeRecord struct {
+	ID              string
+	ProjectID       ProjectID
+	PlanRevisionID  string
+	SchemaVersion   string
+	TargetLanguage  string
+	RendererProfile string
+	Payload         string
+	RunID           RunID
+	TurnID          TurnID
+	CreatedAt       int64
+}
+
+// SemanticArtifactRecord records a generated source or test artifact without
+// requiring source content to be retained. SourceContent is stored only when
+// SourceContentAllowed is explicitly true.
+type SemanticArtifactRecord struct {
+	ID                   string
+	ProjectID            ProjectID
+	PlanRevisionID       string
+	RecipeID             string
+	UnitNodeID           NodeID
+	Kind                 string
+	ContentHash          string
+	TargetLanguage       string
+	TargetPath           string
+	SourceRef            string
+	SourceContent        string
+	SourceContentAllowed bool
+	RunID                RunID
+	TurnID               TurnID
+	CreatedAt            int64
+}
+
+// SemanticVerificationRecord is an immutable semantic-verification result.
+type SemanticVerificationRecord struct {
+	ID              string
+	ProjectID       ProjectID
+	PlanRevisionID  string
+	RecipeID        string
+	ArtifactID      string
+	ObservedIIRID   string
+	Verdict         string
+	VerifierVersion string
+	Payload         string
+	RunID           RunID
+	TurnID          TurnID
+	CreatedAt       int64
+}
+
+// SemanticApprovalRecord records an explicit human or policy decision and its
+// scope. It is append-only so approval history is auditable.
+type SemanticApprovalRecord struct {
+	ID             string
+	ProjectID      ProjectID
+	PlanRevisionID string
+	Scope          string
+	Decision       string
+	Rationale      string
+	ActorID        string
+	RunID          RunID
+	TurnID         TurnID
+	CreatedAt      int64
+}
+
+// SemanticTestPlanRecord and SemanticRepairRecord preserve lineage for tests
+// and repair proposals without making core depend on their semantic models.
+type SemanticTestPlanRecord struct {
+	ID             string
+	ProjectID      ProjectID
+	PlanRevisionID string
+	RecipeID       string
+	Payload        string
+	RunID          RunID
+	TurnID         TurnID
+	CreatedAt      int64
+}
+
+type SemanticRepairRecord struct {
+	ID             string
+	ProjectID      ProjectID
+	PlanRevisionID string
+	RecipeID       string
+	VerificationID string
+	Status         string
+	Payload        string
+	RunID          RunID
+	TurnID         TurnID
+	CreatedAt      int64
+}
+
 // IIRSourceEvidence anchors a plugin's semantic observation to source and its
 // classifier basis. It deliberately remains a core-only wire shape; semantic
 // packages translate it to richer evidence after host validation.

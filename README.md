@@ -385,6 +385,8 @@ make fmt
 
 ## Project docs
 
+- [Semantic-platform north star](./north-star.md) — product thesis and long-term architecture
+- [Current IIR capabilities](./docs/iir.md) and [capability matrix](./docs/iir-capabilities.md) — shipped behavior, limits, and next executable milestone
 - [Architecture guide](./docs/architecture.md) — contributor-facing codebase map
 - [Golden tests](./docs/golden-tests.md) — how to add and review golden fixtures
 - [Plugin authoring](./docs/plugin-authoring.md) — CE runtime expectations linked to SDK APIs

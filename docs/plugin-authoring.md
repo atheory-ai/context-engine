@@ -127,6 +127,16 @@ interface ExtractionResult {
 }
 ```
 
+### Optional IIR lift
+
+Language extraction can also return node-attached observed IIR. The exact wire
+contract and coverage rules are maintained in [IIR plugin contracts](./iir-plugins.md).
+Use the SDK IIR types rather than copying internal Go structures. An intent-only
+entry is compatible but becomes `partial` semantic evidence; emit v1 claims and
+source evidence only when the classifier can ground them. The host rejects
+invalid IIR before storage and never promotes missing evidence to modeled
+coverage.
+
 Use these node types when possible:
 
 | Type | Use for |

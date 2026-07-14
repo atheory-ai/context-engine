@@ -1,10 +1,14 @@
 # Slice 8+ (RFC): IIR Engine Integration
 
-Status: implemented (slices 1–6 merged/in-review as of 2026-07-04). This RFC
-turns the standalone IIR capability (slices 1–7 plus the Phase 6 repair loop)
-into a first-class part of Context Engine: extracted at index time, stored in the
-substrate, extensible through the plugin SDK, and callable from every surface.
-The final slice (NL → IIR) is specced in `12-nl-to-iir.md`.
+Status: historical RFC; materially superseded by the current
+[IIR capability guide](../../iir.md) and the semantic-platform specs. Parts of
+the intended integration shipped, but the implementation changed: index-time
+source lift is plugin-owned, host validation persists it; tree-sitter runs as
+WASM on wazero with CGO disabled; and the semantic-plan pipeline is documented
+under `docs/specs/19`–`31`.
+
+Read the remainder as decision history, not current architecture. The final
+slice (NL → IIR) is specced in `12-nl-to-iir.md`.
 
 ## Context
 
@@ -30,13 +34,12 @@ needs a model. Everything else is deterministic.**
 - IIR ⇄ IIR (comparison, rules, repair) — deterministic
 - **NL → IIR (shaping) — the one model-backed hop**
 
-## Load-bearing decision: IIR is a host capability, not a plugin
+## Historical load-bearing decision: IIR is a host capability, not a plugin
 
-IIR extraction/generation is Go + CGO tree-sitter (CGO is permitted for
-tree-sitter only, per AGENTS.md). Language node extraction, by contrast, is done
-by WASM plugins. Rather than force IIR into the WASM world (reimplementation, or
-awkward cross-runtime node correlation), **IIR lives in the host and is exposed
-to plugins**, exactly like the existing `ce.*` host functions:
+This RFC proposed a host IIR extractor built on CGO tree-sitter. That proposal
+was not adopted. The current pure-Go design instead has WASM language plugins
+lift indexed IIR, while the host validates and persists it. The standalone host
+helpers remain exposed to plugins through `ce.iir_*` functions:
 
 - Plugins **call** IIR through new `ce.iir_*` host functions.
 - Plugins **extend** IIR by declaring rule packs in their manifest; the host
@@ -101,14 +104,10 @@ Writes go through the **write buffer** (hard constraint) via a new
 
 ### D3 — Extraction runs in the post-extraction hook, correlating to nodes
 
-The indexer already runs a post-extraction pass per file (the `Analyzer` loop in
-`internal/indexer/indexer.go`, right after nodes/edges are written, with the
-file's nodes in hand). IIR extraction runs there, as a **Go-native pass** with
-access to file content + that file's nodes. Because the hook hands over the
-already-created nodes, correlation is a **local match**: extract `FunctionIntent`
-from content, match each function to a node by `file_path` + name (+ line span to
-disambiguate), and key IIR to that node's real `node_id`. No canonical-id
-reconstruction, no ID recomputation.
+The proposal below described a post-extraction Go-native pass that correlated
+host-extracted `FunctionIntent`s with nodes. Current code instead remaps the
+plugin-attached `nodeId` directly to the substrate node ID, avoiding this
+correlation step.
 
 The existing `Analyzer` interface is `(nodes) → edges`; IIR needs `(content,
 nodes) → iir records`. So this hook is generalized to a Go-native, node-data pass

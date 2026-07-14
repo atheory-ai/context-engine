@@ -7,7 +7,7 @@ VERSION ?= $(BASE_VERSION)
 PACKAGE_VERSION ?= $(VERSION)
 UNIT_PACKAGES = $(shell $(GO) list ./... | grep -v '/test/acceptance$$' | grep -v '/test/coverage$$')
 
-.PHONY: build install test test-unit test-acceptance test-coverage test-race test-fuzz vet fmt fmt-check verify verify-unit clean build-cross release-snapshot release-dry-run-plugins version-sync npm-stage npm-pack npm-publish help sdk-install sdk-build sdk-test sdk-lint bundle-default-plugins test-iir-golden
+.PHONY: build install test test-unit test-acceptance test-coverage test-race test-fuzz vet fmt fmt-check verify verify-unit clean build-cross release-snapshot release-dry-run-plugins version-sync npm-stage npm-pack npm-publish help sdk-install sdk-build sdk-test sdk-lint bundle-default-plugins test-iir-golden verify-iir-contract
 
 help:
 	@echo "Available targets:"
@@ -28,6 +28,8 @@ help:
 	@echo "  make release-snapshot  Build release artifacts with GoReleaser"
 	@echo "  make release-dry-run-plugins"
 	@echo "                         Validate release build embeds default plugins"
+	@echo "  make verify-iir-contract"
+	@echo "                         Test runtime against matching default plugin build"
 	@echo "  make npm-pack          Build npm platform tarballs"
 	@echo "  make clean             Remove local build artifacts"
 
@@ -152,6 +154,10 @@ sdk-lint: sdk-install
 # Run the golden IIR corpus against the real parse + plugin lift (needs plugins).
 test-iir-golden: bundle-default-plugins
 	$(GO) test $(GOFLAGS) ./internal/indexer/goldeniir/
+
+# Release gate: test the CE runtime against the matching in-tree SDK default
+# plugin build, including plugin-owned IIR lift and its golden fixtures.
+verify-iir-contract: test-iir-golden
 
 bundle-default-plugins: sdk-build
 	@mkdir -p internal/indexer/defaults
