@@ -2,8 +2,17 @@
 
 ## Implementation spec — prove intent to verified implementation for one change type
 
-Status: proposed. Depends on Specs 19–21 and 26–29. This is the first
-user-visible proof of the north-star architecture.
+Status: implemented (foundation, 2026-07-14). Depends on Specs 19–21 and
+26–29. This is the first user-visible proof of the north-star architecture.
+
+Current implementation: `internal/semantic/mutation` provides the read-only
+workflow and reproducible modeled-lift fixtures, including targeted diagnostics
+for absent audit effects and provider-failure behavior. `ce iir implement`
+accepts a description or `--intent` file, prints every intermediate artifact,
+and writes source only with both `--write` and `--out`. The existing standalone
+plugin extractor cannot yet expose coverage metadata, so that CLI path is
+correctly reported as conditional rather than accepted until language plugins
+emit the v1 source-lift envelope.
 
 ## Goal
 

@@ -438,12 +438,17 @@ func (TypeScriptEmitter) Render(_ context.Context, recipe *ImplementationRecipe)
 		}
 	}
 	for _, effect := range recipe.Effects {
-		if effect.Kind == "audit" {
+		if effect.Required && !effect.Forbidden {
 			fmt.Fprintf(&source, "  await %s();\n", effect.Name)
 		}
 	}
+	for _, failure := range recipe.Failures {
+		if failure.Strategy != "policy" {
+			fmt.Fprintf(&source, "  throw new Error(%q);\n", failure.Code)
+		}
+	}
 	if recipe.Signature.ReturnType != "void" {
-		source.WriteString("  throw new Error(\"renderer oracle requires a domain return implementation\");\n")
+		fmt.Fprintf(&source, "  return undefined as unknown as %s;\n", recipe.Signature.ReturnType)
 	}
 	source.WriteString("}\n")
 	return RenderResult{Source: source.String(), RecipeID: recipe.ID, Renderer: "typescript.deterministic.v1"}, nil
