@@ -2,8 +2,15 @@
 
 ## Implementation spec — one current architecture, explicit maturity, releasable contracts
 
-Status: proposed. Runs alongside Specs 19–24 and 26–31; it does not block their initial
-design, but each implementation milestone must satisfy its documentation gate.
+Status: implemented (2026-07-14). Runs alongside Specs 19–24 and 26–31; it does
+not block their initial design, but each implementation milestone must satisfy
+its documentation gate.
+
+Implementation: `docs/iir.md` is reconciled as the current capability guide;
+`docs/iir-capabilities.md` is a tested capability matrix; plugin wire and
+conformance-rule contracts are documented; historical RFCs declare their
+supersession; and release CI gates the CE runtime against an in-tree matching
+default-plugin build via `make verify-iir-contract`.
 
 ## Goal
 

@@ -146,6 +146,27 @@ type testWriter struct {
 func (w *testWriter) UpsertNode(_ context.Context, _ core.Node) error     { return nil }
 func (w *testWriter) UpsertEdge(_ context.Context, _ core.Edge) error     { return nil }
 func (w *testWriter) UpsertIIR(_ context.Context, _ core.IIRRecord) error { return nil }
+func (w *testWriter) UpsertSemanticPlan(_ context.Context, _ core.SemanticPlanRecord) error {
+	return nil
+}
+func (w *testWriter) UpsertSemanticRecipe(_ context.Context, _ core.SemanticRecipeRecord) error {
+	return nil
+}
+func (w *testWriter) UpsertSemanticArtifact(_ context.Context, _ core.SemanticArtifactRecord) error {
+	return nil
+}
+func (w *testWriter) RecordSemanticVerification(_ context.Context, _ core.SemanticVerificationRecord) error {
+	return nil
+}
+func (w *testWriter) RecordSemanticApproval(_ context.Context, _ core.SemanticApprovalRecord) error {
+	return nil
+}
+func (w *testWriter) UpsertSemanticTestPlan(_ context.Context, _ core.SemanticTestPlanRecord) error {
+	return nil
+}
+func (w *testWriter) UpsertSemanticRepair(_ context.Context, _ core.SemanticRepairRecord) error {
+	return nil
+}
 func (w *testWriter) UpdateActivation(_ context.Context, _ core.NodeID, _ float64) error {
 	return nil
 }
