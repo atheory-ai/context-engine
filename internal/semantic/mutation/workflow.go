@@ -123,9 +123,9 @@ func (w Workflow) Execute(ctx context.Context, source *plan.SemanticPlan) (*Resu
 	return result, nil
 }
 
-// MutationPolicies encodes the initial vertical-slice policies as declarative
+// Policies encodes the initial vertical-slice policies as declarative
 // lowering inputs. Future plugin/project manifests feed the same pass API.
-func MutationPolicies() []passes.Policy {
+func Policies() []passes.Policy {
 	return []passes.Policy{
 		{ID: "semantic.mutation.audit", Version: "v1", Phase: passes.PhaseConstrain, Priority: 10, Severity: passes.SeverityError, When: passes.Selector{ClaimKinds: []string{"effect.mutation"}}, Add: &passes.Obligation{Kind: "audit", Requirement: "audit.publish", Mandatory: true}},
 		{ID: "semantic.mutation.provider-failure", Version: "v1", Phase: passes.PhaseConstrain, Priority: 20, Severity: passes.SeverityError, When: passes.Selector{ClaimKinds: []string{"failure.propagated"}}, Add: &passes.Obligation{Kind: "failure.wrap", Requirement: "wrap provider error", Mandatory: true}},
@@ -156,19 +156,19 @@ func repairGuidance(report *iir.Report, findings []passes.Finding) []string {
 }
 
 func effectiveIntent(intent *iir.FunctionIntent, lowered *recipe.ImplementationRecipe) *iir.FunctionIntent {
-	copy := *intent
-	copy.SideEffects = append([]iir.SideEffect{}, intent.SideEffects...)
+	effective := *intent
+	effective.SideEffects = append([]iir.SideEffect{}, intent.SideEffects...)
 	seen := map[string]bool{}
-	for _, effect := range copy.SideEffects {
+	for _, effect := range effective.SideEffects {
 		seen[effect.Name] = true
 	}
 	for _, effect := range lowered.Effects {
 		if effect.Required && !effect.Forbidden && !seen[effect.Name] {
-			copy.SideEffects = append(copy.SideEffects, iir.SideEffect{Name: effect.Name, Kind: effect.Kind})
+			effective.SideEffects = append(effective.SideEffects, iir.SideEffect{Name: effect.Name, Kind: effect.Kind})
 			seen[effect.Name] = true
 		}
 	}
-	return &copy
+	return &effective
 }
 
 func missingRequiredEffects(lowered *recipe.ImplementationRecipe, observed *iir.FunctionIntent) []string {

@@ -64,7 +64,7 @@ constraints: []
 }
 
 func workflow(observer Observer) Workflow {
-	return Workflow{Renderer: recipe.TypeScriptEmitter{}, Observer: observer, Rules: iir.DefaultRulePack(), Profile: recipe.DefaultProfile("typescript"), Policies: MutationPolicies()}
+	return Workflow{Renderer: recipe.TypeScriptEmitter{}, Observer: observer, Rules: iir.DefaultRulePack(), Profile: recipe.DefaultProfile("typescript"), Policies: Policies()}
 }
 
 func TestWorkflowAcceptsModeledMutation(t *testing.T) {

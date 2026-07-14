@@ -58,7 +58,7 @@ func runIirImplement(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer cleanup()
-	workflow := mutation.Workflow{Renderer: recipe.TypeScriptEmitter{}, Observer: cliObserver{extractor: extractor}, Rules: iir.DefaultRulePack(), Profile: recipe.DefaultProfile("typescript"), Policies: mutation.MutationPolicies()}
+	workflow := mutation.Workflow{Renderer: recipe.TypeScriptEmitter{}, Observer: cliObserver{extractor: extractor}, Rules: iir.DefaultRulePack(), Profile: recipe.DefaultProfile("typescript"), Policies: mutation.Policies()}
 	result, err := workflow.Execute(cmd.Context(), semanticPlan)
 	if err != nil {
 		return err
