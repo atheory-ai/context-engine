@@ -2,8 +2,16 @@
 
 ## Implementation spec — durable plans, artifacts, provenance, and semantic diffs
 
-Status: proposed. Depends on Specs 19, 22, 23, 28, 30, and 31, plus Spec 1
-(data layer).
+Status: implemented (foundation, 2026-07-14). Depends on Specs 19, 22, 23, 28,
+30, and 31, plus Spec 1 (data layer).
+
+Implementation: the graph migration creates immutable, foreign-keyed plan,
+recipe, artifact, verification, approval, test-plan, and repair records. All
+semantic writes are typed write-buffer operations; query APIs provide history,
+lineage, unresolved questions, and plan-ID semantic diffs. The initial
+retention policy marks artifacts stale when incremental pruning removes their
+sole source unit, retaining hash/provenance records indefinitely until a future
+policy-driven compactor is introduced.
 
 ## Goal
 

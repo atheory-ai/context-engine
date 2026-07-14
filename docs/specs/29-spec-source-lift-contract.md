@@ -2,8 +2,15 @@
 
 ## Implementation spec — maintain a trustworthy source-to-observed-semantics frontend
 
-Status: proposed. Hardens existing plugin-owned IIR lifting for the semantic
-compiler pipeline.
+Status: implemented (foundation, 2026-07-14). Hardens existing plugin-owned IIR
+lifting for the semantic compiler pipeline.
+
+Current implementation: `internal/semantic/lift` owns schema, observed-origin,
+coverage, claim, and evidence validation for plugin lifts. Both index-time IIR
+persistence and the standalone plugin extractor use it. The expanded core wire
+payload remains backward compatible: legacy intent-only output is explicitly
+`partial`, never modeled. Plugin-authored source spans and richer cross-language
+golden fixture updates remain follow-on work for language-plugin packages.
 
 ## Goal
 

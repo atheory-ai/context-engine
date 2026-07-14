@@ -66,14 +66,162 @@ type IIRRecord struct {
 	UpdatedAt  int64
 }
 
+// SemanticPlanRecord is the durable, substrate-facing envelope for an
+// immutable semantic-plan revision. Payload is canonical semantic-plan JSON;
+// internal/semantic owns its interpretation and validation.
+type SemanticPlanRecord struct {
+	ID            string
+	ProjectID     ProjectID
+	UnitID        string
+	UnitNodeID    NodeID
+	ParentPlanID  string
+	Revision      int
+	Lifecycle     string
+	SchemaVersion string
+	Payload       string
+	RunID         RunID
+	TurnID        TurnID
+	CreatedAt     int64
+}
+
+// SemanticRecipeRecord is an immutable generator-facing lowering linked to
+// exactly one semantic-plan revision.
+type SemanticRecipeRecord struct {
+	ID              string
+	ProjectID       ProjectID
+	PlanRevisionID  string
+	SchemaVersion   string
+	TargetLanguage  string
+	RendererProfile string
+	Payload         string
+	RunID           RunID
+	TurnID          TurnID
+	CreatedAt       int64
+}
+
+// SemanticArtifactRecord records a generated source or test artifact without
+// requiring source content to be retained. SourceContent is stored only when
+// SourceContentAllowed is explicitly true.
+type SemanticArtifactRecord struct {
+	ID                   string
+	ProjectID            ProjectID
+	PlanRevisionID       string
+	RecipeID             string
+	UnitNodeID           NodeID
+	Kind                 string
+	ContentHash          string
+	TargetLanguage       string
+	TargetPath           string
+	SourceRef            string
+	SourceContent        string
+	SourceContentAllowed bool
+	RunID                RunID
+	TurnID               TurnID
+	CreatedAt            int64
+}
+
+// SemanticVerificationRecord is an immutable semantic-verification result.
+type SemanticVerificationRecord struct {
+	ID              string
+	ProjectID       ProjectID
+	PlanRevisionID  string
+	RecipeID        string
+	ArtifactID      string
+	ObservedIIRID   string
+	Verdict         string
+	VerifierVersion string
+	Payload         string
+	RunID           RunID
+	TurnID          TurnID
+	CreatedAt       int64
+}
+
+// SemanticApprovalRecord records an explicit human or policy decision and its
+// scope. It is append-only so approval history is auditable.
+type SemanticApprovalRecord struct {
+	ID             string
+	ProjectID      ProjectID
+	PlanRevisionID string
+	Scope          string
+	Decision       string
+	Rationale      string
+	ActorID        string
+	RunID          RunID
+	TurnID         TurnID
+	CreatedAt      int64
+}
+
+// SemanticTestPlanRecord and SemanticRepairRecord preserve lineage for tests
+// and repair proposals without making core depend on their semantic models.
+type SemanticTestPlanRecord struct {
+	ID             string
+	ProjectID      ProjectID
+	PlanRevisionID string
+	RecipeID       string
+	Payload        string
+	RunID          RunID
+	TurnID         TurnID
+	CreatedAt      int64
+}
+
+type SemanticRepairRecord struct {
+	ID             string
+	ProjectID      ProjectID
+	PlanRevisionID string
+	RecipeID       string
+	VerificationID string
+	Status         string
+	Payload        string
+	RunID          RunID
+	TurnID         TurnID
+	CreatedAt      int64
+}
+
+// IIRSourceEvidence anchors a plugin's semantic observation to source and its
+// classifier basis. It deliberately remains a core-only wire shape; semantic
+// packages translate it to richer evidence after host validation.
+type IIRSourceEvidence struct {
+	Path      string `json:"path,omitempty"`
+	StartByte int    `json:"startByte,omitempty"`
+	EndByte   int    `json:"endByte,omitempty"`
+	Basis     string `json:"basis,omitempty"`
+}
+
+// IIRClaim is an optional observed semantic claim emitted beside a lifted
+// FunctionIntent. Its vocabulary and validation are host-owned in
+// internal/semantic/lift; core keeps the plugin wire contract dependency-free.
+type IIRClaim struct {
+	ID        string              `json:"id"`
+	Kind      string              `json:"kind"`
+	Statement string              `json:"statement"`
+	Evidence  []IIRSourceEvidence `json:"evidence,omitempty"`
+}
+
+// IIRCoverage tells the host whether a plugin modeled all supported semantic
+// constructs in a lifted unit. Missing coverage is compatibility-mapped to
+// partial by the host and can never satisfy a mandatory verification claim.
+type IIRCoverage string
+
+const (
+	IIRCoverageModeled     IIRCoverage = "modeled"
+	IIRCoveragePartial     IIRCoverage = "partial"
+	IIRCoverageUnsupported IIRCoverage = "unsupported"
+)
+
 // IIRExtracted is a lifted FunctionIntent a language plugin attached to one of
-// its symbol nodes during extraction. Intent is the raw FunctionIntent JSON; the
-// host validates it (iir.ParseIntentJSON) before storing. NodeID is the plugin's
-// node id — the host remaps it alongside the plugin's nodes, so no
-// (name, start_byte) correlation is needed.
+// its symbol nodes during extraction. Intent is the raw FunctionIntent JSON;
+// the host validates and canonicalizes it before storage. NodeID is the
+// plugin's node id — the host remaps it alongside the plugin's nodes, so no
+// (name, start_byte) correlation is needed. SchemaVersion, coverage, claims,
+// and evidence form the plan-aware source-lift contract; older plugins omit
+// them and are conservatively treated as partial observations.
 type IIRExtracted struct {
-	NodeID NodeID          `json:"nodeId"`
-	Intent json.RawMessage `json:"intent"`
+	NodeID        NodeID              `json:"nodeId"`
+	SchemaVersion string              `json:"schemaVersion,omitempty"`
+	Coverage      IIRCoverage         `json:"coverage,omitempty"`
+	Intent        json.RawMessage     `json:"intent"`
+	Claims        []IIRClaim          `json:"claims,omitempty"`
+	Evidence      []IIRSourceEvidence `json:"evidence,omitempty"`
 }
 
 // Anchor is a resolved substrate reference.

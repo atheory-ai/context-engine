@@ -96,6 +96,60 @@ func (w *Writer) UpsertIIR(_ context.Context, r core.IIRRecord) error {
 	})
 }
 
+// UpsertSemanticPlan queues an immutable semantic-plan revision.
+func (w *Writer) UpsertSemanticPlan(_ context.Context, r core.SemanticPlanRecord) error {
+	return w.buffer.Send(writebuffer.WriteOp{Type: writebuffer.OpUpsertSemanticPlan, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticPlanUpsert{
+		ID: r.ID, ProjectID: string(r.ProjectID), UnitID: r.UnitID, UnitNodeID: string(r.UnitNodeID), ParentPlanID: r.ParentPlanID,
+		Revision: r.Revision, Lifecycle: r.Lifecycle, SchemaVersion: r.SchemaVersion, Payload: r.Payload, RunID: string(r.RunID), TurnID: string(r.TurnID), CreatedAt: r.CreatedAt,
+	}})
+}
+
+// UpsertSemanticRecipe queues an immutable recipe linked to its plan revision.
+func (w *Writer) UpsertSemanticRecipe(_ context.Context, r core.SemanticRecipeRecord) error {
+	return w.buffer.Send(writebuffer.WriteOp{Type: writebuffer.OpUpsertSemanticRecipe, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticRecipeUpsert{
+		ID: r.ID, ProjectID: string(r.ProjectID), PlanRevisionID: r.PlanRevisionID, SchemaVersion: r.SchemaVersion, TargetLanguage: r.TargetLanguage,
+		RendererProfile: r.RendererProfile, Payload: r.Payload, RunID: string(r.RunID), TurnID: string(r.TurnID), CreatedAt: r.CreatedAt,
+	}})
+}
+
+// UpsertSemanticArtifact queues a provenance-preserving generated artifact.
+func (w *Writer) UpsertSemanticArtifact(_ context.Context, r core.SemanticArtifactRecord) error {
+	return w.buffer.Send(writebuffer.WriteOp{Type: writebuffer.OpUpsertSemanticArtifact, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticArtifactUpsert{
+		ID: r.ID, ProjectID: string(r.ProjectID), PlanRevisionID: r.PlanRevisionID, RecipeID: r.RecipeID, UnitNodeID: string(r.UnitNodeID),
+		Kind: r.Kind, ContentHash: r.ContentHash, TargetLanguage: r.TargetLanguage, TargetPath: r.TargetPath, SourceRef: r.SourceRef,
+		SourceContent: r.SourceContent, SourceContentAllowed: r.SourceContentAllowed, RunID: string(r.RunID), TurnID: string(r.TurnID), CreatedAt: r.CreatedAt,
+	}})
+}
+
+// RecordSemanticVerification queues an immutable semantic-verification report.
+func (w *Writer) RecordSemanticVerification(_ context.Context, r core.SemanticVerificationRecord) error {
+	return w.buffer.Send(writebuffer.WriteOp{Type: writebuffer.OpRecordSemanticVerification, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticVerificationRecord{
+		ID: r.ID, ProjectID: string(r.ProjectID), PlanRevisionID: r.PlanRevisionID, RecipeID: r.RecipeID, ArtifactID: r.ArtifactID,
+		ObservedIIRID: r.ObservedIIRID, Verdict: r.Verdict, VerifierVersion: r.VerifierVersion, Payload: r.Payload, RunID: string(r.RunID), TurnID: string(r.TurnID), CreatedAt: r.CreatedAt,
+	}})
+}
+
+// RecordSemanticApproval queues an auditable user or policy decision.
+func (w *Writer) RecordSemanticApproval(_ context.Context, r core.SemanticApprovalRecord) error {
+	return w.buffer.Send(writebuffer.WriteOp{Type: writebuffer.OpRecordSemanticApproval, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticApprovalRecord{
+		ID: r.ID, ProjectID: string(r.ProjectID), PlanRevisionID: r.PlanRevisionID, Scope: r.Scope, Decision: r.Decision, Rationale: r.Rationale,
+		ActorID: r.ActorID, RunID: string(r.RunID), TurnID: string(r.TurnID), CreatedAt: r.CreatedAt,
+	}})
+}
+
+func (w *Writer) UpsertSemanticTestPlan(_ context.Context, r core.SemanticTestPlanRecord) error {
+	return w.buffer.Send(writebuffer.WriteOp{Type: writebuffer.OpUpsertSemanticTestPlan, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticTestPlanUpsert{
+		ID: r.ID, ProjectID: string(r.ProjectID), PlanRevisionID: r.PlanRevisionID, RecipeID: r.RecipeID, Payload: r.Payload, RunID: string(r.RunID), TurnID: string(r.TurnID), CreatedAt: r.CreatedAt,
+	}})
+}
+
+func (w *Writer) UpsertSemanticRepair(_ context.Context, r core.SemanticRepairRecord) error {
+	return w.buffer.Send(writebuffer.WriteOp{Type: writebuffer.OpUpsertSemanticRepair, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticRepairUpsert{
+		ID: r.ID, ProjectID: string(r.ProjectID), PlanRevisionID: r.PlanRevisionID, RecipeID: r.RecipeID, VerificationID: r.VerificationID,
+		Status: r.Status, Payload: r.Payload, RunID: string(r.RunID), TurnID: string(r.TurnID), CreatedAt: r.CreatedAt,
+	}})
+}
+
 // UpdateActivation queues an activation update for a node.
 func (w *Writer) UpdateActivation(_ context.Context, nodeID core.NodeID, activation float64) error {
 	return w.buffer.Send(writebuffer.WriteOp{
