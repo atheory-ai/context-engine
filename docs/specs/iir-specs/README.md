@@ -1,6 +1,9 @@
 # Context Engine IIR Project Specs
 
-This folder contains the lightweight spec files for adding IIR to the existing Context Engine project.
+This folder preserves the historical IIR slice RFCs. For the current product
+contract, read [the IIR capability guide](../../iir.md), the
+[semantic-platform north star](../../../north-star.md), and the
+[dependency-ordered roadmap](../next-steps.md) first.
 
 Start with:
 
@@ -30,26 +33,18 @@ Do not start with generation. Prove verification first.
 
 ## Status
 
-Slices 1–7 and the Phase 6 repair loop are implemented and merged. The standalone
-IIR loop (verify / generate / gen-tests / repair) ships behind `ce iir`.
-
-Next is engine integration — see `11-engine-integration.md` (RFC): extract IIR at
-index time into the substrate, let plugins contribute rule "flavours" via merged
-rule packs, expose `ce.iir_*` host functions, and add the intent→code endpoint on
-every surface. The load-bearing decision there: **IIR is a host capability that
-plugins call and extend, not a plugin itself.**
+Slices 1–7 and the repair loop are implemented; the standalone loop ships under
+`ce iir`. The old engine-integration RFC is materially superseded: index-time
+source lift is now plugin-owned, the host validates/persists it, and the engine
+is pure Go with WASM tree-sitter rather than CGO. See the current guides above
+instead of treating historical present tense as an implementation claim.
 
 Merged follow-up: `14-slice-normalized-when-expr.md` — behavior conditions carry
 an optional structured `whenExpr` (deterministic AST walk, additive, no model)
 so verify compares condition *content*, not just clause counts. First structural
 IL primitive.
 
-North-star reframing: `15-universal-il-and-conformance.md` (RFC) — recast IIR as
-a **universal IL**: valid code lifts totally to IL (mechanical), an LLM renders
-IL back to code in any language, and generation is verified by lifting the
-result and comparing at the IL level (no mechanical backends). A separate,
-plugin-contributed **conformance layer** (rules + classifiers over the IL,
-authored once, applied across languages) enforces "how we write it here" —
-mechanically replacing the decaying prose-rules files people hand their LLMs
-today. Sequenced single-language-conformance first; cross-language translation
-falls out of the same loop later.
+`15-universal-il-and-conformance.md` remains a north-star RFC only. The current
+implementation is function-level and TypeScript rendering is the sole supported
+generation target; universal total lifting and cross-language generation are
+explicitly deferred.

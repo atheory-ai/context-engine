@@ -1,13 +1,72 @@
 # IIR Plugin Surface
 
-This document describes the extension points for the Intermediate Intent
-Representation (IIR). It is the contract referenced by Slice 5.
+This document describes the current IIR runtime/SDK contract. It supersedes the
+interface-first wording in the historical Slice 5 RFC: CE loads WASM plugins
+through wazero and Extism, while all host validation is performed before an IIR
+payload is persisted or a contributed rule pack is used.
 
-> **Status: interface-first.** The surface is defined and the built-in
-> TypeScript capabilities implement it, but there is no dynamic runtime yet —
-> no WASM, remote loading, sandboxing, or publishing. Plugins are registered
-> in-process. A later slice can add dynamic loading behind these same
-> interfaces without changing them.
+The current boundaries are intentionally split:
+
+- Language plugins own **indexed source lift** and attach observed IIR to their
+  extracted symbol nodes.
+- The host owns **validation, canonicalization, storage, comparison, and
+  declarative rule evaluation**.
+- The `ce.iir_*` functions below are standalone host helpers. They are not the
+  indexed source-lift pipeline.
+
+## Indexed source-lift wire contract
+
+`ce_language_extract` may return an `iir` array beside nodes and edges. Every
+entry must identify the emitted symbol node and use an observed
+`FunctionIntent`:
+
+```json
+{
+  "nodeId": "plugin-symbol-id",
+  "schemaVersion": "v1",
+  "coverage": "modeled",
+  "intent": { "kind": "FunctionIntent", "origin": "observed" },
+  "claims": [{ "id": "effect-save", "kind": "effect.db", "statement": "repository.save", "evidence": [] }],
+  "evidence": [{ "path": "src/save.ts", "startByte": 0, "endByte": 64, "basis": "tree-sitter" }]
+}
+```
+
+The host remaps `nodeId` to the persisted substrate ID, validates the intent,
+and normalizes the schema. `schemaVersion` is currently `v1`; supported
+coverage values are `modeled`, `partial`, and `unsupported`. `modeled` requires
+claims or source evidence and is the only coverage that can satisfy a mandatory
+semantic verification requirement. Older intent-only payloads remain
+compatible, but are mapped to `v1` plus `partial` coverage. Invalid payloads do
+not reach semantic storage; structural indexing continues without that lift.
+
+Plugins must keep source evidence byte ranges valid and state the classifier
+basis (for example `tree-sitter`, `resolved`, or a named conservative
+classifier). The required golden fixture gate is `make test-iir-golden`, which
+builds the matching default SDK plugins and exercises the real WASM lift.
+
+## Manifest-contributed policy data
+
+The shipped manifest field is top-level `iirRules`, a JSON/YAML declarative
+conformance rule pack. The host parses it with the same rule validator used for
+project rule packs; malformed data is surfaced and never applied. Example:
+
+```json
+{
+  "iirRules": {
+    "rules": [{
+      "id": "public-return",
+      "target": "FunctionIntent",
+      "severity": "error",
+      "when": { "visibility": "public" },
+      "require": { "explicitReturnType": true }
+    }]
+  }
+}
+```
+
+Semantic compiler-pass policies are host-evaluated, declarative data too, but
+they do **not** yet have a plugin manifest key. That integration remains
+proposed; plugins cannot supply executable transformation code.
 
 ## What a plugin can contribute
 
