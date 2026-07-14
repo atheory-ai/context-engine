@@ -2,8 +2,14 @@
 
 ## Implementation spec — deterministic enrichment and conformance over plans
 
-Status: proposed. Depends on Specs 19 and 20, and extends the existing IIR
-rule-pack model without breaking it.
+Status: implemented (foundation, 2026-07-14). Depends on Specs 19 and 20, and
+extends the existing IIR rule-pack model without breaking it.
+
+Current implementation: `internal/semantic/passes` supplies host-evaluated,
+declarative policy merging and application. It records applied, skipped, and
+conflicting policies; preserves declared facts; adds approval questions; and
+blocks plans on incompatible mandatory obligations. Plugin manifest loading and
+persisting policy sources are deferred to the plugin and build-graph slices.
 
 ## Goal
 

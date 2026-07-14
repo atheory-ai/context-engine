@@ -39,7 +39,7 @@ SemanticPlan
   decisions: []Decision
   openQuestions: []OpenQuestion
   passRecords: []PassRecord
-  lifecycle: declared | resolving | resolved | generated | observed | verified
+  lifecycle: declared | resolving | blocked | resolved | generated | observed | verified
   provenance: []Evidence
 ```
 

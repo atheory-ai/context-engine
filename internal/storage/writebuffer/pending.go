@@ -67,7 +67,11 @@ func (p *pendingMap) drain() []WriteOp {
 		ops = append(ops, op)
 	}
 	sort.SliceStable(ops, func(i, j int) bool {
-		return flushOrder(ops[i].Type) < flushOrder(ops[j].Type)
+		leftOrder, rightOrder := flushOrder(ops[i].Type), flushOrder(ops[j].Type)
+		if leftOrder != rightOrder {
+			return leftOrder < rightOrder
+		}
+		return sameFlushOrderLess(ops[i], ops[j])
 	})
 	ops = append(ops, p.enrichments...)
 
@@ -78,6 +82,30 @@ func (p *pendingMap) drain() []WriteOp {
 	p.enrichments = p.enrichments[:0]
 
 	return ops
+}
+
+// sameFlushOrderLess provides deterministic ordering within one flush stage.
+// Plan revisions have a self-referential foreign key, so a parent must be
+// inserted before its child even though pending-map iteration is unordered.
+func sameFlushOrderLess(left, right WriteOp) bool {
+	if left.Type != OpUpsertSemanticPlan || right.Type != OpUpsertSemanticPlan {
+		return false
+	}
+	leftPlan := left.Payload.(SemanticPlanUpsert)
+	rightPlan := right.Payload.(SemanticPlanUpsert)
+	if leftPlan.ParentPlanID == rightPlan.ID {
+		return false
+	}
+	if rightPlan.ParentPlanID == leftPlan.ID {
+		return true
+	}
+	if leftPlan.UnitID != rightPlan.UnitID {
+		return leftPlan.UnitID < rightPlan.UnitID
+	}
+	if leftPlan.Revision != rightPlan.Revision {
+		return leftPlan.Revision < rightPlan.Revision
+	}
+	return leftPlan.ID < rightPlan.ID
 }
 
 func flushOrder(opType OpType) int {
@@ -94,8 +122,20 @@ func flushOrder(opType OpType) int {
 		return 50
 	case OpUpsertIIR:
 		return 55 // after nodes (IIR references node ids), before enrichments
-	case OpRecordEnrichment:
+	case OpUpsertSemanticPlan:
+		return 56 // after IIR and nodes; recipes and descendants reference it
+	case OpUpsertSemanticRecipe:
+		return 57
+	case OpUpsertSemanticArtifact, OpUpsertSemanticTestPlan:
+		return 58
+	case OpRecordSemanticVerification:
+		return 59
+	case OpUpsertSemanticRepair:
 		return 60
+	case OpRecordSemanticApproval:
+		return 61
+	case OpRecordEnrichment:
+		return 70
 	default:
 		return 100
 	}
@@ -118,6 +158,20 @@ func keyFor(op WriteOp) pendingKey {
 		entityID = op.Payload.(ConceptUpsert).ID
 	case OpUpsertIIR:
 		entityID = op.Payload.(IIRUpsert).ID
+	case OpUpsertSemanticPlan:
+		entityID = op.Payload.(SemanticPlanUpsert).ID
+	case OpUpsertSemanticRecipe:
+		entityID = op.Payload.(SemanticRecipeUpsert).ID
+	case OpUpsertSemanticArtifact:
+		entityID = op.Payload.(SemanticArtifactUpsert).ID
+	case OpRecordSemanticVerification:
+		entityID = op.Payload.(SemanticVerificationRecord).ID
+	case OpRecordSemanticApproval:
+		entityID = op.Payload.(SemanticApprovalRecord).ID
+	case OpUpsertSemanticTestPlan:
+		entityID = op.Payload.(SemanticTestPlanUpsert).ID
+	case OpUpsertSemanticRepair:
+		entityID = op.Payload.(SemanticRepairUpsert).ID
 	}
 	return pendingKey{
 		opType:    op.Type,
