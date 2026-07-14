@@ -37,6 +37,16 @@ func RunGraph(db *sql.DB) error {
 	return runMigrations(db, "graph")
 }
 
+// RollbackGraph rolls back the requested number of graph migrations. It is
+// intentionally exposed for migration-contract tests and controlled recovery;
+// normal engine startup only migrates forward via RunGraph.
+func RollbackGraph(db *sql.DB, steps int) error {
+	if steps < 1 {
+		return fmt.Errorf("rollback graph: steps must be positive")
+	}
+	return rollbackMigrations(db, "graph", steps)
+}
+
 // RunOrg applies org-specific pending migrations to org.db.
 // Must be called after RunGraph(db) since it adds tables to the same database.
 func RunOrg(db *sql.DB) error {
@@ -60,6 +70,25 @@ func runMigrations(db *sql.DB, name string) error {
 	}
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return fmt.Errorf("migrate up %s: %w", name, err)
+	}
+	return nil
+}
+
+func rollbackMigrations(db *sql.DB, name string, steps int) error {
+	src, err := iofs.New(migrationFiles, name)
+	if err != nil {
+		return fmt.Errorf("migration source %s: %w", name, err)
+	}
+	driver, err := sqlite.WithInstance(db, &sqlite.Config{MigrationsTable: "schema_migrations_" + name})
+	if err != nil {
+		return fmt.Errorf("migration driver %s: %w", name, err)
+	}
+	m, err := migrate.NewWithInstance("iofs", src, name, driver)
+	if err != nil {
+		return fmt.Errorf("migrate %s: %w", name, err)
+	}
+	if err := m.Steps(-steps); err != nil {
+		return fmt.Errorf("migrate down %s: %w", name, err)
 	}
 	return nil
 }

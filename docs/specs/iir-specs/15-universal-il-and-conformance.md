@@ -1,10 +1,11 @@
 # RFC 15: IIR as a Universal IL — generate-via-LLM, verify-via-lift, and a plugin-contributed conformance layer
 
-Status: proposed (design RFC, from a design session). This is a north-star
-reframing of what IIR is *for*. It does not obsolete the shipped IIR loop
-(slices 1–14); it recasts that work as the substrate for a larger goal and
-defines the architecture we grow toward. Concrete build slices are deferred to
-follow-up specs; this fixes the shape and the load-bearing decisions.
+Status: north-star RFC / proposed. The durable current expression of this vision
+is [north-star.md](../../../north-star.md), with executable work in
+`docs/specs/19`–`31`. Current code does **not** provide total lifting, a
+universal IL, cross-language LLM generation, or whole-program semantic proof.
+Read this document as long-term design history rather than a claim about shipped
+behavior.
 
 ## Goal
 

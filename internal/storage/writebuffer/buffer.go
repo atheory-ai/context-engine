@@ -293,6 +293,73 @@ func execOp(ctx context.Context, tx *sql.Tx, op WriteOp) error {
 			nullableString(r.SourceHash), nullableString(r.RunID), r.CreatedAt, r.UpdatedAt)
 		return err
 
+	case OpUpsertSemanticPlan:
+		r := op.Payload.(SemanticPlanUpsert)
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO semantic_plans (id, project_id, unit_id, unit_node_id, parent_plan_id, revision, lifecycle, schema_version, payload, run_id, turn_id, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO NOTHING
+		`, r.ID, r.ProjectID, r.UnitID, nullableString(r.UnitNodeID), nullableString(r.ParentPlanID), r.Revision, r.Lifecycle, r.SchemaVersion, r.Payload, nullableString(r.RunID), nullableString(r.TurnID), r.CreatedAt)
+		return err
+
+	case OpUpsertSemanticRecipe:
+		r := op.Payload.(SemanticRecipeUpsert)
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO semantic_recipes (id, project_id, plan_revision_id, schema_version, target_language, renderer_profile, payload, run_id, turn_id, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO NOTHING
+		`, r.ID, r.ProjectID, r.PlanRevisionID, r.SchemaVersion, r.TargetLanguage, r.RendererProfile, r.Payload, nullableString(r.RunID), nullableString(r.TurnID), r.CreatedAt)
+		return err
+
+	case OpUpsertSemanticArtifact:
+		r := op.Payload.(SemanticArtifactUpsert)
+		allowed := 0
+		if r.SourceContentAllowed {
+			allowed = 1
+		}
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO semantic_artifacts (id, project_id, plan_revision_id, recipe_id, unit_node_id, kind, content_hash, target_language, target_path, source_ref, source_content, source_content_allowed, run_id, turn_id, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO NOTHING
+		`, r.ID, r.ProjectID, r.PlanRevisionID, r.RecipeID, nullableString(r.UnitNodeID), r.Kind, r.ContentHash, r.TargetLanguage, r.TargetPath, nullableString(r.SourceRef), nullableString(r.SourceContent), allowed, nullableString(r.RunID), nullableString(r.TurnID), r.CreatedAt)
+		return err
+
+	case OpRecordSemanticVerification:
+		r := op.Payload.(SemanticVerificationRecord)
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO semantic_verifications (id, project_id, plan_revision_id, recipe_id, artifact_id, observed_iir_id, verdict, verifier_version, payload, run_id, turn_id, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO NOTHING
+		`, r.ID, r.ProjectID, r.PlanRevisionID, r.RecipeID, nullableString(r.ArtifactID), nullableString(r.ObservedIIRID), r.Verdict, r.VerifierVersion, r.Payload, nullableString(r.RunID), nullableString(r.TurnID), r.CreatedAt)
+		return err
+
+	case OpRecordSemanticApproval:
+		r := op.Payload.(SemanticApprovalRecord)
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO semantic_approvals (id, project_id, plan_revision_id, scope, decision, rationale, actor_id, run_id, turn_id, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO NOTHING
+		`, r.ID, r.ProjectID, r.PlanRevisionID, r.Scope, r.Decision, r.Rationale, r.ActorID, nullableString(r.RunID), nullableString(r.TurnID), r.CreatedAt)
+		return err
+
+	case OpUpsertSemanticTestPlan:
+		r := op.Payload.(SemanticTestPlanUpsert)
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO semantic_test_plans (id, project_id, plan_revision_id, recipe_id, payload, run_id, turn_id, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO NOTHING
+		`, r.ID, r.ProjectID, r.PlanRevisionID, r.RecipeID, r.Payload, nullableString(r.RunID), nullableString(r.TurnID), r.CreatedAt)
+		return err
+
+	case OpUpsertSemanticRepair:
+		r := op.Payload.(SemanticRepairUpsert)
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO semantic_repairs (id, project_id, plan_revision_id, recipe_id, verification_id, status, payload, run_id, turn_id, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO NOTHING
+		`, r.ID, r.ProjectID, r.PlanRevisionID, r.RecipeID, r.VerificationID, r.Status, r.Payload, nullableString(r.RunID), nullableString(r.TurnID), r.CreatedAt)
+		return err
+
 	case OpRecordEnrichment:
 		e := op.Payload.(EnrichmentRecord)
 		_, err := tx.ExecContext(ctx, `

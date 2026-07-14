@@ -31,7 +31,7 @@ func TestWritePluginIIR_StoresValidatedIntentsByNodeID(t *testing.T) {
 	idx := &Indexer{substrate: w, channels: &ch}
 
 	valid := `{"kind":"FunctionIntent","name":"findUser","language":"typescript",` +
-		`"visibility":"public","inputs":[{"name":"id","type":"string"}],` +
+		`"origin":"observed","visibility":"public","inputs":[{"name":"id","type":"string"}],` +
 		`"returns":{"type":"User","explicit":true},"behavior":[],` +
 		`"sideEffects":[],"failureModes":[],"constraints":[]}`
 	entries := []core.IIRExtracted{

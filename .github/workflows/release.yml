@@ -89,6 +89,9 @@ jobs:
       - name: Build and stage in-tree default plugins
         run: make bundle-default-plugins
 
+      - name: Verify IIR runtime and matching default plugin build
+        run: make verify-iir-contract
+
       - name: Build release archives (no publish yet)
         run: goreleaser release --clean --skip=publish
         env:

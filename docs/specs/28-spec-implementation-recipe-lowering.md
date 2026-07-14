@@ -2,7 +2,13 @@
 
 ## Implementation spec — convert resolved semantics into renderer constraints
 
-Status: proposed. Depends on Specs 19–21 and 26–27.
+Status: implemented (foundation, 2026-07-14). Depends on Specs 19–21 and 26–27.
+
+Current implementation: `internal/semantic/recipe` provides deterministic,
+canonical lowering for resolved plans, compact traceable recipe records, an
+explicit TypeScript capability profile, and a deterministic TypeScript renderer
+used as a test oracle. Model-backed rendering, recipe storage, and source-lift
+links are deferred to their respective later slices.
 
 ## Goal
 
