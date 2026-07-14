@@ -52,20 +52,20 @@ func MarshalCanonical(plan *SemanticPlan) ([]byte, error) {
 	if plan == nil {
 		return nil, fmt.Errorf("marshal semantic plan: plan is required")
 	}
-	copy, err := clone(plan)
+	clonedPlan, err := clone(plan)
 	if err != nil {
 		return nil, err
 	}
-	canonicalIntent, err := canonicalIntent(copy.Intent)
+	canonicalIntent, err := canonicalIntent(clonedPlan.Intent)
 	if err != nil {
 		return nil, err
 	}
-	copy.Intent = canonicalIntent
-	canonicalize(copy)
-	if err := copy.Validate(); err != nil {
+	clonedPlan.Intent = canonicalIntent
+	canonicalize(clonedPlan)
+	if err := clonedPlan.Validate(); err != nil {
 		return nil, err
 	}
-	raw, err := json.Marshal(copy)
+	raw, err := json.Marshal(clonedPlan)
 	if err != nil {
 		return nil, fmt.Errorf("marshal semantic plan: %w", err)
 	}

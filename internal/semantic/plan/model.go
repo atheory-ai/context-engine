@@ -253,19 +253,19 @@ func MakePlanID(plan *SemanticPlan) (string, error) {
 	if plan == nil {
 		return "", fmt.Errorf("make semantic plan id: plan is required")
 	}
-	copy, err := clone(plan)
+	clonedPlan, err := clone(plan)
 	if err != nil {
 		return "", err
 	}
-	copy.ID = ""
-	copy.ParentID = ""
-	canonicalIntent, err := canonicalIntent(copy.Intent)
+	clonedPlan.ID = ""
+	clonedPlan.ParentID = ""
+	canonicalIntent, err := canonicalIntent(clonedPlan.Intent)
 	if err != nil {
 		return "", err
 	}
-	copy.Intent = canonicalIntent
-	canonicalize(copy)
-	payload, err := json.Marshal(copy)
+	clonedPlan.Intent = canonicalIntent
+	canonicalize(clonedPlan)
+	payload, err := json.Marshal(clonedPlan)
 	if err != nil {
 		return "", fmt.Errorf("marshal semantic plan id payload: %w", err)
 	}
@@ -541,11 +541,11 @@ func clone(plan *SemanticPlan) (*SemanticPlan, error) {
 	if err != nil {
 		return nil, fmt.Errorf("clone semantic plan: %w", err)
 	}
-	var copy SemanticPlan
-	if err := json.Unmarshal(raw, &copy); err != nil {
+	var clonedPlan SemanticPlan
+	if err := json.Unmarshal(raw, &clonedPlan); err != nil {
 		return nil, fmt.Errorf("clone semantic plan: %w", err)
 	}
-	return &copy, nil
+	return &clonedPlan, nil
 }
 
 func mergeEvidence(parent, candidate []Evidence) []Evidence {
