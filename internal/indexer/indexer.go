@@ -320,6 +320,11 @@ func (idx *Indexer) processFile(
 	extractErrors := 0
 	var filePluginIIR []core.IIRExtracted // plugin-lifted IIR (Track B), if any
 	var keepIDs []string                  // ids emitted this run — survivors of the prune
+	type pluginExtraction struct {
+		plugin     core.Plugin
+		extraction core.ExtractionResult
+	}
+	var extractions []pluginExtraction
 	for _, p := range matchingPlugins {
 		langHandler := p.Language()
 		if langHandler == nil {
@@ -334,9 +339,23 @@ func (idx *Indexer) processFile(
 			continue
 		}
 		successfulPlugins++
+		extractions = append(extractions, pluginExtraction{plugin: p, extraction: extraction})
+	}
 
+	// Language and convention plugins may intentionally share a file node while
+	// only one emits it. Build a per-file identity map before remapping edges so
+	// an additive plugin can reference that established file node.
+	sharedIDs := make(map[core.NodeID]core.NodeID)
+	for _, item := range extractions {
+		for _, node := range item.extraction.Nodes {
+			sharedIDs[node.ID] = core.NodeID(core.MakeNodeID(string(projectID), node.Type, node.CanonicalID))
+		}
+	}
+
+	for _, item := range extractions {
+		p := item.plugin
 		// Remap node/edge IDs from the plugin's empty project context to the real projectID.
-		remapped := remapIDs(extraction, projectID, p.ID(), now)
+		remapped := remapIDsWithReferences(item.extraction, projectID, p.ID(), now, sharedIDs)
 		filePluginIIR = append(filePluginIIR, remapped.IIR...)
 
 		for _, node := range remapped.Nodes {
@@ -440,6 +459,19 @@ func remapIDs(
 	pluginID core.PluginID,
 	now int64,
 ) core.ExtractionResult {
+	return remapIDsWithReferences(result, projectID, pluginID, now, nil)
+}
+
+// remapIDsWithReferences additionally resolves node IDs emitted by a sibling
+// plugin for the same file. Convention plugins use this to attach framework
+// facts to the generic language plugin's file node without duplicating it.
+func remapIDsWithReferences(
+	result core.ExtractionResult,
+	projectID core.ProjectID,
+	pluginID core.PluginID,
+	now int64,
+	references map[core.NodeID]core.NodeID,
+) core.ExtractionResult {
 	pidStr := string(projectID)
 
 	oldToNew := make(map[core.NodeID]core.NodeID, len(result.Nodes))
@@ -475,11 +507,17 @@ func remapIDs(
 	for i, e := range result.Edges {
 		sourceID, ok := oldToNew[e.SourceID]
 		if !ok {
-			sourceID = e.SourceID // cross-extraction reference — keep as-is
+			sourceID = e.SourceID
+			if mapped, found := references[e.SourceID]; found {
+				sourceID = mapped
+			}
 		}
 		targetID, ok2 := oldToNew[e.TargetID]
 		if !ok2 {
 			targetID = e.TargetID
+			if mapped, found := references[e.TargetID]; found {
+				targetID = mapped
+			}
 		}
 		newID := core.EdgeID(core.MakeEdgeID(string(sourceID), e.Type, string(targetID)))
 
@@ -512,7 +550,10 @@ func remapIDs(
 		for _, e := range result.IIR {
 			nodeID, ok := oldToNew[e.NodeID]
 			if !ok {
-				nodeID = e.NodeID // reference outside this extraction — keep as-is
+				nodeID = e.NodeID
+				if mapped, found := references[e.NodeID]; found {
+					nodeID = mapped
+				}
 			}
 			iirOut = append(iirOut, core.IIRExtracted{NodeID: nodeID, SchemaVersion: e.SchemaVersion, Coverage: e.Coverage, Intent: e.Intent, Claims: e.Claims, Evidence: e.Evidence})
 		}

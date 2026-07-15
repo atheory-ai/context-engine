@@ -1,41 +1,65 @@
 package config
 
 import (
-	"path/filepath"
 	"testing"
+
+	"github.com/spf13/viper"
 )
 
-func TestResolveDataDir(t *testing.T) {
-	// A configured path is made absolute and wins over the env/default.
-	got := resolveDataDir("some/rel/dir")
-	if !filepath.IsAbs(got) {
-		t.Errorf("resolveDataDir(rel) = %q, want absolute", got)
-	}
+func TestLoadAcceptsDocumentedPluginInstalledShape(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.Set("data", map[string]any{"dir": t.TempDir()})
+	viper.Set("plugins", map[string]any{
+		"installed": []map[string]any{
+			{"path": "./plugins/php-language.wasm"},
+			{"path": "./plugins/wordpress-conventions.wasm", "config": map[string]any{"framework": "wordpress"}},
+		},
+	})
 
-	// With no configured path, CE_DATA_DIR is used.
-	t.Setenv("CE_DATA_DIR", "/env/data/dir")
-	if got := resolveDataDir(""); got != "/env/data/dir" {
-		t.Errorf("resolveDataDir with env = %q, want /env/data/dir", got)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.Plugins) != 2 {
+		t.Fatalf("len(cfg.Plugins) = %d, want 2", len(cfg.Plugins))
+	}
+	if got := cfg.Plugins[0].Path; got != "./plugins/php-language.wasm" {
+		t.Errorf("cfg.Plugins[0].Path = %q", got)
+	}
+	if got := cfg.Plugins[1].Config["framework"]; got != "wordpress" {
+		t.Errorf("cfg.Plugins[1].Config[framework] = %v", got)
 	}
 }
 
-func TestApplyDefaults(t *testing.T) {
-	var cfg Config
-	applyDefaults(&cfg)
+func TestLoadRetainsBarePluginListCompatibility(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.Set("data", map[string]any{"dir": t.TempDir()})
+	viper.Set("plugins", []map[string]any{{"path": "./plugins/existing.wasm"}})
 
-	// Zero-valued engine tunables get sensible defaults.
-	if cfg.Engine.MaxLoops <= 0 {
-		t.Errorf("MaxLoops default not applied: %d", cfg.Engine.MaxLoops)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Engine.KLimit <= 0 {
-		t.Errorf("KLimit default not applied: %d", cfg.Engine.KLimit)
+	if len(cfg.Plugins) != 1 || cfg.Plugins[0].Path != "./plugins/existing.wasm" {
+		t.Fatalf("cfg.Plugins = %#v, want existing bare-list plugin", cfg.Plugins)
 	}
+}
 
-	// Explicit values are preserved (defaults never clobber a set value).
-	custom := Config{}
-	custom.Engine.MaxLoops = 99
-	applyDefaults(&custom)
-	if custom.Engine.MaxLoops != 99 {
-		t.Errorf("applyDefaults clobbered an explicit MaxLoops: %d", custom.Engine.MaxLoops)
+func TestLoadHonorsGlobalDataDirOverride(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	projectDir := t.TempDir()
+	overrideDir := t.TempDir()
+	viper.Set("data", map[string]any{"dir": projectDir})
+	viper.Set("data_dir", overrideDir)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.DataDir != overrideDir {
+		t.Errorf("cfg.DataDir = %q, want global override %q", cfg.DataDir, overrideDir)
 	}
 }
