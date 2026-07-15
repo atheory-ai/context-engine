@@ -461,6 +461,19 @@ func remapIDsWithReferences(
 	now int64,
 	references map[core.NodeID]core.NodeID,
 ) core.ExtractionResult {
+	return remapIDsWithReferences(result, projectID, pluginID, now, nil)
+}
+
+// remapIDsWithReferences additionally resolves node IDs emitted by a sibling
+// plugin for the same file. Convention plugins use this to attach framework
+// facts to the generic language plugin's file node without duplicating it.
+func remapIDsWithReferences(
+	result core.ExtractionResult,
+	projectID core.ProjectID,
+	pluginID core.PluginID,
+	now int64,
+	references map[core.NodeID]core.NodeID,
+) core.ExtractionResult {
 	pidStr := string(projectID)
 
 	oldToNew := make(map[core.NodeID]core.NodeID, len(result.Nodes))
