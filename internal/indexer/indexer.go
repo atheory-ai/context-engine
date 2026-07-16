@@ -451,17 +451,6 @@ func fileHash(content []byte) string {
 	return hex.EncodeToString(h[:])
 }
 
-// remapIDs re-generates node and edge IDs using the real projectID.
-// Plugins produce IDs with an empty projectID; the engine uses the real one.
-func remapIDs(
-	result core.ExtractionResult,
-	projectID core.ProjectID,
-	pluginID core.PluginID,
-	now int64,
-) core.ExtractionResult {
-	return remapIDsWithReferences(result, projectID, pluginID, now, nil)
-}
-
 // remapIDsWithReferences additionally resolves node IDs emitted by a sibling
 // plugin for the same file. Convention plugins use this to attach framework
 // facts to the generic language plugin's file node without duplicating it.
