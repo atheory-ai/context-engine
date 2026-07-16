@@ -116,8 +116,9 @@ func compareVisibility(intended, extracted *FunctionIntent, matches *[]Match, mi
 // compareBehavior performs a basic behavior comparison. Because behavior
 // extraction from source is not yet implemented (a later slice), a declared
 // behavior with no extracted counterpart is reported as unsupported rather than
-// silently passed or falsely flagged as missing. When both sides carry behavior
-// clauses, a count-based comparison surfaces missing/extra behavior.
+// silently passed or falsely flagged as missing. Equal behavior counts are not
+// semantic evidence: a condition is verified only when both sides carry a
+// normalized WhenExpr.
 func compareBehavior(intended, extracted *FunctionIntent, matches *[]Match, mismatches *[]Mismatch) {
 	if len(intended.Behavior) == 0 {
 		return // intent makes no behavioral claim
@@ -162,14 +163,28 @@ func compareBehavior(intended, extracted *FunctionIntent, matches *[]Match, mism
 		})
 		return
 	}
-	// Counts align. Where both sides expose a normalized form, compare the
-	// structured content positionally — this catches a flipped condition (`<` vs
-	// `>`) or a diverged consequence (intent says throw, source returns) that the
-	// count-only check passes silently. A clause missing the normalized form on
-	// either side falls back to the count match.
+	// Counts align. Compare structured content positionally — this catches a
+	// flipped condition (`<` vs `>`). A clause missing a normalized condition is
+	// inconclusive: otherwise a generated `if (false)` placeholder can be
+	// blessed as equivalent to a declared guard merely because the counts match.
 	contentMismatch := false
+	unsupported := false
 	for i := range intended.Behavior {
-		if want, got := intended.Behavior[i].WhenExpr, extracted.Behavior[i].WhenExpr; want != nil && got != nil && !want.Equal(got) {
+		want, got := intended.Behavior[i].WhenExpr, extracted.Behavior[i].WhenExpr
+		if want == nil || got == nil {
+			unsupported = true
+			*mismatches = append(*mismatches, Mismatch{
+				Kind:         MismatchUnsupported,
+				Severity:     SeverityInfo,
+				Path:         fmt.Sprintf("FunctionIntent.behavior[%d].when", i),
+				Message:      fmt.Sprintf("behavior clause %d has no comparable structured condition", i),
+				Expected:     intended.Behavior[i].When,
+				Actual:       extracted.Behavior[i].When,
+				RepairTarget: "Declare a normalized whenExpr and use a source condition the extractor can model before treating this behavior as verified.",
+			})
+			continue
+		}
+		if !want.Equal(got) {
 			contentMismatch = true
 			*mismatches = append(*mismatches, Mismatch{
 				Kind:     MismatchBehaviorContent,
@@ -196,7 +211,7 @@ func compareBehavior(intended, extracted *FunctionIntent, matches *[]Match, mism
 			})
 		}
 	}
-	if contentMismatch {
+	if contentMismatch || unsupported {
 		return
 	}
 	*matches = append(*matches, Match{
