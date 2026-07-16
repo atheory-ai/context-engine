@@ -9,8 +9,9 @@ import (
 type Status string
 
 const (
-	StatusPassed Status = "passed"
-	StatusFailed Status = "failed"
+	StatusPassed       Status = "passed"
+	StatusFailed       Status = "failed"
+	StatusInconclusive Status = "inconclusive"
 )
 
 // Report is the stable, machine-readable result of verifying source against
@@ -47,8 +48,22 @@ func Verify(intended, extracted *FunctionIntent, pack RulePack) *Report {
 
 	if hasFailure(comparison.Mismatches, ruleResults) {
 		report.Status = StatusFailed
+	} else if hasInconclusive(comparison.Mismatches) {
+		report.Status = StatusInconclusive
 	}
 	return report
+}
+
+// hasInconclusive reports whether comparison could not establish a declared
+// requirement. Unsupported comparison is distinct from a failed claim, but it
+// must never be represented as a passing verification.
+func hasInconclusive(mismatches []Mismatch) bool {
+	for _, m := range mismatches {
+		if m.Kind == MismatchUnsupported {
+			return true
+		}
+	}
+	return false
 }
 
 // VerifySource is the end-to-end helper: extract the intended function from

@@ -102,6 +102,12 @@ func RepairLoop(
 			result.Iterations = append(result.Iterations, iter)
 			return finish(result, current, report, true), nil
 		}
+		if report.Status == StatusInconclusive {
+			// Regeneration cannot repair an unverifiable semantic claim. Preserve
+			// the coverage boundary rather than repeatedly emitting a placeholder.
+			result.Iterations = append(result.Iterations, iter)
+			return finish(result, current, report, false), nil
+		}
 		if attempt >= maxAttempts {
 			result.Iterations = append(result.Iterations, iter)
 			return finish(result, current, report, false), nil

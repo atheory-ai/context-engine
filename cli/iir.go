@@ -130,7 +130,7 @@ func runIirShape(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(cmd.ErrOrStderr(), "  [%s] %s: %s\n", m.Severity, m.Kind, m.Message)
 		}
 	}
-	if report.Status != iir.StatusPassed {
+	if report.Status == iir.StatusFailed {
 		return errSilent
 	}
 	return nil
@@ -321,7 +321,7 @@ func runIirGenerate(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(out, "  [%s] %s: %s\n", m.Severity, m.Kind, m.Message)
 		}
 	}
-	if report.Status != iir.StatusPassed {
+	if report.Status == iir.StatusFailed {
 		return errSilent
 	}
 	return nil
@@ -385,7 +385,7 @@ func runIirVerify(cmd *cobra.Command, args []string) error {
 		printReportHuman(cmd, report, rulesSource)
 	}
 
-	if report.Status != iir.StatusPassed {
+	if report.Status == iir.StatusFailed {
 		return errSilent
 	}
 	return nil
