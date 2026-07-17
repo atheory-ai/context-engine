@@ -1,6 +1,28 @@
 package cli
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestPluginExtract_AcceptsJSONFlag(t *testing.T) {
+	cmd := newPluginCmd()
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	cmd.SetArgs([]string{
+		"extract", "fixture.wasm",
+		"--input", "missing-input.json",
+		"--json",
+	})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected missing input error")
+	}
+	if !strings.Contains(err.Error(), "read input") {
+		t.Fatalf("extract with --json returned %v, want input read error (not an unknown flag)", err)
+	}
+}
 
 // The JSON here mirrors exactly what the SDK's buildPluginManifest emits for
 // iirRules (camelCase keys, forbidConditionShape structural predicate). This is
