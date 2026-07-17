@@ -5,8 +5,11 @@ knowledge graph of your codebase and reasons over it. Index your code once
 (symbols, namespaces, dependencies, concepts), then answer questions with
 precise, grounded context.
 
-This package is a thin wrapper that installs the matching platform binary and
-runs the native `ce` executable. The engine is pure Go (no native build step).
+This package is a thin wrapper around the signed Context Engine GitHub Release
+archives. During installation it downloads the archive matching the package
+version and your platform, verifies its SHA-256 entry in `checksums.txt`, then
+caches and runs the native `ce` executable. It does not contain or install a
+separately built platform binary package.
 
 ## Install
 
@@ -14,6 +17,13 @@ runs the native `ce` executable. The engine is pure Go (no native build step).
 npm install -g @atheory-ai/ce
 ce version
 ```
+
+The package version is pinned to the matching release tag. Set
+`CE_RELEASE_BASE_URL` only for a trusted GitHub Enterprise or test mirror.
+
+To install without downloading the binary, set `CE_SKIP_DOWNLOAD=1`. The `ce`
+command will then explain that it must be reinstalled without `--ignore-scripts`
+before it can run.
 
 ## Quick start
 

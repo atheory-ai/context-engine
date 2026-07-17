@@ -1,46 +1,58 @@
-# Releasing CE Plugin SDK
+# Releasing CE Plugin SDK packages
 
-This document is for maintainers.
+The `sdk/` workspace in Context Engine publishes three independent npm packages:
 
-## Release Model
+- `@atheory-ai/ce-plugin-sdk`
+- `@atheory-ai/ce-plugin-sandbox`
+- `@atheory-ai/create-ce-plugin`
 
-- `main` is the release branch.
-- Releases are created from a tagged commit on `main`.
-- Tags should follow `vX.Y.Z`.
-- Coordinated releases use the same `vX.Y.Z` train across `context-engine`, `ce-plugin-sdk`, and `atheory-ce-studio`; see [Release Compatibility](./docs/release-compatibility.md).
-- Published package versioning and distribution should stay consistent with the root release process.
-- The npm packages are `@atheory-ai/ce-plugin-sdk`, `@atheory-ai/ce-plugin-sandbox`, and `@atheory-ai/create-ce-plugin`.
-- The release workflow in [`.github/workflows/release.yml`](./.github/workflows/release.yml) validates the workspace, publishes npm packages, bundles built artifacts, and publishes a GitHub release.
+Default language plugins are source and CE release-bundle artifacts, not npm
+packages.
 
-## Release Steps
+## Release model
 
-1. Make sure the intended release changes are merged to `main`.
-2. Update [CHANGELOG.md](./CHANGELOG.md).
-3. Review any package version changes that will be published.
-4. Confirm [Release Compatibility](./docs/release-compatibility.md) reflects the sibling versions tested for this release.
-5. Confirm the repository has an `NPM_TOKEN` secret with publish access for the `@atheory-ai` npm scope.
-6. Validate the workspace locally:
+- SDK packages are versioned independently.
+- Release tags identify one package and version:
+  - `plugin-sdk-vX.Y.Z`
+  - `plugin-sandbox-vX.Y.Z`
+  - `create-ce-plugin-vX.Y.Z`
+- Tags must point to a commit reachable from `main`.
+- The `npm-release` environment gates publication.
+- npm trusted publishing uses GitHub Actions OIDC; the workflow does not use
+  `NPM_TOKEN`.
+
+Configure one npm trusted publisher for each package, pointing at
+`.github/workflows/plugin-sdk-release.yml` in `atheory-ai/context-engine` and
+requiring the `npm-release` environment.
+
+## Local verification
 
 ```bash
+cd sdk
 pnpm install --frozen-lockfile
-pnpm lint
-pnpm build
-pnpm test
+pnpm release:check
+pnpm release:dry-run
 ```
 
-7. Create and push the release tag:
+Inspect one package with:
 
 ```bash
-git checkout main
-git pull --ff-only
-git tag vX.Y.Z
-git push origin vX.Y.Z
+pnpm release:dry-run -- --package plugin-sdk
 ```
 
-8. Monitor the GitHub Actions release workflow and confirm the npm packages and generated artifact bundle were published.
+## Publish
 
-## Notes
+1. Update the affected package version and `sdk/CHANGELOG.md`.
+2. Record the CE version tested if the change alters manifests, WASM exports,
+   host bindings, grammar loading, or default plugin behavior.
+3. Run the local verification commands and inspect the dry run.
+4. Merge to `main`, then tag that commit, for example:
 
-- If a release changes the generated plugin scaffold or default plugin behavior, call that out explicitly in the release notes.
-- Use the `Compatibility` release note heading when SDK changes require a matching CE or Studio version.
-- Package publishing runs through the `npm-release` environment.
+   ```bash
+   git tag plugin-sdk-v0.1.1
+   git push origin plugin-sdk-v0.1.1
+   ```
+
+5. Approve the `npm-release` environment and confirm npm provenance.
+
+Publishing runs only from GitHub Actions; do not publish from a workstation.

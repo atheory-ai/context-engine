@@ -15,8 +15,8 @@ based on matching version numbers.
 | Create CE Plugin | Package version and `create-ce-plugin-vX.Y.Z` tag | npm package `@atheory-ai/create-ce-plugin` |
 | CE Studio | Studio package version and tag | Studio's own release process |
 
-Homebrew and the `@atheory-ai/ce` npm wrapper are planned CE distribution
-channels. Both must consume the signed GitHub Release binary for the exact CE
+Homebrew is planned. The `@atheory-ai/ce` npm wrapper is implemented but not
+yet published. Both consume the signed GitHub Release binary for the exact CE
 version; neither is part of the runtime tag workflow yet.
 
 ## Runtime and SDK compatibility

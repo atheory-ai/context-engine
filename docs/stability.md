@@ -93,7 +93,7 @@ Longer-term compatibility goals:
 
 - Version the external API contract explicitly.
 - Publish machine-readable schemas for Studio-facing REST and WebSocket payloads.
-- Make plugin runtime compatibility testable from both CE and `ce-plugin-sdk`.
+- Make plugin runtime compatibility testable from both CE and the `sdk/` workspace.
 - Define a formal deprecation policy before broad public releases.
 
 ## Breaking Change Checklist

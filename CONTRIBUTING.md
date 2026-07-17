@@ -22,17 +22,10 @@ Required for normal development and pull requests:
 | Go | 1.24.3+ | Uses the version declared in [go.mod](./go.mod) |
 | Git | Any current version | Required for checkout and formatting checks |
 | Make | Any current version | Runs the project verification targets |
-| C compiler | Any current version | Required because tree-sitter is built through CGO |
-
-Platform notes:
-
-- macOS: install Xcode Command Line Tools with `xcode-select --install`.
-- Debian/Ubuntu: install `build-essential`.
-- Windows: use a Go-compatible C toolchain such as MSYS2/MinGW.
 
 Release-only tools:
 
-- Zig and GoReleaser are only needed for `make build-cross`, release dry runs, and tagged release validation. They are not required for normal PR work.
+- GoReleaser is only needed for `make build-cross`, release dry runs, and tagged release validation. The engine is pure Go: tree-sitter runs as WASM on wazero, so no C compiler or Zig toolchain is required.
 
 ### 2. Clone and build
 
@@ -69,7 +62,7 @@ make verify
 ./ce server --help
 ```
 
-Indexing and querying require language plugins and provider configuration. Production release binaries embed default plugins; local source builds can use plugins built from [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk).
+Indexing and querying require language plugins and provider configuration. Production release binaries embed default plugins; local source builds can use plugins built from the [SDK workspace](./sdk/README.md).
 
 ## Verification
 
@@ -102,7 +95,7 @@ The high-level constraints are:
 
 - `internal/core` is the dependency floor and must not import other internal packages.
 - All substrate writes go through the write buffer.
-- Keep the project pure Go except for the existing tree-sitter CGO constraint.
+- Keep the project pure Go (`CGO_ENABLED=0`); tree-sitter runs as WASM on wazero.
 - Plugin loading uses wazero and Extism only.
 
 For snapshot-style fixtures, follow [How To Write A Golden Test](./docs/golden-tests.md).

@@ -13,8 +13,9 @@ Distribution channels are introduced in this order:
 
 1. **GitHub Releases and curl installer** — current release path.
 2. **Homebrew** — planned; its formula will consume the same GitHub archives.
-3. **npm wrapper** — planned; it will resolve the matching GitHub Release
-   binary and will not publish duplicate platform binaries.
+3. **npm wrapper** — implemented but not yet published; it resolves the
+   matching GitHub Release binary and does not publish duplicate platform
+   binaries.
 
 The GitHub Release must succeed independently of Homebrew or npm. Do not add a
 downstream publisher as a prerequisite of the canonical binary release.

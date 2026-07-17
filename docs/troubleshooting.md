@@ -36,7 +36,7 @@ Local source builds do not automatically include production plugin artifacts unl
 
 For local development:
 
-1. Build default plugins from [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk).
+1. Build default plugins from the [SDK workspace](../sdk/README.md).
 2. Place the `.wasm` files under the CE data directory:
 
 ```text
