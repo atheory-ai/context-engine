@@ -8,11 +8,11 @@ Upstream repository: [atheory-ai/context-engine](https://github.com/atheory-ai/c
 
 ## Repository role
 
-This repository owns the CE runtime: the `ce` binary, CLI, runner, storage layer, indexer, MCP server, REST/WebSocket API, and release artifacts. It does not own the TypeScript plugin authoring SDK or the Studio frontend; those live in sibling repositories and are checked during CE releases for compatibility.
+This repository owns the CE runtime: the `ce` binary, CLI, runner, storage layer, indexer, MCP server, REST/WebSocket API, release artifacts, and the in-tree TypeScript plugin SDK workspace. Studio remains a separate client repository.
 
-Sibling repositories:
+Related projects:
 
-- [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) — TypeScript plugin SDK, plugin sandbox, templates, and default plugin source
+- [SDK workspace](./sdk/README.md) — TypeScript plugin SDK, plugin sandbox, templates, and default plugin source
 - [atheory-ce-studio](https://github.com/atheory-ai/atheory-ce-studio) — developer inspector UI for querying, graph exploration, history, and trace inspection
 
 ---
@@ -51,27 +51,16 @@ query → Strategizer → Activation → Fan-out (6 tools) → Reviewer → Synt
 | Tool | Version | Notes |
 | ---- | ------- | ----- |
 | Go | 1.24.3+ | `brew install go` |
-| Language plugins | `.wasm` files | See [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) |
+| Language plugins | `.wasm` files | See the [SDK workspace](./sdk/README.md) |
 
 ---
 
 ## Installation
 
-### npm
+### GitHub Releases (primary)
 
-For Node-based development environments, install the published wrapper package:
-
-```bash
-npm install -g @atheory-ai/ce
-ce version
-```
-
-The wrapper installs the matching platform package and runs the native `ce`
-binary.
-
-### GitHub Releases
-
-For direct binary installation from GitHub Releases:
+The first public distribution is a signed GitHub Release. Install the matching
+native binary with:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/atheory-ai/context-engine/main/install.sh | sh
@@ -83,8 +72,26 @@ Set `CE_INSTALL_DIR` to choose a different install directory:
 curl -fsSL https://raw.githubusercontent.com/atheory-ai/context-engine/main/install.sh | CE_INSTALL_DIR=/usr/local/bin sh
 ```
 
-The npm package and install script both use the same release binaries produced
-by this repository.
+To install an explicit version, set `CE_VERSION`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/atheory-ai/context-engine/main/install.sh | CE_VERSION=0.1.0 sh
+```
+
+The installer downloads the release archive for your platform, verifies its
+SHA-256 checksum, and optionally verifies its keyless Sigstore signature when
+`cosign` is installed.
+
+### Homebrew (planned)
+
+Homebrew will follow the GitHub Release channel. It will install the same
+release archive through the `atheory-ai/homebrew-tap`; it is not yet published.
+
+### npm wrapper (planned)
+
+`@atheory-ai/ce` is not published yet. When it is, it will be a thin,
+version-pinned wrapper over the signed GitHub Release binary—not a separately
+built or duplicated native distribution.
 
 ### Build from source
 
@@ -99,7 +106,7 @@ go install ./cmd/ce
 
 ### Install default plugins
 
-Default plugins (Go, TypeScript, Python, PHP, WordPress conventions, and WooCommerce conventions) must be built from the plugin SDK and placed in `~/.ce/plugins/defaults/`. See [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) for instructions.
+Default plugins (Go, TypeScript, Python, PHP, WordPress conventions, and WooCommerce conventions) must be built from the [SDK workspace](./sdk/README.md) and placed in `~/.ce/plugins/defaults/`.
 
 In production releases, plugins are embedded into the binary automatically.
 
@@ -380,7 +387,7 @@ make fmt
 
 ## Related repos
 
-- [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk) — plugin development kit, default language plugins
+- [SDK workspace](./sdk/README.md) — plugin development kit, default language plugins
 - [atheory-ce-studio](https://github.com/atheory-ai/atheory-ce-studio) — developer inspector UI
 
 ## Project docs
@@ -413,14 +420,8 @@ toolchain:
 make release-snapshot
 ```
 
-Binaries land in `dist/`. The release workflow builds darwin, linux, and windows on amd64 and arm64 — no zig/clang cross-compilation needed. The release pipeline embeds compiled WASM plugins from `ce-plugin-sdk` into the binary.
-
-Release publishing also creates npm packages:
-
-- `@atheory-ai/ce`
-- `@atheory-ai/ce-darwin-arm64`
-- `@atheory-ai/ce-darwin-x64`
-- `@atheory-ai/ce-linux-arm64`
-- `@atheory-ai/ce-linux-x64`
-- `@atheory-ai/ce-win32-arm64`
-- `@atheory-ai/ce-win32-x64`
+Binaries land in `dist/`. The release workflow builds darwin, linux, and
+windows on amd64 and arm64 — no zig/clang cross-compilation needed—then embeds
+compiled WASM plugins from the in-tree SDK workspace. A tagged release creates
+the signed GitHub Release assets consumed by `install.sh`. Homebrew and npm
+distribution are intentionally deferred follow-on channels.

@@ -39,11 +39,14 @@ These surfaces may evolve, but they are consumed by Studio, SDK, plugins, or int
 Changes here should usually include at least one of:
 
 - an update to [atheory-ce-studio](https://github.com/atheory-ai/atheory-ce-studio)
-- an update to [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk)
+- an update to the in-tree [SDK workspace](../sdk/README.md)
 - an acceptance or contract test in this repository
 - a release note describing the compatibility impact
 
-The release workflow gates publishing on SDK and Studio verification so CE does not release against obviously broken sibling repos.
+Runtime releases gate on the in-tree SDK build and IIR contract corpus that is
+embedded in the binary. Studio and other external clients are compatibility-
+managed through contract tests and release notes; they do not block publication
+of the canonical GitHub Release binaries.
 
 ## Experimental
 
@@ -80,7 +83,8 @@ Internal changes should preserve the architectural constraints in [architecture.
 Near-term stabilization work:
 
 - Keep PR CI focused on local correctness: formatting, unit verification, coverage, and acceptance tests.
-- Keep release workflow responsible for cross-platform builds and sibling repo compatibility checks.
+- Keep release workflow responsible for cross-platform builds, the in-tree SDK
+  contract gate, signed GitHub Release assets, and provenance.
 - Add contract tests for REST, WebSocket, MCP, and plugin runtime shapes as those surfaces harden.
 - Document user-visible API changes in release notes.
 - Create a separate demo repository with a sample codebase, repeatable indexing fixtures, scripted queries, and a Studio demo flow.
