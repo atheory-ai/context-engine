@@ -32,8 +32,8 @@ jobs:
       - name: Ensure tag points to main
         shell: bash
         run: |
-          git fetch origin main --depth=1
-          if ! git branch -r --contains "$GITHUB_SHA" | grep -q "origin/main"; then
+          release_commit="$(git rev-parse "$GITHUB_SHA^{}")"
+          if ! git merge-base --is-ancestor "$release_commit" origin/main; then
             echo "Release tags must point to a commit on origin/main."
             exit 1
           fi
