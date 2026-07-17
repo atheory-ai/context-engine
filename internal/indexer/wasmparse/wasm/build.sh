@@ -12,11 +12,21 @@
 # See docs/specs/18-spec-wasm-grammar-loader.md for the architecture.
 set -euo pipefail
 
+# Some Zig/system-tool combinations reject the host C.UTF-8 locale. Keep the
+# generated artifacts reproducible and the script portable across CI hosts.
+export LANG=C
+export LC_ALL=C
+
 SRC_MODULE="github.com/malivvan/tree-sitter@v0.0.1"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="${VERIFY:+$(mktemp -d)}"; OUT="${OUT:-$HERE}"
 
-command -v zig >/dev/null || { echo "zig not found (need 0.13.x)"; exit 1; }
+ZIG="${ZIG:-zig}"
+command -v "$ZIG" >/dev/null || { echo "zig not found (need 0.13.x)"; exit 1; }
+case "$("$ZIG" version)" in
+  0.13.*) ;;
+  *) echo "zig 0.13.x is required; set ZIG=/path/to/zig-0.13"; exit 1 ;;
+esac
 command -v go  >/dev/null || { echo "go not found"; exit 1; }
 
 # Fetch the pinned tree-sitter core + grammar sources.
@@ -45,13 +55,13 @@ func main(){
 }
 GO
 
-zig_cc() { zig cc --target=wasm32-wasi-musl "$@"; }
+zig_cc() { "$ZIG" cc --target=wasm32-wasi-musl "$@"; }
 
 echo "→ core"
 zig_cc -mexec-model=reactor "$SRC/lib.c" -I "$SRC" -O2 -o "$WORK/core.wasm" -Wl,--strip-debug -Wl,--export-table \
   -Wl,--export=malloc -Wl,--export=calloc -Wl,--export=free -Wl,--export=realloc \
-  -Wl,--export=memcpy -Wl,--export=memset -Wl,--export=memmove \
-  -Wl,--export=iswalpha -Wl,--export=iswspace -Wl,--export=iswdigit -Wl,--export=iswalnum -Wl,--export=towupper -Wl,--export=towlower \
+  -Wl,--export=memcpy -Wl,--export=memcmp -Wl,--export=memset -Wl,--export=memmove \
+  -Wl,--export=iswalpha -Wl,--export=iswspace -Wl,--export=iswdigit -Wl,--export=iswxdigit -Wl,--export=iswalnum -Wl,--export=towupper -Wl,--export=towlower \
   -Wl,--export=__stack_pointer \
   -Wl,--export=ts_current_malloc -Wl,--export=ts_current_free -Wl,--export=ts_current_realloc -Wl,--export=ts_current_calloc \
   -Wl,--export=ts_parser_new -Wl,--export=ts_parser_delete -Wl,--export=ts_parser_set_language -Wl,--export=ts_parser_parse_string \
@@ -73,7 +83,7 @@ grammar() {
   fi
   # --strip-debug removes .debug_* sections (which embed absolute source paths),
   # making the output reproducible and much smaller.
-  zig wasm-ld --experimental-pic -shared --no-entry --strip-debug --export="tree_sitter_$entry" --allow-undefined $objs -o "$OUT/$name.wasm"
+  "$ZIG" wasm-ld --experimental-pic -shared --no-entry --strip-debug --export="tree_sitter_$entry" --allow-undefined $objs -o "$OUT/$name.wasm"
   echo "→ $name.wasm"
 }
 

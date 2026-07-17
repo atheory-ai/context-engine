@@ -24,13 +24,17 @@ VERIFY=1 ./build.sh   # rebuild to a temp dir and diff against the committed blo
 
 The build is deterministic — `VERIFY=1` reports every blob byte-identical.
 
+The core explicitly exports the libc functions grammar side modules import,
+including `memcmp` for the PHP external scanner. Keep that export list in
+`build.sh` aligned with the supported grammar corpus.
+
 ## Checksums (sha256)
 
 ```
 5af5d04e3fe8ab3b2ffb60d1637db091d69b5d69cab143bfc36abeb420117127  go.wasm
 19a7099424a44e9cf2bd07ed786ec43e2aa6a4ebe263885c3dc5ce79985f45b5  javascript.wasm
 89e514f34cd58e82a04f0e09f5384707126fbc6d3e84ca1ac3cb7965083e967f  python.wasm
-9d27beb7914f341cbb6d20f071162109403046f0bfbab75f27d2b969b1ebc503  tree-sitter-core.wasm
+bb305679e36fb6e76141772b7e28260d401d3281cae9b4c29794b18c92b47c7e  tree-sitter-core.wasm
 6a73353489f9b8def45e5b9213c9697de11852d7534bfb78fe82e7198b040c61  tsx.wasm
 757ac11d35b59fae8f54dec004eccbe881e3014110e58cc0b00899fa780922be  typescript.wasm
 ```

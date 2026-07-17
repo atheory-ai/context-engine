@@ -16,6 +16,13 @@ import (
 //go:embed testdata/rust.wasm
 var rustGrammarWASM []byte
 
+// phpGrammarWASM is a foreign grammar with a PHP external scanner. It covers
+// libc imports (memcmp/iswxdigit) that the Rust fixture does not exercise.
+// Rebuild with testdata/build-php.sh using the pinned Zig 0.13 toolchain.
+//
+//go:embed testdata/php.wasm
+var phpGrammarWASM []byte
+
 // TestRegisterForeignGrammar proves the headline pluggable-grammar capability:
 // loading a grammar the engine has NEVER seen — foreign node types, a foreign
 // external scanner — at runtime, then parsing it to a correct CST. Unlike
@@ -77,4 +84,60 @@ func TestRegisterForeignGrammar(t *testing.T) {
 	if rt := field(fn, "return_type"); rt == nil {
 		t.Fatal("no return_type field on function_item — external scanner path likely broken")
 	}
+}
+
+func TestRegisterPHPGrammar(t *testing.T) {
+	ctx := context.Background()
+	p, err := New(ctx, "")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer p.Close(ctx)
+
+	name, err := p.RegisterGrammar([]string{".php"}, phpGrammarWASM)
+	if err != nil {
+		t.Fatalf("RegisterGrammar(php): %v", err)
+	}
+	if name != "php" {
+		t.Fatalf("detected name = %q, want php", name)
+	}
+
+	treeJSON, err := p.ParseFile(ctx, "hooks.php", []byte("<?php\nadd_action('demo_ready', 'demo_callback');\n"))
+	if err != nil {
+		t.Fatalf("ParseFile(hooks.php): %v", err)
+	}
+	var tree SyntaxTree
+	if err := json.Unmarshal(treeJSON, &tree); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if tree.Root.Type != "program" {
+		t.Fatalf("root = %q, want program", tree.Root.Type)
+	}
+	call := descendant(tree.Root, "function_call_expression")
+	if call == nil {
+		t.Fatal("no function_call_expression")
+	}
+	if function := field(call, "function"); function == nil || function.Text != "add_action" {
+		t.Fatalf("call function = %+v, want add_action", function)
+	}
+	arguments := field(call, "arguments")
+	if arguments == nil {
+		t.Fatal("call has no arguments field")
+	}
+	firstString := descendant(arguments, "string")
+	if firstString == nil || firstString.Text != "'demo_ready'" {
+		t.Fatalf("arguments = %+v, want string demo_ready", arguments)
+	}
+}
+
+func descendant(n *SyntaxNode, typ string) *SyntaxNode {
+	if n.Type == typ {
+		return n
+	}
+	for _, child := range n.Children {
+		if found := descendant(child, typ); found != nil {
+			return found
+		}
+	}
+	return nil
 }

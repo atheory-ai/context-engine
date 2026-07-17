@@ -12,12 +12,13 @@ import (
 // Load reads the resolved Viper config into a Config struct.
 // Called at the start of every command that needs the engine.
 func Load() (*Config, error) {
+	normalizePluginConfig()
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	cfg.DataDir = resolveDataDir(cfg.Data.Dir)
+	cfg.DataDir = resolveDataDir(configuredDataDir(cfg.Data.Dir))
 	applyDefaults(&cfg)
 
 	if err := validate(&cfg); err != nil {
@@ -30,13 +31,46 @@ func Load() (*Config, error) {
 // LoadRaw reads the Viper config without validation.
 // Used by commands that don't need the full engine (e.g. config show).
 func LoadRaw() (*Config, error) {
+	normalizePluginConfig()
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
-	cfg.DataDir = resolveDataDir(cfg.Data.Dir)
+	cfg.DataDir = resolveDataDir(configuredDataDir(cfg.Data.Dir))
 	applyDefaults(&cfg)
 	return &cfg, nil
+}
+
+// normalizePluginConfig accepts the documented ce.yaml form:
+//
+//	plugins:
+//	  installed:
+//	    - path: ./plugins/example.wasm
+//
+// Config historically decoded Plugins as a bare []PluginEntry, which silently
+// converted the map above to an entry with an empty path. Keep accepting the
+// bare list for existing project configs while flattening the documented form
+// before Viper unmarshals it.
+func normalizePluginConfig() {
+	plugins, ok := viper.Get("plugins").(map[string]any)
+	if !ok {
+		return
+	}
+	installed, ok := plugins["installed"]
+	if !ok {
+		return
+	}
+	viper.Set("plugins", installed)
+}
+
+// configuredDataDir gives the documented global --data-dir / CE_DATA_DIR
+// setting precedence over the nested data.dir project setting. Cobra binds the
+// flag to Viper's data_dir key, which does not populate DataConfig directly.
+func configuredDataDir(projectValue string) string {
+	if override := viper.GetString("data_dir"); override != "" {
+		return override
+	}
+	return projectValue
 }
 
 func resolveDataDir(configured string) string {

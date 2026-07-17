@@ -215,3 +215,21 @@ func TestParseAllLanguages(t *testing.T) {
 		})
 	}
 }
+
+func TestCoreExportsLibcRequiredByExternalGrammarScanners(t *testing.T) {
+	ctx := context.Background()
+	p, err := New(ctx, "")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer p.Close(ctx)
+
+	// tree-sitter-php's external scanner imports memcmp. This is a direct
+	// contract check on the dynamically linked core; missing it makes a
+	// plugin grammar fail only at index time.
+	for _, name := range []string{"memcmp", "iswxdigit"} {
+		if got := p.all[0].core.ExportedFunction(name); got == nil {
+			t.Fatalf("tree-sitter core does not export %s for external scanners", name)
+		}
+	}
+}
