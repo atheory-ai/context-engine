@@ -39,6 +39,11 @@ func newPluginCmd() *cobra.Command {
 		Hidden: true,
 	}
 	extractCmd.Flags().String("input", "", "path to JSON file with {filePath, content}")
+	// The sandbox always requests JSON so it can deserialize the extraction
+	// result. Extraction has intentionally always been JSON-only; declare the
+	// flag as a no-op compatibility contract rather than rejecting that call
+	// before the plugin is loaded.
+	extractCmd.Flags().Bool("json", false, "output machine-readable JSON")
 	_ = extractCmd.MarkFlagRequired("input") //nolint:errcheck // cobra returns error only if flag doesn't exist; we just declared it
 
 	// list
