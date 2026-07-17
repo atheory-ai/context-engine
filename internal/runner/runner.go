@@ -112,6 +112,13 @@ func New(ctx context.Context, cfg *config.Config) (*Engine, error) {
 	}
 	e.orgGraph = orggraph.OpenFromDB(orgDB)
 
+	// An index run mounts the local graph only for its own process. Every later
+	// CLI, MCP, or API runner must remount that persisted graph before serving
+	// deterministic context tools.
+	if err := e.mountPersistedLocalGraph(); err != nil {
+		return nil, err
+	}
+
 	// ── Start write buffer goroutine ─────────────────────────────────────────
 	e.buffer = writebuffer.New(ctx, e.dbRegistry,
 		writebuffer.DefaultBufferSize,
@@ -159,6 +166,32 @@ func New(ctx context.Context, cfg *config.Config) (*Engine, error) {
 	e.llmRouter = buildLLMRouter(cfg)
 
 	return e, nil
+}
+
+// mountPersistedLocalGraph makes an existing local substrate available to a
+// newly constructed engine. A missing graph is valid before the first index;
+// callers will receive the existing "run ce index first" error when they try
+// to use graph-backed tools.
+func (e *Engine) mountPersistedLocalGraph() error {
+	const projectID = "local"
+	path := filepath.Join(e.cfg.DataDir, "graphs", projectID+".db")
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat persisted project graph: %w", err)
+	}
+	if err := e.dbRegistry.Mount(projectID, path); err != nil {
+		return fmt.Errorf("mount persisted project graph: %w", err)
+	}
+	graphDB, err := e.dbRegistry.GraphDB(projectID)
+	if err != nil {
+		return fmt.Errorf("get persisted project graph: %w", err)
+	}
+	if err := migrations.RunGraph(graphDB); err != nil {
+		return fmt.Errorf("migrate persisted project graph: %w", err)
+	}
+	return nil
 }
 
 // NewLLMProvider builds a standalone model provider from config, without opening
