@@ -11,4 +11,6 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
   gate that tests CE against matching default plugins.
 - Initial open source project scaffolding for contribution, security, and release process documentation.
 - Added release compatibility documentation covering aligned sibling repo versioning, release note expectations, compatibility matrix, and local dev linking.
-- Added GitHub release installer and npm wrapper/platform packages for CE binary distribution.
+- Established GitHub Releases and the checksum-verifying curl installer as the
+  first public CE distribution channel. Homebrew and an npm wrapper are planned
+  follow-on channels; npm will not duplicate native binaries.

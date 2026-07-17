@@ -59,17 +59,3 @@ release:
     name: context-engine
   draft: false
   prerelease: auto
-
-brews:
-  - name: ce
-    repository:
-      owner: atheory-ai
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    homepage: "https://atheory.ai"
-    description: "Context Engine — AI-powered codebase intelligence"
-    license: "Apache-2.0"
-    install: |
-      bin.install "ce"
-    test: |
-      system "#{bin}/ce", "version"

@@ -1,15 +1,8 @@
 name: Release
 
-# Derived from atheory-ai/release-template v0.2.3 (release-full pattern),
-# adapted for CE's existing flow:
-#   - Pure Go (CGO_ENABLED=0); tree-sitter runs as WASM on wazero
-#   - Coordinated SDK + Studio compatibility checks
-#   - Aggregate release bundle (ce-<version>-dist.tar.gz)
-#   - npm 7-package fan-out (gated on npm-release environment)
-#
-# Adds: cosign keyless OIDC signing, SLSA L2 provenance, SPDX SBOM,
-# Homebrew formula commit (via separate goreleaser invocation after
-# signed archives are live).
+# The GitHub Release is the canonical CE distribution. It contains the signed
+# native archives consumed by install.sh. Homebrew and npm are intentionally
+# separate follow-on distribution channels, so neither can block this release.
 
 on:
   push:
@@ -17,6 +10,7 @@ on:
       - "v*"
 
 permissions:
+  attestations: write
   contents: write
   id-token: write
 
@@ -69,18 +63,19 @@ jobs:
           install-only: true
           version: "~> v2"
 
+      - name: Check installer syntax
+        run: sh -n install.sh
+
       - name: Run verification
         run: make verify
 
       - name: Validate bundled default plugins
         run: make release-dry-run-plugins
 
-      # Build the in-tree SDK plugins and stage their wasm into
-      # internal/indexer/defaults so the goreleaser build embeds them. Runs after
-      # the dry-run above (which stubs then removes the defaults) and before the
-      # real build. Additive: it only writes the SDK-provided default plugins and
-      # doesn't disturb any others placed by other means.
-      - name: Set up Node.js (for building default plugins)
+      # Build the SDK plugins that are embedded in production CE binaries.
+      # The SDK workspace is in-tree, so this is the compatibility gate for the
+      # released runtime rather than a checkout of an obsolete sibling repo.
+      - name: Set up Node.js (for default plugins)
         uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -88,7 +83,6 @@ jobs:
         run: corepack enable
       - name: Build and stage in-tree default plugins
         run: make bundle-default-plugins
-
       - name: Verify IIR runtime and matching default plugin build
         run: make verify-iir-contract
 
@@ -124,24 +118,7 @@ jobs:
         with:
           subject-path: 'dist/ce_*.tar.gz,dist/ce_*.zip'
 
-      - name: Sync npm package versions
-        run: node scripts/set-npm-version.mjs "${{ steps.release_version.outputs.version }}"
-
-      - name: Stage npm binaries
-        run: node scripts/stage-npm-binaries.mjs
-
-      - name: Build npm tarballs
-        shell: bash
-        run: |
-          cd npm/darwin-arm64 && npm pack --pack-destination ../../dist
-          cd ../darwin-x64 && npm pack --pack-destination ../../dist
-          cd ../linux-arm64 && npm pack --pack-destination ../../dist
-          cd ../linux-x64 && npm pack --pack-destination ../../dist
-          cd ../win32-arm64 && npm pack --pack-destination ../../dist
-          cd ../win32-x64 && npm pack --pack-destination ../../dist
-          cd ../ce && npm pack --pack-destination ../../dist
-
-      - name: Archive build output (aggregate bundle)
+      - name: Archive release assets
         shell: bash
         run: tar -czf "ce-${{ steps.release_version.outputs.version }}-dist.tar.gz" dist
 
@@ -168,106 +145,9 @@ jobs:
             dist/sbom.spdx.json
           if-no-files-found: error
 
-      - name: Upload npm tarballs
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: ce-npm-tarballs
-          path: dist/*.tgz
-          if-no-files-found: error
-
-  sdk_compatibility:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out SDK repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with:
-          repository: atheory-ai/ce-plugin-sdk
-          persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: 22
-      - run: corepack enable
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm build
-      - run: pnpm test
-
-  studio_compatibility:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out Studio repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with:
-          repository: atheory-ai/atheory-ce-studio
-          persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: 22
-      - run: corepack enable
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm build
-
-  publish_npm:
-    runs-on: ubuntu-latest
-    needs:
-      - verify_release
-      - sdk_compatibility
-      - studio_compatibility
-    environment:
-      name: npm-release
-    steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        id: download_tarballs
-        with:
-          name: ce-npm-tarballs
-          path: dist
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
-      - name: Publish platform packages
-        env:
-          VERSION: ${{ needs.verify_release.outputs.version }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        shell: bash
-        run: |
-          tar_dir="$(realpath "${{ steps.download_tarballs.outputs.download-path }}")"
-          for tarball in \
-            "$tar_dir/atheory-ai-ce-darwin-arm64-${VERSION}.tgz" \
-            "$tar_dir/atheory-ai-ce-darwin-x64-${VERSION}.tgz" \
-            "$tar_dir/atheory-ai-ce-linux-arm64-${VERSION}.tgz" \
-            "$tar_dir/atheory-ai-ce-linux-x64-${VERSION}.tgz" \
-            "$tar_dir/atheory-ai-ce-win32-arm64-${VERSION}.tgz" \
-            "$tar_dir/atheory-ai-ce-win32-x64-${VERSION}.tgz"; do
-            if [ ! -f "$tarball" ]; then
-              echo "Missing tarball: $tarball"
-              exit 1
-            fi
-            npm publish "$tarball" --access public --provenance
-          done
-      - name: Publish wrapper package
-        env:
-          VERSION: ${{ needs.verify_release.outputs.version }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        shell: bash
-        run: |
-          tar_dir="$(realpath "${{ steps.download_tarballs.outputs.download-path }}")"
-          tarball="$tar_dir/atheory-ai-ce-${VERSION}.tgz"
-          if [ ! -f "$tarball" ]; then
-            echo "Missing tarball: $tarball"
-            exit 1
-          fi
-          npm publish "$tarball" --access public --provenance
-
   publish_release:
     runs-on: ubuntu-latest
-    needs:
-      - verify_release
-      - sdk_compatibility
-      - studio_compatibility
-      - publish_npm
+    needs: verify_release
     steps:
       - name: Download release bundle
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -279,42 +159,10 @@ jobs:
         with:
           name: ce-release-assets
           path: release-assets
-      - name: Publish GitHub release (signed archives + SBOM + bundle)
+      - name: Publish GitHub release (signed archives, SBOM, and bundle)
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           generate_release_notes: true
           files: |
             release-bundle/ce-${{ needs.verify_release.outputs.version }}-dist.tar.gz
             release-assets/*
-
-  publish_brew:
-    runs-on: ubuntu-latest
-    needs:
-      - verify_release
-      - publish_release
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Install GoReleaser
-        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a
-        with:
-          install-only: true
-          version: "~> v2"
-      - name: Restore release assets for Homebrew formula
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: ce-release-assets
-          path: dist
-      - name: Push Homebrew formula
-        # Re-runs goreleaser to commit the formula. By this point the
-        # GitHub release exists with signed archives, so the formula
-        # points at the right URLs.
-        run: goreleaser release --clean --skip=archive,build
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
