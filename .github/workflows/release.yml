@@ -79,8 +79,12 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
-      - name: Enable pnpm
-        run: corepack enable
+      # Keep CI on the exact version declared by the SDK workspace. Corepack's
+      # runner-default pnpm can be newer and rejects that packageManager pin.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdk/package.json
       - name: Build and stage in-tree default plugins
         run: make bundle-default-plugins
       - name: Verify IIR runtime and matching default plugin build
