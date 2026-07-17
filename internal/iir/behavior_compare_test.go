@@ -47,14 +47,25 @@ func TestCompare_BehaviorContentMatches(t *testing.T) {
 	}
 }
 
-// When either side lacks a WhenExpr, comparison falls back to the count-based
-// behavior exactly — no regression, even if the raw strings differ.
-func TestCompare_BehaviorFallsBackWhenUnstructured(t *testing.T) {
+// A prose-only condition has no semantic form to compare. Equal branch counts
+// are not enough to establish behavior equivalence.
+func TestCompare_BehaviorIsInconclusiveWhenUnstructured(t *testing.T) {
 	intended := behaviorIntent("a < 1", bin("<", path("a"), lit("1")))
 	extracted := behaviorIntent("something opaque", nil) // no structured form
 	_, mismatches := Compare(intended, extracted)
-	if findMismatch(mismatches, MismatchBehaviorContent) != nil {
-		t.Errorf("unstructured side must not produce a content mismatch: %+v", mismatches)
+	if findMismatch(mismatches, MismatchUnsupported) == nil {
+		t.Errorf("unstructured behavior must be unsupported: %+v", mismatches)
+	}
+}
+
+func TestVerify_IsInconclusiveForProseOnlyBehavior(t *testing.T) {
+	intended := baseIntent()
+	intended.Behavior = []BehaviorClause{{When: "entityKey is empty", Then: "throw invalid_entity_key"}}
+	extracted := baseIntent()
+	extracted.Behavior = []BehaviorClause{{When: "false", Then: "throw invalid_entity_key", WhenExpr: lit("false")}}
+
+	if report := Verify(intended, extracted, DefaultRulePack()); report.Status != StatusInconclusive {
+		t.Fatalf("status = %s, want %s; mismatches: %+v", report.Status, StatusInconclusive, report.Mismatches)
 	}
 }
 
