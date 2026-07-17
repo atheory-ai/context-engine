@@ -384,8 +384,10 @@ func compareSideEffects(intended, extracted *FunctionIntent, matches *[]Match, m
 		})
 	}
 
-	// Effects declared but not detected: a warning — extraction is conservative
-	// and may not observe every declared effect.
+	// Effects declared but not detected violate the function contract. An
+	// extractor that cannot model an effect must surface an unsupported finding
+	// with coverage evidence; it must not downgrade a missing required effect
+	// to a passing warning.
 	var undetected []string
 	for e := range declared {
 		if !found[e] {
@@ -396,7 +398,7 @@ func compareSideEffects(intended, extracted *FunctionIntent, matches *[]Match, m
 		sort.Strings(undetected)
 		*mismatches = append(*mismatches, Mismatch{
 			Kind:         MismatchUndetectedEffect,
-			Severity:     SeverityWarning,
+			Severity:     SeverityError,
 			Path:         "FunctionIntent.sideEffects",
 			Message:      fmt.Sprintf("intended side effects not observed in source: %s", strings.Join(undetected, ", ")),
 			Expected:     intended.SideEffects,

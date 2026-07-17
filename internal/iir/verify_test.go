@@ -45,6 +45,26 @@ func TestVerify_ReportShapeIsStable(t *testing.T) {
 	}
 }
 
+func TestVerify_FailsForDeclaredButUndetectedEffect(t *testing.T) {
+	intended := mustLoad(t, validIntentYAML)
+	intended.SideEffects = stringEffects("cache.invalidate")
+	extracted := &FunctionIntent{
+		Kind: KindFunctionIntent, Name: intended.Name, Language: intended.Language,
+		Visibility:   VisibilityPublic,
+		Inputs:       intended.Inputs,
+		Returns:      intended.Returns,
+		Behavior:     intended.Behavior,
+		SideEffects:  []SideEffect{},
+		FailureModes: intended.FailureModes,
+		Constraints:  []string{},
+	}
+
+	report := Verify(intended, extracted, DefaultRulePack())
+	if report.Status != StatusFailed {
+		t.Fatalf("status = %s, want %s; mismatches: %+v", report.Status, StatusFailed, report.Mismatches)
+	}
+}
+
 func mustLoad(t *testing.T, doc string) *FunctionIntent {
 	t.Helper()
 	intent, err := LoadIntent([]byte(doc))

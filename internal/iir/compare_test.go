@@ -289,13 +289,13 @@ func TestCompare_UnknownInputTypeIsExactNotEquivalent(t *testing.T) {
 	}
 }
 
-func TestCompare_DeclaredButUndetectedEffectIsWarning(t *testing.T) {
+func TestCompare_DeclaredButUndetectedEffectIsError(t *testing.T) {
 	intended := baseIntent()
 	intended.SideEffects = stringEffects("db.save")
 	extracted := baseIntent() // no effects detected
 	_, mismatches := Compare(intended, extracted)
 	m := findMismatch(mismatches, MismatchUndetectedEffect)
-	if m == nil || m.Severity != SeverityWarning {
-		t.Errorf("expected warning undetected_side_effect, got %+v", mismatches)
+	if m == nil || m.Severity != SeverityError {
+		t.Errorf("expected error undetected_side_effect, got %+v", mismatches)
 	}
 }
