@@ -89,7 +89,7 @@ release archive through the `atheory-ai/homebrew-tap`; it is not yet published.
 
 ### npm wrapper (planned)
 
-`@atheory-ai/ce` is not published yet. When it is, it will be a thin,
+`@atheory-ai/ce` is implemented but not published yet. It is a thin,
 version-pinned wrapper over the signed GitHub Release binary—not a separately
 built or duplicated native distribution.
 

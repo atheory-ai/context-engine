@@ -5,8 +5,8 @@ Status: **POC PROVEN** (2026-07-09). Owner: grammar/parse layer. Amends Spec 9
 
 ## POC result (step 1 — DONE)
 
-Working end-to-end proof in `/Volumes/Projects/.wasm-grammar-poc` (durable path,
-outside the ephemeral scratchpad). A Go grammar compiled from source to a PIC
+The working end-to-end proof used a dedicated external WASM grammar test project.
+A Go grammar compiled from source to a PIC
 WASM side module was loaded **dynamically at runtime** into a WASM tree-sitter
 core on wazero, via a hand-written dynamic linker, and produced a correct
 fully-named CST — with the loader built `CGO_ENABLED=0` (genuinely pure Go).

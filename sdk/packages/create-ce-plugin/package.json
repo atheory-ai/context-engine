@@ -1,6 +1,6 @@
 {
   "name": "@atheory-ai/create-ce-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Scaffold Context Engine plugins.",
   "type": "module",
   "bin": {
@@ -23,14 +23,14 @@
     "@types/prompts": "^2.x"
   },
   "license": "Apache-2.0",
-  "homepage": "https://github.com/atheory-ai/ce-plugin-sdk#readme",
+  "homepage": "https://github.com/atheory-ai/context-engine/tree/main/sdk/packages/create-ce-plugin#readme",
   "bugs": {
-    "url": "https://github.com/atheory-ai/ce-plugin-sdk/issues"
+    "url": "https://github.com/atheory-ai/context-engine/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/atheory-ai/ce-plugin-sdk.git",
-    "directory": "packages/create-ce-plugin"
+    "url": "git+https://github.com/atheory-ai/context-engine.git",
+    "directory": "sdk/packages/create-ce-plugin"
   },
   "publishConfig": {
     "access": "public"

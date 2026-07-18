@@ -6,12 +6,11 @@ The plugin SDK for [Context Engine](https://github.com/atheory-ai/context-engine
 
 ## Repository role
 
-This repository owns the TypeScript plugin ecosystem for CE: `@atheory-ai/ce-plugin-sdk`, `@atheory-ai/ce-plugin-sandbox`, `@atheory-ai/create-ce-plugin`, default language plugin source, examples, and plugin-focused documentation. It does not own the CE runtime binary or the Studio developer inspector UI.
-
-Sibling repositories:
-
-- [context-engine](https://github.com/atheory-ai/context-engine) — CE runtime, CLI, runner, storage, indexer, MCP/API server, and release binary
-- [atheory-ce-studio](https://github.com/atheory-ai/atheory-ce-studio) — developer inspector UI for querying, graph exploration, history, and trace inspection
+This `sdk/` workspace owns the TypeScript plugin ecosystem for CE:
+`@atheory-ai/ce-plugin-sdk`, `@atheory-ai/ce-plugin-sandbox`,
+`@atheory-ai/create-ce-plugin`, default language plugin source, examples, and
+plugin-focused documentation. It lives inside the
+[Context Engine repository](https://github.com/atheory-ai/context-engine).
 
 ---
 
@@ -34,9 +33,7 @@ examples/
 
 llm-skills/            — markdown prompts for AI-assisted plugin generation
 
-scripts/
-  install-javy.js      — downloads the javy compiler on postinstall
-bin/                   — javy binary lives here after install (gitignored)
+scripts/               — release and package-maintenance scripts
 ```
 
 ---
@@ -46,20 +43,21 @@ bin/                   — javy binary lives here after install (gitignored)
 | Tool | Version | Notes |
 | ---- | ------- | ----- |
 | Node.js | 20+ | |
-| pnpm | 9+ | `npm install -g pnpm` |
+| pnpm | 11.1.3+ | Enable through Corepack |
 | `ce` binary | Latest | Required for `ce plugin validate` and sandbox testing |
 
-`javy` (the JS→WASM compiler) is downloaded automatically on `pnpm install` via `scripts/install-javy.js`. No manual install needed.
+`@atheory-ai/wasm-plugin-toolkit` provides the supported JavaScript-to-WASM
+build path for plugins and manages the Javy compiler it needs.
 
 ---
 
 ## Getting started
 
 ```bash
-git clone https://github.com/atheory-ai/ce-plugin-sdk.git
-cd ce-plugin-sdk
+git clone https://github.com/atheory-ai/context-engine.git
+cd context-engine/sdk
 
-# Installs all dependencies and downloads javy automatically
+# Installs workspace dependencies
 pnpm install
 ```
 

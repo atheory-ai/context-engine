@@ -15,9 +15,9 @@ This repository owns the CE runtime:
 - MCP, REST, and WebSocket server surfaces
 - release packaging for the CE binary
 
-Sibling repositories own adjacent surfaces:
+The in-tree SDK workspace and a sibling repository own adjacent surfaces:
 
-- [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk): TypeScript plugin SDK, plugin sandbox, templates, examples, and default plugin source.
+- [SDK workspace](../sdk/README.md): TypeScript plugin SDK, plugin sandbox, templates, examples, and default plugin source.
 - [atheory-ce-studio](https://github.com/atheory-ai/atheory-ce-studio): optional web UI client that consumes CE REST and WebSocket APIs.
 
 ## Package Map
@@ -69,7 +69,7 @@ file walker
   -> org graph lifting
 ```
 
-The indexer owns orchestration, not language knowledge. Language-specific extraction belongs in plugins. Framework and codebase convention extraction also belongs in plugins, and multiple matching plugins may contribute graph facts for the same file. The Go runtime may parse with tree-sitter so plugins can receive a syntax tree, but plugin source and plugin authoring tools live in `ce-plugin-sdk`.
+The indexer owns orchestration, not language knowledge. Language-specific extraction belongs in plugins. Framework and codebase convention extraction also belongs in plugins, and multiple matching plugins may contribute graph facts for the same file. The Go runtime may parse with tree-sitter so plugins can receive a syntax tree, but plugin source and plugin authoring tools live in `sdk/`.
 
 All substrate writes must go through the write buffer. Do not write directly to graph databases from indexing or learning paths.
 
@@ -122,7 +122,7 @@ The runtime side of the plugin contract lives here:
 - invoking language/tool/analyzer exports
 - embedding default plugin artifacts in release builds
 
-The authoring side lives in `ce-plugin-sdk`:
+The authoring side lives in `sdk/`:
 
 - TypeScript SDK types
 - plugin sandbox

@@ -1,10 +1,10 @@
 # Plugin Authoring Guide
 
-This guide connects CE runtime expectations to the TypeScript APIs in [ce-plugin-sdk](https://github.com/atheory-ai/ce-plugin-sdk). Use this when writing or reviewing plugins from the CE side. Use the SDK repository for package-specific build, test, and scaffolding details.
+This guide connects CE runtime expectations to the TypeScript APIs in the [SDK workspace](../sdk/README.md). Use this when writing or reviewing plugins from the CE side. Use the SDK workspace for package-specific build, test, and scaffolding details.
 
 ## Where Plugin Code Lives
 
-Plugin authoring lives in `ce-plugin-sdk`:
+Plugin authoring lives in `sdk/`:
 
 - `@ce/plugin-sdk`: `definePlugin`, types, host helpers, and plugin TypeScript config.
 - `@ce/plugin-sandbox`: local validation and fixture testing.
@@ -97,9 +97,9 @@ export default definePlugin({
 The TypeScript API lives in:
 
 ```text
-ce-plugin-sdk/packages/plugin-sdk/src/types.ts
-ce-plugin-sdk/packages/plugin-sdk/src/define.ts
-ce-plugin-sdk/packages/plugin-sdk/src/host.ts
+sdk/packages/plugin-sdk/src/types.ts
+sdk/packages/plugin-sdk/src/define.ts
+sdk/packages/plugin-sdk/src/host.ts
 ```
 
 ## Language Plugins
@@ -387,4 +387,4 @@ Before publishing or relying on a plugin:
 - [Spec 4: Plugin Engine](./specs/4-spec-plugin-engine.md)
 - [Spec 9: Indexer](./specs/9-spec-9-indexer.md)
 - [Spec 16: Plugins](./specs/16-spec-16-plugins.md)
-- [ce-plugin-sdk README](https://github.com/atheory-ai/ce-plugin-sdk)
+- [SDK workspace README](../sdk/README.md)

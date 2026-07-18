@@ -14,8 +14,14 @@
   "bin": {
     "ce": "bin/ce.js"
   },
+  "scripts": {
+    "postinstall": "node lib/install.js",
+    "test": "node --test test/*.test.js"
+  },
   "files": [
-    "bin/"
+    "bin/",
+    "lib/",
+    "README.md"
   ],
   "engines": {
     "node": ">=18"
@@ -27,13 +33,5 @@
     "codebase",
     "mcp",
     "cli"
-  ],
-  "optionalDependencies": {
-    "@atheory-ai/ce-darwin-arm64": "0.1.0",
-    "@atheory-ai/ce-darwin-x64": "0.1.0",
-    "@atheory-ai/ce-linux-x64": "0.1.0",
-    "@atheory-ai/ce-linux-arm64": "0.1.0",
-    "@atheory-ai/ce-win32-x64": "0.1.0",
-    "@atheory-ai/ce-win32-arm64": "0.1.0"
-  }
+  ]
 }
