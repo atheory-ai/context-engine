@@ -6,6 +6,7 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
 
 ## [Unreleased]
 
+- Corrected release binaries so `ce version` reports the tagged version.
 - Documented the semantic-platform north star, current IIR capability matrix,
   plugin source-lift contract, historical RFC supersession, and the release
   gate that tests CE against matching default plugins.

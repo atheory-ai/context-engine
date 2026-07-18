@@ -27,7 +27,7 @@ builds:
       - arm64
     ldflags:
       - -s -w
-        -X main.version={{.Version}}
+        -X github.com/atheory-ai/context-engine/cli.Version={{.Version}}
 
 archives:
   - id: ce
