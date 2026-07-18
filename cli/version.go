@@ -8,7 +8,7 @@ import (
 )
 
 // Version is the CE binary version. Set at build time via -ldflags.
-var Version = "0.1.0-dev"
+var Version = "0.1.1-dev"
 
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{

@@ -75,7 +75,7 @@ curl -fsSL https://raw.githubusercontent.com/atheory-ai/context-engine/main/inst
 To install an explicit version, set `CE_VERSION`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/atheory-ai/context-engine/main/install.sh | CE_VERSION=0.1.0 sh
+curl -fsSL https://raw.githubusercontent.com/atheory-ai/context-engine/main/install.sh | CE_VERSION=0.1.1 sh
 ```
 
 The installer downloads the release archive for your platform, verifies its

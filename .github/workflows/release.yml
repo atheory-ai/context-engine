@@ -95,6 +95,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # The CLI version lives in the cli package, not main. Execute the native
+      # Linux archive to ensure the GoReleaser linker target remains correct.
+      - name: Verify release binary version
+        run: ./scripts/validate-release-binary-version.sh "${{ steps.release_version.outputs.version }}" "dist/ce_${{ steps.release_version.outputs.version }}_linux_amd64.tar.gz"
+
       - name: Install cosign
         uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9
 
