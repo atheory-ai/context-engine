@@ -32,23 +32,30 @@ type Node struct {
 	// file's stale symbols. Empty for cross-file nodes (namespace/concept) and
 	// nodes written before it was tracked.
 	SourceFile string
-	Properties map[string]any
-	CreatedAt  int64
-	UpdatedAt  int64
+	// IndexManaged marks output owned by the file indexer. It is intentionally
+	// separate from PluginID so manually-created plugin-adjacent facts survive
+	// an authoritative reindex.
+	IndexManaged   bool
+	LastIndexRunID string
+	Properties     map[string]any
+	CreatedAt      int64
+	UpdatedAt      int64
 }
 
 // Edge is a property graph edge as read from the substrate.
 type Edge struct {
-	ID          EdgeID
-	ProjectID   ProjectID
-	SourceID    NodeID
-	TargetID    NodeID
-	Type        string
-	SourceClass SourceClass
-	Weight      float64 // from edge_weight table, joined at read time
-	PluginID    PluginID
-	Properties  map[string]any
-	CreatedAt   int64
+	ID             EdgeID
+	ProjectID      ProjectID
+	SourceID       NodeID
+	TargetID       NodeID
+	Type           string
+	SourceClass    SourceClass
+	Weight         float64 // from edge_weight table, joined at read time
+	PluginID       PluginID
+	IndexManaged   bool
+	LastIndexRunID string
+	Properties     map[string]any
+	CreatedAt      int64
 }
 
 // IIRRecord is a stored Intermediate Intent Representation for one function

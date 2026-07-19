@@ -21,7 +21,7 @@ func TestSemanticHistoryAndDiff(t *testing.T) {
 		{Type: writebuffer.OpUpsertSemanticRecipe, ProjectID: "p", Payload: writebuffer.SemanticRecipeUpsert{ID: "r1", ProjectID: "p", PlanRevisionID: "p1", SchemaVersion: "v1", TargetLanguage: "typescript", RendererProfile: `{}`, Payload: `{"steps":[{"id":"step","operation":"old"}]}`, CreatedAt: 1}},
 		{Type: writebuffer.OpUpsertSemanticRecipe, ProjectID: "p", Payload: writebuffer.SemanticRecipeUpsert{ID: "r2", ProjectID: "p", PlanRevisionID: "p2", SchemaVersion: "v1", TargetLanguage: "typescript", RendererProfile: `{}`, Payload: `{"steps":[{"id":"step","operation":"new"}]}`, CreatedAt: 2}},
 	} {
-		if err := buf.Send(op); err != nil {
+		if err := buf.Send(ctx, op); err != nil {
 			t.Fatal(err)
 		}
 	}

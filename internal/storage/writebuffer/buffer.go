@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
+	"sync"
 	"time"
 )
 
@@ -16,34 +16,47 @@ const (
 
 // Buffer is the single-writer goroutine interface.
 // Callers obtain a Buffer from New() and call Send().
-// Send never blocks (buffered channel). If the channel is full,
-// Send returns ErrBufferFull — callers should log and continue.
+// Send applies backpressure while the queue is full and returns when its
+// context is cancelled or a prior database flush has failed.
 type Buffer interface {
-	// Send enqueues a write operation. Non-blocking.
-	Send(op WriteOp) error
+	// Send enqueues a write operation, waiting for capacity when necessary.
+	Send(ctx context.Context, op WriteOp) error
 
 	// Flush forces an immediate flush. Blocks until complete.
 	// Used at the end of a query turn to ensure all writes land.
 	Flush(ctx context.Context) error
 
+	// BeginIndexTransaction holds index writes in the buffer after first
+	// flushing older work. CommitIndexTransaction flushes the complete held set
+	// in one project transaction; AbortIndexTransaction drops it.
+	BeginIndexTransaction(ctx context.Context) error
+	CommitIndexTransaction(ctx context.Context) error
+	AbortIndexTransaction(ctx context.Context) error
+
 	// Close flushes remaining ops and shuts down the goroutine.
 	Close(ctx context.Context) error
 }
 
-// ErrBufferFull is returned by Send when the internal channel is full.
-const errBufferFull = "write buffer full"
+const errBufferClosed = "write buffer closed"
 
 // buffer is the concrete Buffer implementation.
 type buffer struct {
 	ch            chan WriteOp
 	pending       *pendingMap
 	dbProvider    DBProvider
-	flushReq      chan struct{} // caller → goroutine: "please flush now"
-	flushDone     chan struct{} // goroutine → caller: "flush complete"
+	flushReq      chan chan error // caller → goroutine: "please flush now"
+	indexReq      chan indexControl
 	bufSize       int
 	flushInterval time.Duration
 	cancel        context.CancelFunc
 	done          chan struct{} // closed when goroutine exits
+	errMu         sync.Mutex
+	err           error // first storage failure; makes the buffer fail closed
+}
+
+type indexControl struct {
+	action   string
+	response chan error
 }
 
 // New creates a Buffer and starts the writer goroutine.
@@ -60,8 +73,8 @@ func New(
 		ch:            make(chan WriteOp, bufSize),
 		pending:       newPendingMap(),
 		dbProvider:    dbProvider,
-		flushReq:      make(chan struct{}),
-		flushDone:     make(chan struct{}),
+		flushReq:      make(chan chan error),
+		indexReq:      make(chan indexControl),
 		bufSize:       bufSize,
 		flushInterval: flushInterval,
 		cancel:        cancel,
@@ -71,28 +84,74 @@ func New(
 	return b
 }
 
-// Send enqueues a write operation. Non-blocking.
-// Returns an error if the internal channel is full.
-func (b *buffer) Send(op WriteOp) error {
+func (b *buffer) BeginIndexTransaction(ctx context.Context) error {
+	return b.indexControl(ctx, "begin")
+}
+func (b *buffer) CommitIndexTransaction(ctx context.Context) error {
+	return b.indexControl(ctx, "commit")
+}
+func (b *buffer) AbortIndexTransaction(ctx context.Context) error {
+	return b.indexControl(ctx, "abort")
+}
+func (b *buffer) indexControl(ctx context.Context, action string) error {
+	if err := b.failure(); err != nil {
+		return err
+	}
+	response := make(chan error, 1)
+	select {
+	case b.indexReq <- indexControl{action: action, response: response}:
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-b.done:
+		return errors.New(errBufferClosed)
+	}
+	select {
+	case err := <-response:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// Send enqueues a write operation. It blocks only while the bounded channel is
+// full, preserving every accepted write instead of dropping work under load.
+func (b *buffer) Send(ctx context.Context, op WriteOp) error {
+	if err := b.failure(); err != nil {
+		return err
+	}
 	select {
 	case b.ch <- op:
-		return nil
-	default:
-		return errors.New(errBufferFull)
+		return b.failure()
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-b.done:
+		if err := b.failure(); err != nil {
+			return err
+		}
+		return errors.New(errBufferClosed)
 	}
 }
 
 // Flush forces an immediate flush. Blocks until the goroutine has completed
 // the flush or the context is cancelled.
 func (b *buffer) Flush(ctx context.Context) error {
+	if err := b.failure(); err != nil {
+		return err
+	}
+	response := make(chan error, 1)
 	select {
-	case b.flushReq <- struct{}{}:
+	case b.flushReq <- response:
 	case <-ctx.Done():
 		return ctx.Err()
+	case <-b.done:
+		if err := b.failure(); err != nil {
+			return err
+		}
+		return errors.New(errBufferClosed)
 	}
 	select {
-	case <-b.flushDone:
-		return nil
+	case err := <-response:
+		return err
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -103,6 +162,8 @@ func (b *buffer) Close(ctx context.Context) error {
 	b.cancel()
 	select {
 	case <-b.done:
+		// Close is lifecycle cleanup. Callers that need delivery confirmation use
+		// Flush, which returns any sticky storage failure before shutdown.
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
@@ -117,24 +178,63 @@ func (b *buffer) run(ctx context.Context) {
 	ticker := time.NewTicker(b.flushInterval)
 	defer ticker.Stop()
 
+	held := false
 	for {
 		select {
 		case op := <-b.ch:
-			b.pending.merge(op)
-			if b.pending.len() >= b.bufSize {
-				b.doFlush(ctx)
+			if b.failure() == nil {
+				b.pending.merge(op)
+				if !held && b.pending.len() >= b.bufSize {
+					b.setFailure(b.doFlush(ctx))
+				}
 			}
 
 		case <-ticker.C:
-			if b.pending.len() > 0 {
-				b.doFlush(ctx)
+			if !held && b.pending.len() > 0 && b.failure() == nil {
+				b.setFailure(b.doFlush(ctx))
 			}
 
-		case <-b.flushReq:
+		case response := <-b.flushReq:
 			// Drain the channel first so all sent ops are included in this flush.
-			b.drainCh()
-			b.doFlush(ctx)
-			b.flushDone <- struct{}{}
+			if b.failure() == nil {
+				b.drainCh()
+				b.setFailure(b.doFlush(ctx))
+			}
+			response <- b.failure()
+
+		case req := <-b.indexReq:
+			var err error
+			switch req.action {
+			case "begin":
+				if held {
+					err = errors.New("index transaction already active")
+				} else if b.pending.len() > 0 {
+					err = b.doFlush(ctx)
+				}
+				if err == nil {
+					held = true
+				}
+			case "commit":
+				if !held {
+					err = errors.New("no active index transaction")
+				} else {
+					b.drainCh()
+					err = b.doFlush(ctx)
+					held = false
+				}
+			case "abort":
+				if !held {
+					err = errors.New("no active index transaction")
+				} else {
+					b.drainCh()
+					_ = b.pending.drain()
+					held = false
+				}
+			default:
+				err = errors.New("unknown index transaction action")
+			}
+			b.setFailure(err)
+			req.response <- b.failure()
 
 		case <-ctx.Done():
 			// Drain channel and pending map before exit.
@@ -142,12 +242,16 @@ func (b *buffer) run(ctx context.Context) {
 			for {
 				select {
 				case op := <-b.ch:
-					b.pending.merge(op)
+					if b.failure() == nil {
+						b.pending.merge(op)
+					}
 				default:
 					break drain
 				}
 			}
-			b.doFlush(context.Background())
+			if b.failure() == nil {
+				b.setFailure(b.doFlush(context.Background()))
+			}
 			return
 		}
 	}
@@ -167,10 +271,10 @@ func (b *buffer) drainCh() {
 }
 
 // doFlush drains the pending map and writes all ops to their respective databases.
-func (b *buffer) doFlush(ctx context.Context) {
+func (b *buffer) doFlush(ctx context.Context) error {
 	ops := b.pending.drain()
 	if len(ops) == 0 {
-		return
+		return nil
 	}
 
 	// Group ops by project ID — each project gets one transaction.
@@ -182,12 +286,29 @@ func (b *buffer) doFlush(ctx context.Context) {
 	for projectID, projectOps := range byProject {
 		db, err := b.dbProvider.GraphDB(projectID)
 		if err != nil {
-			log.Printf("writebuffer: GraphDB(%q): %v", projectID, err)
-			continue
+			return fmt.Errorf("graph db %q: %w", projectID, err)
 		}
 		if err := flushProject(ctx, db, projectOps); err != nil {
-			log.Printf("writebuffer: flush project %q: %v", projectID, err)
+			return fmt.Errorf("flush project %q: %w", projectID, err)
 		}
+	}
+	return nil
+}
+
+func (b *buffer) failure() error {
+	b.errMu.Lock()
+	defer b.errMu.Unlock()
+	return b.err
+}
+
+func (b *buffer) setFailure(err error) {
+	if err == nil {
+		return
+	}
+	b.errMu.Lock()
+	defer b.errMu.Unlock()
+	if b.err == nil {
+		b.err = err
 	}
 }
 
@@ -213,28 +334,32 @@ func execOp(ctx context.Context, tx *sql.Tx, op WriteOp) error {
 	case OpUpsertNode:
 		n := op.Payload.(NodeUpsert)
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO nodes (id, project_id, type, label, canonical_id, source_class, plugin_id, source_file, created_at, updated_at, properties)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO nodes (id, project_id, type, label, canonical_id, source_class, plugin_id, source_file, index_managed, last_index_run_id, created_at, updated_at, properties)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(id) DO UPDATE SET
 				label        = excluded.label,
 				source_class = excluded.source_class,
 				source_file  = excluded.source_file,
+				index_managed = excluded.index_managed,
+				last_index_run_id = excluded.last_index_run_id,
 				updated_at   = excluded.updated_at,
 				properties   = excluded.properties
 		`, n.ID, n.ProjectID, n.Type, n.Label, n.CanonicalID, n.SourceClass,
-			nullableString(n.PluginID), n.SourceFile, n.CreatedAt, n.UpdatedAt, n.Properties)
+			nullableString(n.PluginID), n.SourceFile, n.IndexManaged, nullableString(n.LastIndexRunID), n.CreatedAt, n.UpdatedAt, n.Properties)
 		return err
 
 	case OpUpsertEdge:
 		e := op.Payload.(EdgeUpsert)
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO edges (id, project_id, source_id, target_id, type, source_class, plugin_id, created_at, properties)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO edges (id, project_id, source_id, target_id, type, source_class, plugin_id, index_managed, last_index_run_id, created_at, properties)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(id) DO UPDATE SET
 				source_class = excluded.source_class,
+				index_managed = excluded.index_managed,
+				last_index_run_id = excluded.last_index_run_id,
 				properties   = excluded.properties
 		`, e.ID, e.ProjectID, e.SourceID, e.TargetID, e.Type, e.SourceClass,
-			nullableString(e.PluginID), e.CreatedAt, e.Properties)
+			nullableString(e.PluginID), e.IndexManaged, nullableString(e.LastIndexRunID), e.CreatedAt, e.Properties)
 		return err
 
 	case OpUpdateActivation:

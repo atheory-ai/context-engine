@@ -21,7 +21,7 @@ func TestSemanticBuildWritesAreOrderedAndIdempotent(t *testing.T) {
 		{Type: writebuffer.OpUpsertSemanticPlan, ProjectID: "project", Payload: writebuffer.SemanticPlanUpsert{ID: "plan", ProjectID: "project", UnitID: "unit", Revision: 1, Lifecycle: "resolved", SchemaVersion: "v1", Payload: `{}`, CreatedAt: now}},
 	}
 	for _, op := range ops {
-		if err := buf.Send(op); err != nil {
+		if err := buf.Send(ctx, op); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -35,10 +35,10 @@ func TestSemanticBuildWritesAreOrderedAndIdempotent(t *testing.T) {
 		}
 	}
 	// Replaying immutable IDs must retain exactly one row per record.
-	if err := buf.Send(ops[4]); err != nil {
+	if err := buf.Send(ctx, ops[4]); err != nil {
 		t.Fatal(err)
 	}
-	if err := buf.Send(ops[3]); err != nil {
+	if err := buf.Send(ctx, ops[3]); err != nil {
 		t.Fatal(err)
 	}
 	if err := buf.Flush(ctx); err != nil {
@@ -66,7 +66,7 @@ func TestSemanticPlanParentsAreWrittenBeforeChildren(t *testing.T) {
 		{Type: writebuffer.OpUpsertSemanticPlan, ProjectID: "project", Payload: writebuffer.SemanticPlanUpsert{ID: "plan-2", ProjectID: "project", UnitID: "unit", ParentPlanID: "plan-1", Revision: 2, Lifecycle: "resolved", SchemaVersion: "v1", Payload: `{}`, CreatedAt: 2}},
 		{Type: writebuffer.OpUpsertSemanticPlan, ProjectID: "project", Payload: writebuffer.SemanticPlanUpsert{ID: "plan-1", ProjectID: "project", UnitID: "unit", Revision: 1, Lifecycle: "resolved", SchemaVersion: "v1", Payload: `{}`, CreatedAt: 1}},
 	} {
-		if err := buf.Send(op); err != nil {
+		if err := buf.Send(ctx, op); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -93,7 +93,7 @@ func TestSemanticArtifactRejectsUnpermittedContent(t *testing.T) {
 		{Type: writebuffer.OpUpsertSemanticRecipe, ProjectID: "p", Payload: writebuffer.SemanticRecipeUpsert{ID: "r1", ProjectID: "p", PlanRevisionID: "p1", SchemaVersion: "v1", TargetLanguage: "typescript", RendererProfile: `{}`, Payload: `{}`, CreatedAt: 1}},
 		{Type: writebuffer.OpUpsertSemanticArtifact, ProjectID: "p", Payload: writebuffer.SemanticArtifactUpsert{ID: "a1", ProjectID: "p", PlanRevisionID: "p1", RecipeID: "r1", Kind: "source", ContentHash: "h", TargetLanguage: "typescript", TargetPath: "a.ts", SourceContent: "secret", CreatedAt: 1}},
 	} {
-		if err := buf.Send(op); err != nil {
+		if err := buf.Send(ctx, op); err != nil {
 			t.Fatal(err)
 		}
 	}

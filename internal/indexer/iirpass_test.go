@@ -24,7 +24,7 @@ func (w *captureWriter) UpsertIIR(_ context.Context, r core.IIRRecord) error {
 }
 
 // The plugin lift path (Track B) stores validated intents by their
-// plugin-provided node id, skips malformed ones, and writes a canonical payload.
+// plugin-provided node id and writes a canonical payload.
 func TestWritePluginIIR_StoresValidatedIntentsByNodeID(t *testing.T) {
 	w := &captureWriter{}
 	ch := core.NewAppChannels()
@@ -34,25 +34,38 @@ func TestWritePluginIIR_StoresValidatedIntentsByNodeID(t *testing.T) {
 		`"origin":"observed","visibility":"public","inputs":[{"name":"id","type":"string"}],` +
 		`"returns":{"type":"User","explicit":true},"behavior":[],` +
 		`"sideEffects":[],"failureModes":[],"constraints":[]}`
-	entries := []core.IIRExtracted{
-		{NodeID: "node-1", Intent: json.RawMessage(valid)},
-		{NodeID: "node-2", Intent: json.RawMessage(`{ broken json`)}, // skipped
+	entries := []core.IIRExtracted{{NodeID: "node-1", Intent: json.RawMessage(valid)}}
+
+	ids, err := idx.writePluginIIR(context.Background(), "proj", "hash1", entries, "run-1", 42)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	idx.writePluginIIR(context.Background(), "proj", "hash1", entries, 42)
-
 	if len(w.records) != 1 {
-		t.Fatalf("expected 1 record (malformed skipped), got %d", len(w.records))
+		t.Fatalf("expected 1 record, got %d", len(w.records))
 	}
 	r := w.records[0]
 	if r.NodeID != "node-1" || r.Language != "typescript" || r.Kind != queries.IIRKindExtracted {
 		t.Errorf("record = %+v", r)
 	}
-	if r.ProjectID != "proj" || r.SourceHash != "hash1" || r.CreatedAt != 42 {
+	if r.ProjectID != "proj" || r.SourceHash != "hash1" || r.RunID != "run-1" || r.CreatedAt != 42 || len(ids) != 1 {
 		t.Errorf("record meta = %+v", r)
 	}
 	back, err := iir.ParseIntentJSON([]byte(r.Payload))
 	if err != nil || back.Name != "findUser" {
 		t.Errorf("stored payload not canonical FunctionIntent: %v %+v", err, back)
+	}
+}
+
+func TestWritePluginIIR_RejectsMalformedIntent(t *testing.T) {
+	w := &captureWriter{}
+	ch := core.NewAppChannels()
+	idx := &Indexer{substrate: w, channels: &ch}
+	_, err := idx.writePluginIIR(context.Background(), "proj", "hash", []core.IIRExtracted{{NodeID: "node", Intent: json.RawMessage(`{ broken json`)}}, "run", 1)
+	if err == nil {
+		t.Fatal("expected malformed IIR to fail the file")
+	}
+	if len(w.records) != 0 {
+		t.Fatalf("records = %d, want 0", len(w.records))
 	}
 }

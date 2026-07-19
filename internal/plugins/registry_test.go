@@ -6,6 +6,25 @@ import (
 	"github.com/atheory-ai/context-engine/internal/core"
 )
 
+type testLanguage struct{}
+
+func (testLanguage) Extensions() []string { return []string{".php"} }
+func (testLanguage) GrammarPath() string  { return "" }
+func (testLanguage) Match(string) bool    { return false }
+func (testLanguage) HasCustomMatch() bool { return false }
+func (testLanguage) Extract(string, []byte, []byte) (core.ExtractionResult, error) {
+	return core.ExtractionResult{}, nil
+}
+func (testLanguage) Concepts() []core.ConceptSeed { return nil }
+
+type contractPlugin struct {
+	basePlugin
+	contract core.PluginIndexContract
+}
+
+func (p contractPlugin) Language() core.LanguageHandler          { return testLanguage{} }
+func (p contractPlugin) IndexContract() core.PluginIndexContract { return p.contract }
+
 // basePlugin stubs core.Plugin; it does NOT contribute IIR rules.
 type basePlugin struct{ id core.PluginID }
 
@@ -22,6 +41,30 @@ func (b basePlugin) Close() error                   { return nil }
 type contributorPlugin struct {
 	basePlugin
 	rules []byte
+}
+
+func TestIndexPlanForFile_UsesCapabilitiesNotLoadOrder(t *testing.T) {
+	r := NewRegistry()
+	wp := contractPlugin{basePlugin: basePlugin{"wp"}, contract: core.PluginIndexContract{Requires: []string{"cst:php", "facts:php-structure"}, Enriches: []string{"php"}}}
+	php := contractPlugin{basePlugin: basePlugin{"php"}, contract: core.PluginIndexContract{Provides: []string{"language:php", "cst:php", "facts:php-structure"}}}
+	r.plugins = map[core.PluginID]core.Plugin{"wp": wp, "php": php}
+	r.loadOrder = []core.PluginID{"wp", "php"} // deliberately reversed
+	plan, err := r.IndexPlanForFile("theme.php")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan) != 2 || plan[0].ID() != "php" || plan[1].ID() != "wp" {
+		t.Fatalf("plan = %#v", plan)
+	}
+}
+
+func TestIndexPlanForFile_RejectsMissingProvider(t *testing.T) {
+	r := NewRegistry()
+	r.plugins = map[core.PluginID]core.Plugin{"wp": contractPlugin{basePlugin: basePlugin{"wp"}, contract: core.PluginIndexContract{Requires: []string{"cst:php"}}}}
+	r.loadOrder = []core.PluginID{"wp"}
+	if _, err := r.IndexPlanForFile("theme.php"); err == nil {
+		t.Fatal("expected missing provider error")
+	}
 }
 
 func (c contributorPlugin) IIRRulePackJSON() []byte { return c.rules }

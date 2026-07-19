@@ -79,7 +79,7 @@ func (o *Ontology) SeedConcepts(ctx context.Context, projectID string, seeds []c
 		id := core.MakeNodeID(projectID, "concept_seed", normalTerm)
 		now := time.Now().UnixMilli()
 
-		if err := o.buffer.Send(writebuffer.WriteOp{
+		if err := o.buffer.Send(ctx, writebuffer.WriteOp{
 			Type:      writebuffer.OpUpsertConcept,
 			ProjectID: projectID,
 			Payload: writebuffer.ConceptUpsert{

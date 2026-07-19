@@ -23,6 +23,9 @@
     "@types/prompts": "^2.x"
   },
   "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
   "homepage": "https://github.com/atheory-ai/context-engine/tree/main/sdk/packages/create-ce-plugin#readme",
   "bugs": {
     "url": "https://github.com/atheory-ai/context-engine/issues"
@@ -37,6 +40,8 @@
   },
   "files": [
     "dist",
-    "README.md"
-  ]
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": ["context-engine", "plugin", "scaffold", "wasm", "cli"]
 }

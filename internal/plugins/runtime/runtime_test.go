@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -222,6 +223,68 @@ func TestLoadValidFixtureCachesAndReloads(t *testing.T) {
 	metaAfter := readCacheMeta(t, rt.cache, wasmHash)
 	if metaAfter.LastUsed <= oldLastUsed {
 		t.Fatalf("cache LastUsed = %d, want > %d", metaAfter.LastUsed, oldLastUsed)
+	}
+}
+
+func TestLanguagePluginPoolExpandsToConcurrentIndexWorkers(t *testing.T) {
+	ch := core.NewAppChannels()
+	rt, err := New(t.TempDir(), &ch)
+	if err != nil {
+		t.Fatalf("New(): %v", err)
+	}
+	defer rt.Close()
+
+	path := writeWASMFixture(t, "valid-manifest.wasm", extismManifestWASM(validManifestJSON))
+	loaded, err := rt.Load(context.Background(), path, nil)
+	if err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+	defer loaded.Close()
+
+	plugin := loaded.(*pluginInstance)
+	pool := plugin.indexPool
+	workers := pool.max
+	if workers > 4 {
+		workers = 4
+	}
+	if workers < 2 {
+		t.Skip("single-core runtime cannot demonstrate parallel extraction")
+	}
+
+	started := make(chan struct{}, workers)
+	release := make(chan struct{})
+	var wg sync.WaitGroup
+	seen := map[*pluginInstance]struct{}{}
+	var seenMu sync.Mutex
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := pool.withInstance(context.Background(), func(instance *pluginInstance) error {
+				seenMu.Lock()
+				seen[instance] = struct{}{}
+				seenMu.Unlock()
+				started <- struct{}{}
+				<-release
+				return nil
+			})
+			if err != nil {
+				t.Errorf("withInstance: %v", err)
+			}
+		}()
+	}
+	for range workers {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("pool did not provision all concurrent instances")
+		}
+	}
+	close(release)
+	wg.Wait()
+
+	if len(seen) != workers {
+		t.Fatalf("independent instances = %d, want %d", len(seen), workers)
 	}
 }
 

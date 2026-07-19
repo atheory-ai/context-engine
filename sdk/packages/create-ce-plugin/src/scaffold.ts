@@ -46,7 +46,8 @@ export async function scaffold(answers: ScaffoldAnswers): Promise<void> {
   write(dir, "ce-plugin.json",      renderTemplate(CE_PLUGIN_JSON_TEMPLATE, vars))
   write(dir, "package.json",        renderTemplate(PACKAGE_JSON_TEMPLATE, vars))
   write(dir, "tsconfig.json",       TSCONFIG_TEMPLATE)
-  write(dir, ".eslintrc.json",      ESLINTRC_TEMPLATE)
+  write(dir, "eslint.config.mjs",   ESLINT_CONFIG_TEMPLATE)
+  write(dir, "wasm-toolkit.config.mjs", WASM_TOOLKIT_CONFIG_TEMPLATE)
   write(dir, ".gitignore",          GITIGNORE_TEMPLATE)
   write(dir, "README.md",           renderTemplate(README_TEMPLATE, vars))
 
@@ -210,8 +211,7 @@ const PACKAGE_JSON_TEMPLATE = `{
   "description": "{{DESCRIPTION}}",
   "type": "module",
   "scripts": {
-    "build": "javy compile dist/bundle.js -o dist/{{SLUG}}.wasm",
-    "bundle": "esbuild src/index.ts --bundle --format=esm --outfile=dist/bundle.js --platform=neutral --target=es2020",
+    "build": "wasm-toolkit-build --plugin . --config wasm-toolkit.config.mjs --output dist/{{SLUG}}.wasm",
     "test":  "vitest run",
     "lint":  "eslint src",
     "clean": "rm -rf dist"
@@ -221,6 +221,7 @@ const PACKAGE_JSON_TEMPLATE = `{
   },
   "devDependencies": {
     "@atheory-ai/ce-plugin-sdk": "^0.1.0",
+    "@atheory-ai/wasm-plugin-toolkit": "^0.0.4",
     "typescript":     "^5.x",
     "esbuild":        "^0.20.x",
     "vitest":         "^1.x",
@@ -240,12 +241,14 @@ const TSCONFIG_TEMPLATE = `{
 }
 `
 
-const ESLINTRC_TEMPLATE = `{
-  "extends": ["@atheory-ai/ce-plugin-sdk/eslint-plugin-ce"],
-  "parserOptions": {
-    "project": "./tsconfig.json"
-  }
-}
+const ESLINT_CONFIG_TEMPLATE = `import cePlugin from "@atheory-ai/ce-plugin-sdk/eslint-plugin-ce"
+
+export default [cePlugin.configs.recommended]
+`
+
+const WASM_TOOLKIT_CONFIG_TEMPLATE = `import abi from "@atheory-ai/ce-plugin-sdk/build/abi"
+
+export default { abi }
 `
 
 const GITIGNORE_TEMPLATE = `node_modules/

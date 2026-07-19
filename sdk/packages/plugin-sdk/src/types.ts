@@ -170,8 +170,14 @@ export interface LanguageDefinition {
    * it rather than matching raw text. It is null only when no grammar is
    * available for the file (rare); for grammared languages it is always present.
    */
-  extract:   (filePath: string, content: string, tree: SyntaxNode | null) => ExtractionResult
+  extract:   (filePath: string, content: string, tree: SyntaxNode | null, sourceAnchor?: SourceAnchor) => ExtractionResult
   concepts?: ConceptSeed[]
+}
+
+/** Host-owned, stable source reference for every file contribution. */
+export interface SourceAnchor {
+  type: "file"
+  canonicalID: string
 }
 
 export interface RoleDefinition {
@@ -246,7 +252,10 @@ export interface IIRRulePack {
 export interface PluginDefinition {
   id:          string
   name:        string
-  version:     string
+	version:     string
+	provides?:    string[]
+	requires?:    string[]
+	enriches?:    string[]
   language?:   LanguageDefinition
   role?:       RoleDefinition
   analyzers?:  AnalyzerDefinition[]

@@ -7,7 +7,7 @@ const external = ["@atheory-ai/wasm-plugin-toolkit"]
 
 // ESM build of the main entry.
 await esbuild.build({
-  entryPoints: ["src/index.ts", "src/abi.ts"],
+  entryPoints: ["src/index.ts", "src/abi.ts", "src/eslint/index.ts"],
   bundle:      true,
   format:      "esm",
   outdir:      "dist",

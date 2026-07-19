@@ -5,6 +5,18 @@ import extractReturnType from "./rules/extract-return-type.js"
 import pureActivate from "./rules/pure-activate.js"
 import idHelpersRequired from "./rules/id-helpers-required.js"
 
+const recommended = {
+  plugins: {} as Record<string, unknown>,
+  rules: {
+    "ce-plugin-sdk/no-node-apis":          "error",
+    "ce-plugin-sdk/tool-description-length": "error",
+    "ce-plugin-sdk/concept-term-format":   "error",
+    "ce-plugin-sdk/extract-return-type":   "warn",
+    "ce-plugin-sdk/pure-activate":         "warn",
+    "ce-plugin-sdk/id-helpers-required":   "warn",
+  },
+}
+
 const plugin = {
   meta: {
     name: "@atheory-ai/ce-plugin-sdk",
@@ -19,18 +31,10 @@ const plugin = {
     "id-helpers-required":   idHelpersRequired,
   },
   configs: {
-    recommended: {
-      plugins: ["@atheory-ai/ce-plugin-sdk"],
-      rules: {
-        "@atheory-ai/ce-plugin-sdk/no-node-apis":          "error",
-        "@atheory-ai/ce-plugin-sdk/tool-description-length": "error",
-        "@atheory-ai/ce-plugin-sdk/concept-term-format":   "error",
-        "@atheory-ai/ce-plugin-sdk/extract-return-type":   "warn",
-        "@atheory-ai/ce-plugin-sdk/pure-activate":         "warn",
-        "@atheory-ai/ce-plugin-sdk/id-helpers-required":   "warn",
-      },
-    },
+    recommended,
   },
 }
+
+recommended.plugins["ce-plugin-sdk"] = plugin
 
 export default plugin

@@ -47,6 +47,10 @@ type Engine struct {
 
 	iirOnce      sync.Once
 	iirExtractor iir.Extractor
+
+	// A project graph becomes authoritative only at the end of Index. Keep one
+	// local run at a time and reject readers while replacement is in progress.
+	indexMu sync.Mutex
 }
 
 // New constructs a fully wired Engine from config.
@@ -278,6 +282,9 @@ type QueryResult struct {
 // Emits to channels as work progresses.
 // Blocks until the answer is synthesized or an error occurs.
 func (e *Engine) Query(ctx context.Context, query string) error {
+	if err := e.requireReadyCorpus(ctx); err != nil {
+		return err
+	}
 	dag := e.buildDAG()
 	return dag.Run(ctx, query)
 }
@@ -301,6 +308,9 @@ func (e *Engine) QueryWithChannels(
 	ch *core.AppChannels,
 	opts QueryOptions,
 ) error {
+	if err := e.requireReadyCorpus(ctx); err != nil {
+		return err
+	}
 	dag := e.buildDAG()
 	_ = opts // MaxLoops applied by resolveMaxLoops via IR; future: inject into runContext
 	return dag.RunWithChannels(ctx, query, ch)
@@ -425,6 +435,9 @@ type SearchNode struct {
 // It tokenizes multi-term queries and ranks label, canonical ID, file path, and
 // source range matches so agents can chain directly into source inspection.
 func (e *Engine) SearchSubstrate(ctx context.Context, opts SearchOptions) ([]SearchNode, error) {
+	if err := e.requireReadyCorpus(ctx); err != nil {
+		return nil, err
+	}
 	graphDB, err := e.dbRegistry.GraphDB("local")
 	if err != nil {
 		return nil, fmt.Errorf("search substrate: graph not available — run 'ce index' first")
@@ -508,12 +521,31 @@ func (e *Engine) SearchSubstrate(ctx context.Context, opts SearchOptions) ([]Sea
 
 // Index walks rootDir, extracts nodes and edges via language plugins,
 // and writes them to the project's substrate graph.
-// full=true forces a complete reindex regardless of previous state; full=false
-// re-indexes only changed files and prunes symbols from changed or deleted
-// files (see indexer.Run). Run --full once after upgrading so every node is
-// stamped with its source file, which is what makes incremental pruning exact.
+// full=true makes the complete plugin-owned graph authoritative. full=false
+// replaces output only for changed/deleted files. Both modes retain a prior
+// corpus only until the replacement transaction succeeds.
 func (e *Engine) Index(ctx context.Context, rootDir string, full bool) (indexer.Stats, error) {
 	const projectID = core.ProjectID("local")
+	if !e.indexMu.TryLock() {
+		return indexer.Stats{}, fmt.Errorf("index already in progress")
+	}
+	defer e.indexMu.Unlock()
+	published := false
+	defer func() {
+		if !published {
+			if err := queries.UpdateProjectStatus(context.Background(), e.dbRegistry.Meta(), string(projectID), "stale"); err != nil {
+				e.channels.Emit(core.Emission{Source: "runner", Channel: core.ChanWarning, Content: fmt.Sprintf("mark project stale: %v", err)})
+			}
+		}
+	}()
+
+	now := time.Now().UnixMilli()
+	if err := queries.UpsertProject(ctx, e.dbRegistry.Meta(), queries.Project{ID: string(projectID), GitURL: e.cfg.Project.GitURL, Name: filepath.Base(rootDir), Status: "indexing", CreatedAt: now, LastSeenAt: now, Properties: "{}"}); err != nil {
+		return indexer.Stats{}, fmt.Errorf("mark project indexing: %w", err)
+	}
+	if err := queries.UpsertProjectPath(ctx, e.dbRegistry.Meta(), string(projectID), rootDir, now); err != nil {
+		return indexer.Stats{}, fmt.Errorf("record project path: %w", err)
+	}
 
 	// Ensure the project graph DB is open and migrated.
 	localDBPath := filepath.Join(e.cfg.DataDir, "graphs", "local.db")
@@ -540,10 +572,10 @@ func (e *Engine) Index(ctx context.Context, rootDir string, full bool) (indexer.
 		return stats, fmt.Errorf("flush write buffer: %w", flushErr)
 	}
 
-	// Update project record in meta.db (best-effort — don't mask index errors).
+	// Publish readiness only after graph reconciliation has succeeded.
 	if runErr == nil {
 		now := time.Now().UnixMilli()
-		_ = queries.UpsertProject(ctx, e.dbRegistry.Meta(), queries.Project{ //nolint:errcheck // metadata best-effort; index already succeeded
+		_ = queries.UpsertProject(ctx, e.dbRegistry.Meta(), queries.Project{ //nolint:errcheck // graph is already authoritative; metadata recovery is safe
 			ID:         string(projectID),
 			GitURL:     e.cfg.Project.GitURL,
 			Name:       filepath.Base(rootDir),
@@ -554,6 +586,7 @@ func (e *Engine) Index(ctx context.Context, rootDir string, full bool) (indexer.
 		})
 		_ = queries.UpsertProjectPath(ctx, e.dbRegistry.Meta(), string(projectID), rootDir, now) //nolint:errcheck // see comment above
 		_ = queries.UpdateLastIndexedAt(ctx, e.dbRegistry.Meta(), string(projectID), now)        //nolint:errcheck // see comment above
+		published = true
 
 		// Lift indexed nodes/edges into the org graph, then detect cross-project edges.
 		if liftErr := e.orgGraph.Lift(ctx, projectID, localDB); liftErr != nil {
@@ -574,6 +607,34 @@ func (e *Engine) Index(ctx context.Context, rootDir string, full bool) (indexer.
 	}
 
 	return stats, runErr
+}
+
+func (e *Engine) requireReadyCorpus(ctx context.Context) error {
+	// Small package-level consumers construct a read-only Engine around a graph
+	// registry without the runner's metadata database. They have no indexing
+	// lifecycle to guard; a fully constructed Engine always has meta.db.
+	if e.dbRegistry == nil || e.dbRegistry.Meta() == nil {
+		return nil
+	}
+	if !e.indexMu.TryLock() {
+		return fmt.Errorf("project index is in progress; retry when it completes")
+	}
+	e.indexMu.Unlock()
+	project, err := queries.GetProject(ctx, e.dbRegistry.Meta(), "local")
+	if err != nil {
+		return fmt.Errorf("check project index status: %w", err)
+	}
+	if project == nil || project.Status != "indexed" {
+		return fmt.Errorf("project corpus is %s; run a successful 'ce index' before querying", projectStatus(project))
+	}
+	return nil
+}
+
+func projectStatus(project *queries.Project) string {
+	if project == nil {
+		return "unindexed"
+	}
+	return project.Status
 }
 
 // Channels returns the AppChannels for this engine.

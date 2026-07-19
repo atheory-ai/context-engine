@@ -186,6 +186,9 @@ func describeNode(n *core.Node) string {
 }
 
 func (e *Engine) SourceRanges(ctx context.Context, opts SourceRangeOptions) (*DirectToolResult, error) {
+	if err := e.requireReadyCorpus(ctx); err != nil {
+		return nil, err
+	}
 	limit := opts.Limit
 	if limit <= 0 {
 		limit = 3
@@ -255,6 +258,9 @@ func (e *Engine) SourceRanges(ctx context.Context, opts SourceRangeOptions) (*Di
 }
 
 func (e *Engine) Investigate(ctx context.Context, opts InvestigateOptions) (*DirectToolResult, error) {
+	if err := e.requireReadyCorpus(ctx); err != nil {
+		return nil, err
+	}
 	limit := opts.Limit
 	if limit <= 0 {
 		limit = 5
@@ -331,14 +337,23 @@ func (e *Engine) Investigate(ctx context.Context, opts InvestigateOptions) (*Dir
 }
 
 func (e *Engine) RelatedTests(ctx context.Context, opts RelatedContextOptions) (*DirectToolResult, error) {
+	if err := e.requireReadyCorpus(ctx); err != nil {
+		return nil, err
+	}
 	return e.relatedByPatterns(ctx, opts, "related tests", []string{"test", "tests", "spec", "fixture", "fixtures", "phpunit", "__tests__"})
 }
 
 func (e *Engine) Entrypoints(ctx context.Context, opts RelatedContextOptions) (*DirectToolResult, error) {
+	if err := e.requireReadyCorpus(ctx); err != nil {
+		return nil, err
+	}
 	return e.relatedByPatterns(ctx, opts, "entrypoints", []string{"route", "routes", "endpoint", "controller", "add_action", "add_filter", "do_action", "apply_filters", "register", "bootstrap", "init", "handler"})
 }
 
 func (e *Engine) Lifecycle(ctx context.Context, opts RelatedContextOptions) (*DirectToolResult, error) {
+	if err := e.requireReadyCorpus(ctx); err != nil {
+		return nil, err
+	}
 	return e.relatedByPatterns(ctx, opts, "lifecycle", []string{"init", "load", "session", "auth", "authenticate", "validate", "persist", "save", "merge", "handle", "callback"})
 }
 

@@ -66,6 +66,37 @@ func (q *IndexQueries) ClearFileHashes(ctx context.Context, projectID string) er
 	return err
 }
 
+// ReconcileFileHashes records the files whose graph output was successfully
+// flushed during one index run. When full is true it atomically replaces the
+// project's complete hash set; otherwise it leaves unchanged and failed files'
+// prior hashes intact so they will be revisited on a subsequent run.
+func (q *IndexQueries) ReconcileFileHashes(ctx context.Context, projectID string, hashes map[string]string, full bool) error {
+	tx, err := q.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after successful commit
+
+	if full {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM file_hashes WHERE project_id = ?`, projectID); err != nil {
+			return fmt.Errorf("clear file hashes: %w", err)
+		}
+	}
+
+	for relPath, hash := range hashes {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO file_hashes (project_id, rel_path, hash, indexed_at)
+			 VALUES (?, ?, ?, ?)
+			 ON CONFLICT(project_id, rel_path) DO UPDATE SET
+			     hash = excluded.hash,
+			     indexed_at = excluded.indexed_at`,
+			projectID, relPath, hash, time.Now().UnixMilli()); err != nil {
+			return fmt.Errorf("upsert hash %s: %w", relPath, err)
+		}
+	}
+	return tx.Commit()
+}
+
 // PruneFileNodes removes the file-local nodes a file no longer produces, so
 // incremental indexing doesn't leave stale symbols behind. It deletes nodes
 // stamped with source_file == relPath whose id is NOT in keepIDs (the ids the

@@ -92,6 +92,22 @@ type Plugin interface {
 	Close() error
 }
 
+// PluginIndexContract is optional declarative metadata for file-indexing
+// composition. Capability strings are namespaced (for example language:php,
+// cst:php, facts:php-structure). Legacy plugins omit it and retain the
+// extension-based behavior until they migrate.
+type PluginIndexContract struct {
+	Provides []string
+	Requires []string
+	Enriches []string
+}
+
+// IndexContractContributor is deliberately optional so existing plugins and
+// test doubles remain source compatible.
+type IndexContractContributor interface {
+	IndexContract() PluginIndexContract
+}
+
 // LanguageHandler teaches the indexer about a language or framework.
 type LanguageHandler interface {
 	// Extensions returns the file extensions this handler processes.

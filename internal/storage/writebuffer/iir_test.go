@@ -25,7 +25,7 @@ func TestIIRUpsert_WritesAndReplaces(t *testing.T) {
 				CreatedAt: 1, UpdatedAt: updatedAt,
 			},
 		}
-		if err := buf.Send(op); err != nil {
+		if err := buf.Send(ctx, op); err != nil {
 			t.Fatalf("send: %v", err)
 		}
 		if err := buf.Flush(ctx); err != nil {

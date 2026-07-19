@@ -90,7 +90,7 @@ importers:
   packages/plugin-sandbox:
     dependencies:
       '@atheory-ai/ce-plugin-sdk':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../plugin-sdk
       chalk:
         specifier: ^5.x
@@ -114,6 +114,9 @@ importers:
       '@atheory-ai/wasm-plugin-toolkit':
         specifier: ^0.0.4
         version: 0.0.4(esbuild@0.20.2)
+      eslint:
+        specifier: ^8.57.0 || ^9.0.0
+        version: 8.57.1
     devDependencies:
       '@types/eslint':
         specifier: ^9.6.1

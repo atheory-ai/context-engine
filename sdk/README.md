@@ -47,7 +47,7 @@ scripts/               — release and package-maintenance scripts
 | `ce` binary | Latest | Required for `ce plugin validate` and sandbox testing |
 
 `@atheory-ai/wasm-plugin-toolkit` provides the supported JavaScript-to-WASM
-build path for plugins and manages the Javy compiler it needs.
+build path for plugins. The toolkit manages the Javy compiler it needs.
 
 ---
 
@@ -217,12 +217,12 @@ concepts: [
 Each plugin's build goes through two steps:
 
 ```text
-TypeScript → esbuild (bundle to ESM) → bin/javy (compile to WASM)
+TypeScript → wasm-plugin-toolkit → Javy → plugin WASM
 ```
 
-The `javy` binary is downloaded automatically on `pnpm install` via `scripts/install-javy.js`. It is placed at `bin/javy` (gitignored). Plugin build scripts reference it as `../../bin/javy`.
-
-To update the javy version, change `JAVY_VERSION` in `scripts/install-javy.js`, delete `bin/javy`, then re-run `pnpm install`.
+Default plugins use `wasm-toolkit-build` with
+[`wasm-toolkit.config.mjs`](./wasm-toolkit.config.mjs). Generated plugins use
+the same build path.
 
 ---
 
@@ -249,9 +249,8 @@ Validation checks:
 The `@atheory-ai/ce-plugin-sandbox` package provides a CLI for testing plugins against fixture files before deploying:
 
 ```bash
-# From a plugin directory
-pnpm sandbox run fixtures/simple-service.go
-# Shows: extracted nodes, edges, coverage %, concept seeds
+# From a plugin directory, after installing the sandbox CLI
+ce-sandbox run dist/my-plugin.wasm fixtures/simple-service.go
 ```
 
 Fixture files live in `plugins/<name>/fixtures/` and are plain source files in the target language.
@@ -271,10 +270,11 @@ Add the built WASM path to `ce.yaml` in your project:
 
 ```yaml
 plugins:
-  - path: /path/to/my-plugin/dist/my-plugin.wasm
-    config:
-      # optional config, available to the plugin via __ce_get_config()
-      some_option: value
+  installed:
+    - path: /path/to/my-plugin/dist/my-plugin.wasm
+      config:
+        # optional config, available to the plugin via __ce_get_config()
+        some_option: value
 ```
 
 User plugins take precedence over default plugins. If your plugin handles the same extensions as a default plugin (e.g. `.ts`), yours wins for those files.
@@ -306,7 +306,7 @@ Provides:
 - `definePlugin(config)` — validates and registers your plugin at definition time
 - TypeScript types (`Node`, `Edge`, `ConceptSeed`, `ExtractionResult`, etc.)
 - Host function declarations (`__ce_emit`, `__ce_substrate_query`, `__ce_get_config`, etc.) provided by CE at runtime via wazero
-- ESLint plugin with plugin-authoring rules (no Node.js APIs, no network, etc.)
+- ESLint flat-config plugin with plugin-authoring rules (no Node.js APIs, no network, etc.)
 
 ### @atheory-ai/ce-plugin-sandbox
 
@@ -314,7 +314,7 @@ Build + run + validate loop for local development:
 
 ```bash
 pnpm --filter @atheory-ai/ce-plugin-sandbox build
-npx ce-sandbox run <fixture> --plugin <path-to.wasm>
+ce-sandbox run <path-to.wasm> <fixture>
 ```
 
 Shells out to the `ce` binary for the actual WASM loading (same runtime as production).

@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -20,19 +21,22 @@ func (a *wasmAnalyzer) Description() string { return a.descriptor.Description }
 // Analyze receives nodes for a file and returns additional edges to add to the graph.
 // Input is JSON-encoded []core.Node. Output is JSON-encoded []core.Edge.
 func (a *wasmAnalyzer) Analyze(nodes []core.Node) ([]core.Edge, error) {
-	a.plugin.mu.Lock()
-	defer a.plugin.mu.Unlock()
-
 	input, _ := json.Marshal(nodes)
-
-	result, err := a.plugin.call("ce_analyzer_run", input)
-	if err != nil {
-		return nil, fmt.Errorf("ce_analyzer_run %s: %w", a.descriptor.Name, err)
-	}
-
 	var edges []core.Edge
-	if err := json.Unmarshal(result, &edges); err != nil {
-		return nil, fmt.Errorf("parse analyzer result from %s: %w", a.descriptor.Name, err)
+	err := a.plugin.indexPool.withInstance(context.Background(), func(instance *pluginInstance) error {
+		instance.mu.Lock()
+		defer instance.mu.Unlock()
+		result, err := instance.call("ce_analyzer_run", input)
+		if err != nil {
+			return fmt.Errorf("ce_analyzer_run %s: %w", a.descriptor.Name, err)
+		}
+		if err := json.Unmarshal(result, &edges); err != nil {
+			return fmt.Errorf("parse analyzer result from %s: %w", a.descriptor.Name, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return edges, nil
 }

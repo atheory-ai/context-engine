@@ -15,7 +15,8 @@ import (
 // Writer implements core.SubstrateWriter by forwarding all writes to the buffer.
 // For operations that require direct SQL (DecayEdgeWeights, ResetActivation),
 // it uses the dbProvider to access the graph database directly.
-// Fire-and-forget — callers never block on write confirmation.
+// Enqueue is bounded and context-aware; callers receive an error instead of
+// silently losing a write when the buffer cannot accept it.
 type Writer struct {
 	buffer     writebuffer.Buffer
 	dbProvider writebuffer.DBProvider
@@ -27,49 +28,53 @@ func NewWriter(buffer writebuffer.Buffer, dbProvider writebuffer.DBProvider) *Wr
 }
 
 // UpsertNode queues a node insert/update via the write buffer.
-func (w *Writer) UpsertNode(_ context.Context, node core.Node) error {
+func (w *Writer) UpsertNode(ctx context.Context, node core.Node) error {
 	props, err := marshalProperties(node.Properties)
 	if err != nil {
 		return fmt.Errorf("marshal node properties: %w", err)
 	}
-	return w.buffer.Send(writebuffer.WriteOp{
+	return w.buffer.Send(ctx, writebuffer.WriteOp{
 		Type:      writebuffer.OpUpsertNode,
 		ProjectID: string(node.ProjectID),
 		Payload: writebuffer.NodeUpsert{
-			ID:          string(node.ID),
-			ProjectID:   string(node.ProjectID),
-			Type:        node.Type,
-			Label:       node.Label,
-			CanonicalID: node.CanonicalID,
-			SourceClass: string(node.SourceClass),
-			PluginID:    string(node.PluginID),
-			SourceFile:  node.SourceFile,
-			Properties:  props,
-			CreatedAt:   node.CreatedAt,
-			UpdatedAt:   node.UpdatedAt,
+			ID:             string(node.ID),
+			ProjectID:      string(node.ProjectID),
+			Type:           node.Type,
+			Label:          node.Label,
+			CanonicalID:    node.CanonicalID,
+			SourceClass:    string(node.SourceClass),
+			PluginID:       string(node.PluginID),
+			SourceFile:     node.SourceFile,
+			IndexManaged:   node.IndexManaged,
+			LastIndexRunID: node.LastIndexRunID,
+			Properties:     props,
+			CreatedAt:      node.CreatedAt,
+			UpdatedAt:      node.UpdatedAt,
 		},
 	})
 }
 
 // UpsertEdge queues an edge insert/update via the write buffer.
-func (w *Writer) UpsertEdge(_ context.Context, edge core.Edge) error {
+func (w *Writer) UpsertEdge(ctx context.Context, edge core.Edge) error {
 	props, err := marshalProperties(edge.Properties)
 	if err != nil {
 		return fmt.Errorf("marshal edge properties: %w", err)
 	}
-	return w.buffer.Send(writebuffer.WriteOp{
+	return w.buffer.Send(ctx, writebuffer.WriteOp{
 		Type:      writebuffer.OpUpsertEdge,
 		ProjectID: string(edge.ProjectID),
 		Payload: writebuffer.EdgeUpsert{
-			ID:          string(edge.ID),
-			ProjectID:   string(edge.ProjectID),
-			SourceID:    string(edge.SourceID),
-			TargetID:    string(edge.TargetID),
-			Type:        edge.Type,
-			SourceClass: string(edge.SourceClass),
-			PluginID:    string(edge.PluginID),
-			Properties:  props,
-			CreatedAt:   edge.CreatedAt,
+			ID:             string(edge.ID),
+			ProjectID:      string(edge.ProjectID),
+			SourceID:       string(edge.SourceID),
+			TargetID:       string(edge.TargetID),
+			Type:           edge.Type,
+			SourceClass:    string(edge.SourceClass),
+			PluginID:       string(edge.PluginID),
+			IndexManaged:   edge.IndexManaged,
+			LastIndexRunID: edge.LastIndexRunID,
+			Properties:     props,
+			CreatedAt:      edge.CreatedAt,
 		},
 	})
 }
@@ -77,8 +82,8 @@ func (w *Writer) UpsertEdge(_ context.Context, edge core.Edge) error {
 // UpsertIIR queues an IIR insert/update via the write buffer. The row id is
 // derived deterministically from (project, node, kind) so re-extraction upserts
 // in place.
-func (w *Writer) UpsertIIR(_ context.Context, r core.IIRRecord) error {
-	return w.buffer.Send(writebuffer.WriteOp{
+func (w *Writer) UpsertIIR(ctx context.Context, r core.IIRRecord) error {
+	return w.buffer.Send(ctx, writebuffer.WriteOp{
 		Type:      writebuffer.OpUpsertIIR,
 		ProjectID: string(r.ProjectID),
 		Payload: writebuffer.IIRUpsert{
@@ -97,24 +102,24 @@ func (w *Writer) UpsertIIR(_ context.Context, r core.IIRRecord) error {
 }
 
 // UpsertSemanticPlan queues an immutable semantic-plan revision.
-func (w *Writer) UpsertSemanticPlan(_ context.Context, r core.SemanticPlanRecord) error {
-	return w.buffer.Send(writebuffer.WriteOp{Type: writebuffer.OpUpsertSemanticPlan, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticPlanUpsert{
+func (w *Writer) UpsertSemanticPlan(ctx context.Context, r core.SemanticPlanRecord) error {
+	return w.buffer.Send(ctx, writebuffer.WriteOp{Type: writebuffer.OpUpsertSemanticPlan, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticPlanUpsert{
 		ID: r.ID, ProjectID: string(r.ProjectID), UnitID: r.UnitID, UnitNodeID: string(r.UnitNodeID), ParentPlanID: r.ParentPlanID,
 		Revision: r.Revision, Lifecycle: r.Lifecycle, SchemaVersion: r.SchemaVersion, Payload: r.Payload, RunID: string(r.RunID), TurnID: string(r.TurnID), CreatedAt: r.CreatedAt,
 	}})
 }
 
 // UpsertSemanticRecipe queues an immutable recipe linked to its plan revision.
-func (w *Writer) UpsertSemanticRecipe(_ context.Context, r core.SemanticRecipeRecord) error {
-	return w.buffer.Send(writebuffer.WriteOp{Type: writebuffer.OpUpsertSemanticRecipe, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticRecipeUpsert{
+func (w *Writer) UpsertSemanticRecipe(ctx context.Context, r core.SemanticRecipeRecord) error {
+	return w.buffer.Send(ctx, writebuffer.WriteOp{Type: writebuffer.OpUpsertSemanticRecipe, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticRecipeUpsert{
 		ID: r.ID, ProjectID: string(r.ProjectID), PlanRevisionID: r.PlanRevisionID, SchemaVersion: r.SchemaVersion, TargetLanguage: r.TargetLanguage,
 		RendererProfile: r.RendererProfile, Payload: r.Payload, RunID: string(r.RunID), TurnID: string(r.TurnID), CreatedAt: r.CreatedAt,
 	}})
 }
 
 // UpsertSemanticArtifact queues a provenance-preserving generated artifact.
-func (w *Writer) UpsertSemanticArtifact(_ context.Context, r core.SemanticArtifactRecord) error {
-	return w.buffer.Send(writebuffer.WriteOp{Type: writebuffer.OpUpsertSemanticArtifact, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticArtifactUpsert{
+func (w *Writer) UpsertSemanticArtifact(ctx context.Context, r core.SemanticArtifactRecord) error {
+	return w.buffer.Send(ctx, writebuffer.WriteOp{Type: writebuffer.OpUpsertSemanticArtifact, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticArtifactUpsert{
 		ID: r.ID, ProjectID: string(r.ProjectID), PlanRevisionID: r.PlanRevisionID, RecipeID: r.RecipeID, UnitNodeID: string(r.UnitNodeID),
 		Kind: r.Kind, ContentHash: r.ContentHash, TargetLanguage: r.TargetLanguage, TargetPath: r.TargetPath, SourceRef: r.SourceRef,
 		SourceContent: r.SourceContent, SourceContentAllowed: r.SourceContentAllowed, RunID: string(r.RunID), TurnID: string(r.TurnID), CreatedAt: r.CreatedAt,
@@ -122,37 +127,37 @@ func (w *Writer) UpsertSemanticArtifact(_ context.Context, r core.SemanticArtifa
 }
 
 // RecordSemanticVerification queues an immutable semantic-verification report.
-func (w *Writer) RecordSemanticVerification(_ context.Context, r core.SemanticVerificationRecord) error {
-	return w.buffer.Send(writebuffer.WriteOp{Type: writebuffer.OpRecordSemanticVerification, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticVerificationRecord{
+func (w *Writer) RecordSemanticVerification(ctx context.Context, r core.SemanticVerificationRecord) error {
+	return w.buffer.Send(ctx, writebuffer.WriteOp{Type: writebuffer.OpRecordSemanticVerification, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticVerificationRecord{
 		ID: r.ID, ProjectID: string(r.ProjectID), PlanRevisionID: r.PlanRevisionID, RecipeID: r.RecipeID, ArtifactID: r.ArtifactID,
 		ObservedIIRID: r.ObservedIIRID, Verdict: r.Verdict, VerifierVersion: r.VerifierVersion, Payload: r.Payload, RunID: string(r.RunID), TurnID: string(r.TurnID), CreatedAt: r.CreatedAt,
 	}})
 }
 
 // RecordSemanticApproval queues an auditable user or policy decision.
-func (w *Writer) RecordSemanticApproval(_ context.Context, r core.SemanticApprovalRecord) error {
-	return w.buffer.Send(writebuffer.WriteOp{Type: writebuffer.OpRecordSemanticApproval, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticApprovalRecord{
+func (w *Writer) RecordSemanticApproval(ctx context.Context, r core.SemanticApprovalRecord) error {
+	return w.buffer.Send(ctx, writebuffer.WriteOp{Type: writebuffer.OpRecordSemanticApproval, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticApprovalRecord{
 		ID: r.ID, ProjectID: string(r.ProjectID), PlanRevisionID: r.PlanRevisionID, Scope: r.Scope, Decision: r.Decision, Rationale: r.Rationale,
 		ActorID: r.ActorID, RunID: string(r.RunID), TurnID: string(r.TurnID), CreatedAt: r.CreatedAt,
 	}})
 }
 
-func (w *Writer) UpsertSemanticTestPlan(_ context.Context, r core.SemanticTestPlanRecord) error {
-	return w.buffer.Send(writebuffer.WriteOp{Type: writebuffer.OpUpsertSemanticTestPlan, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticTestPlanUpsert{
+func (w *Writer) UpsertSemanticTestPlan(ctx context.Context, r core.SemanticTestPlanRecord) error {
+	return w.buffer.Send(ctx, writebuffer.WriteOp{Type: writebuffer.OpUpsertSemanticTestPlan, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticTestPlanUpsert{
 		ID: r.ID, ProjectID: string(r.ProjectID), PlanRevisionID: r.PlanRevisionID, RecipeID: r.RecipeID, Payload: r.Payload, RunID: string(r.RunID), TurnID: string(r.TurnID), CreatedAt: r.CreatedAt,
 	}})
 }
 
-func (w *Writer) UpsertSemanticRepair(_ context.Context, r core.SemanticRepairRecord) error {
-	return w.buffer.Send(writebuffer.WriteOp{Type: writebuffer.OpUpsertSemanticRepair, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticRepairUpsert{
+func (w *Writer) UpsertSemanticRepair(ctx context.Context, r core.SemanticRepairRecord) error {
+	return w.buffer.Send(ctx, writebuffer.WriteOp{Type: writebuffer.OpUpsertSemanticRepair, ProjectID: string(r.ProjectID), Payload: writebuffer.SemanticRepairUpsert{
 		ID: r.ID, ProjectID: string(r.ProjectID), PlanRevisionID: r.PlanRevisionID, RecipeID: r.RecipeID, VerificationID: r.VerificationID,
 		Status: r.Status, Payload: r.Payload, RunID: string(r.RunID), TurnID: string(r.TurnID), CreatedAt: r.CreatedAt,
 	}})
 }
 
 // UpdateActivation queues an activation update for a node.
-func (w *Writer) UpdateActivation(_ context.Context, nodeID core.NodeID, activation float64) error {
-	return w.buffer.Send(writebuffer.WriteOp{
+func (w *Writer) UpdateActivation(ctx context.Context, nodeID core.NodeID, activation float64) error {
+	return w.buffer.Send(ctx, writebuffer.WriteOp{
 		Type:      writebuffer.OpUpdateActivation,
 		ProjectID: "", // resolved by the caller via UpdateActivationForProject
 		Payload: writebuffer.ActivationUpdate{
@@ -165,8 +170,8 @@ func (w *Writer) UpdateActivation(_ context.Context, nodeID core.NodeID, activat
 
 // UpdateActivationForProject queues an activation update with an explicit project ID.
 // This is the preferred method — it ensures the buffer routes to the correct DB.
-func (w *Writer) UpdateActivationForProject(_ context.Context, projectID core.ProjectID, nodeID core.NodeID, activation float64) error {
-	return w.buffer.Send(writebuffer.WriteOp{
+func (w *Writer) UpdateActivationForProject(ctx context.Context, projectID core.ProjectID, nodeID core.NodeID, activation float64) error {
+	return w.buffer.Send(ctx, writebuffer.WriteOp{
 		Type:      writebuffer.OpUpdateActivation,
 		ProjectID: string(projectID),
 		Payload: writebuffer.ActivationUpdate{
@@ -178,8 +183,8 @@ func (w *Writer) UpdateActivationForProject(_ context.Context, projectID core.Pr
 }
 
 // UpdateEdgeWeight queues an edge weight update from Hebbian learning.
-func (w *Writer) UpdateEdgeWeight(_ context.Context, update core.WeightUpdate) error {
-	return w.buffer.Send(writebuffer.WriteOp{
+func (w *Writer) UpdateEdgeWeight(ctx context.Context, update core.WeightUpdate) error {
+	return w.buffer.Send(ctx, writebuffer.WriteOp{
 		Type:      writebuffer.OpUpdateWeight,
 		ProjectID: string(update.ProjectID),
 		Payload: writebuffer.WeightUpdate{
@@ -221,7 +226,7 @@ func (w *Writer) ApplyEnrichment(ctx context.Context, e core.Enrichment) error {
 		// Promoted means source_class upgraded (speculative → associative).
 		// Apply via weight update with the new source class.
 		if e.EntityType == "edge" {
-			if err := w.buffer.Send(writebuffer.WriteOp{
+			if err := w.buffer.Send(ctx, writebuffer.WriteOp{
 				Type:      writebuffer.OpUpdateWeight,
 				ProjectID: "", // best-effort — project ID not available here
 				Payload: writebuffer.WeightUpdate{
@@ -242,7 +247,7 @@ func (w *Writer) ApplyEnrichment(ctx context.Context, e core.Enrichment) error {
 }
 
 // recordEnrichment queues an enrichment record (never deduplicated).
-func (w *Writer) recordEnrichment(_ context.Context, e core.Enrichment) error {
+func (w *Writer) recordEnrichment(ctx context.Context, e core.Enrichment) error {
 	afterJSON, err := json.Marshal(e.AfterState)
 	if err != nil {
 		return fmt.Errorf("marshal enrichment after state: %w", err)
@@ -255,7 +260,7 @@ func (w *Writer) recordEnrichment(_ context.Context, e core.Enrichment) error {
 		}
 		beforeJSON = string(b)
 	}
-	return w.buffer.Send(writebuffer.WriteOp{
+	return w.buffer.Send(ctx, writebuffer.WriteOp{
 		Type:      writebuffer.OpRecordEnrichment,
 		ProjectID: string(e.RunID), // enrichments stored in project graph
 		Payload: writebuffer.EnrichmentRecord{
@@ -276,6 +281,19 @@ func (w *Writer) recordEnrichment(_ context.Context, e core.Enrichment) error {
 // Called by the indexer after a run is complete.
 func (w *Writer) Flush(ctx context.Context) error {
 	return w.buffer.Flush(ctx)
+}
+
+// BeginIndexTransaction/CommitIndexTransaction make a successful index run
+// visible in one write-buffer flush. While held, writes are accepted and
+// validated but never reach the live graph; Abort drops them on any failure.
+func (w *Writer) BeginIndexTransaction(ctx context.Context) error {
+	return w.buffer.BeginIndexTransaction(ctx)
+}
+func (w *Writer) CommitIndexTransaction(ctx context.Context) error {
+	return w.buffer.CommitIndexTransaction(ctx)
+}
+func (w *Writer) AbortIndexTransaction(ctx context.Context) error {
+	return w.buffer.AbortIndexTransaction(ctx)
 }
 
 // ============================================================

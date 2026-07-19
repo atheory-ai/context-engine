@@ -2,6 +2,7 @@ package orggraph_test
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	"github.com/atheory-ai/context-engine/internal/core"
@@ -70,5 +71,50 @@ func TestOrgConceptSeeds_RoundTrip(t *testing.T) {
 	got, _ = g.GetOrgConceptSeeds(ctx)
 	if len(got) != 0 {
 		t.Errorf("expected no seeds after remove, got %d", len(got))
+	}
+}
+
+func TestLift_ReplacesProjectProjection(t *testing.T) {
+	openGraph := func(t *testing.T) *sql.DB {
+		t.Helper()
+		d, err := db.Open(":memory:")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { d.Close() })
+		if err := migrations.RunGraph(d); err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	src, dst := openGraph(t), openGraph(t)
+	if err := migrations.RunOrg(dst); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := src.Exec(`INSERT INTO nodes (id, project_id, type, label, canonical_id, source_class, created_at, updated_at, properties) VALUES ('public', 'p', 'symbol', 'Public', 'p:Public', 'structural', 1, 1, '{"exported":true}')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := orggraph.OpenFromDB(dst).Lift(ctx, "p", src); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := dst.QueryRow(`SELECT COUNT(*) FROM nodes WHERE project_id = 'p'`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("lifted nodes = %d, want 1", count)
+	}
+	if _, err := src.Exec(`DELETE FROM nodes WHERE id = 'public'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := orggraph.OpenFromDB(dst).Lift(ctx, "p", src); err != nil {
+		t.Fatal(err)
+	}
+	if err := dst.QueryRow(`SELECT COUNT(*) FROM nodes WHERE project_id = 'p'`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("stale lifted nodes = %d, want 0", count)
 	}
 }

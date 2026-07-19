@@ -68,10 +68,19 @@ instead of matching raw text; the host already parsed the file.
 
 ## ESLint Plugin
 
-The SDK ships an ESLint plugin that enforces these constraints at lint time:
+The SDK ships a flat-config ESLint plugin that enforces these constraints at lint time:
 
-```json
-{
-  "extends": ["@atheory-ai/ce-plugin-sdk/eslint-plugin-ce"]
-}
+```js
+import cePlugin from "@atheory-ai/ce-plugin-sdk/eslint-plugin-ce"
+
+export default [cePlugin.configs.recommended]
 ```
+
+## Documentation
+
+See the [SDK workspace in Context Engine](https://github.com/atheory-ai/context-engine/tree/main/sdk)
+for examples, release compatibility, and contributor guidance.
+
+## License
+
+Apache-2.0
