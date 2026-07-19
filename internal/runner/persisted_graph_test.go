@@ -9,6 +9,7 @@ import (
 	"github.com/atheory-ai/context-engine/internal/config"
 	"github.com/atheory-ai/context-engine/internal/storage/db"
 	"github.com/atheory-ai/context-engine/internal/storage/migrations"
+	"github.com/atheory-ai/context-engine/internal/storage/queries"
 )
 
 func TestNewMountsPersistedLocalGraph(t *testing.T) {
@@ -45,6 +46,20 @@ func TestNewMountsPersistedLocalGraph(t *testing.T) {
 		t.Fatalf("new engine: %v", err)
 	}
 	defer engine.Close(context.Background())
+
+	// A persisted graph is queryable only when its lifecycle metadata records a
+	// successful index. This mirrors the metadata that Engine.Index publishes
+	// after its write/reconciliation commit, rather than bypassing the guard.
+	if err := queries.UpsertProject(ctx, engine.dbRegistry.Meta(), queries.Project{
+		ID:         "local",
+		Name:       "local",
+		Status:     "indexed",
+		CreatedAt:  1,
+		LastSeenAt: 1,
+		Properties: "{}",
+	}); err != nil {
+		t.Fatalf("seed indexed project metadata: %v", err)
+	}
 
 	nodes, err := engine.SearchSubstrate(ctx, SearchOptions{Query: "wordpress-hooks", Type: "file", Limit: 1})
 	if err != nil {

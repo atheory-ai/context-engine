@@ -42,7 +42,7 @@ func TestFlushWritesGolden(t *testing.T) {
 		},
 	}
 	for _, op := range nodeOps {
-		if err := buf.Send(op); err != nil {
+		if err := buf.Send(ctx, op); err != nil {
 			t.Fatalf("send %s: %v", op.Type, err)
 		}
 	}
@@ -88,7 +88,7 @@ func TestFlushWritesGolden(t *testing.T) {
 	}
 
 	for _, op := range dependentOps {
-		if err := buf.Send(op); err != nil {
+		if err := buf.Send(ctx, op); err != nil {
 			t.Fatalf("send %s: %v", op.Type, err)
 		}
 	}

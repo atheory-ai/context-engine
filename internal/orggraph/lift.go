@@ -25,6 +25,19 @@ func (l *Lifter) Run(ctx context.Context) error {
 	}
 	defer tx.Rollback() //nolint:errcheck
 
+	// The org graph is a materialized projection, not an append-only cache.
+	// Rebuild this project's slice in the same transaction so removed public
+	// symbols and their cross-project relationships cannot survive a reindex.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM cross_project_edges WHERE source_project = ? OR target_project = ?`, string(l.projectID), string(l.projectID)); err != nil {
+		return fmt.Errorf("clear cross-project projection: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM edges WHERE project_id = ?`, string(l.projectID)); err != nil {
+		return fmt.Errorf("clear edge projection: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM nodes WHERE project_id = ?`, string(l.projectID)); err != nil {
+		return fmt.Errorf("clear node projection: %w", err)
+	}
+
 	if err := l.liftNodes(ctx, tx); err != nil {
 		return fmt.Errorf("lift nodes: %w", err)
 	}

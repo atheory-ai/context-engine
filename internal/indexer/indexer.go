@@ -13,8 +13,10 @@ package indexer
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -50,6 +52,12 @@ type Indexer struct {
 	substrate core.SubstrateWriter
 	queries   *queries.IndexQueries
 	channels  *core.AppChannels
+}
+
+type indexTransactionWriter interface {
+	BeginIndexTransaction(context.Context) error
+	CommitIndexTransaction(context.Context) error
+	AbortIndexTransaction(context.Context) error
 }
 
 // New creates an Indexer backed by the given plugin registry. Files are parsed
@@ -127,7 +135,7 @@ func (idx *Indexer) parseFile(ctx context.Context, relPath string, content []byt
 type reindexTracker struct {
 	mu      sync.Mutex
 	walked  map[string]struct{}
-	changed map[string][]string // relPath → fresh node ids, only for files that had a prior hash
+	outputs map[string]queries.FileOutput // committed only after a complete file output is accepted
 }
 
 func (t *reindexTracker) markWalked(relPath string) {
@@ -136,9 +144,9 @@ func (t *reindexTracker) markWalked(relPath string) {
 	t.mu.Unlock()
 }
 
-func (t *reindexTracker) markChanged(relPath string, ids []string) {
+func (t *reindexTracker) markIndexed(relPath string, output queries.FileOutput) {
 	t.mu.Lock()
-	t.changed[relPath] = ids
+	t.outputs[relPath] = output
 	t.mu.Unlock()
 }
 
@@ -148,6 +156,10 @@ func (t *reindexTracker) markChanged(relPath string, ids []string) {
 // Blocks until complete or ctx is cancelled.
 func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.ProjectID, full bool) (Stats, error) {
 	start := time.Now()
+	runID, err := newIndexRunID()
+	if err != nil {
+		return Stats{}, fmt.Errorf("create index run id: %w", err)
+	}
 
 	idx.emitProgress(fmt.Sprintf("indexing %s (mode: %s)",
 		projectID, map[bool]string{true: "full", false: "incremental"}[full]))
@@ -161,12 +173,30 @@ func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.Proj
 			return Stats{}, fmt.Errorf("load file hashes: %w", err)
 		}
 	}
-
-	// For a full reindex, clear the stored hashes so removed files are cleaned up.
-	if full && idx.queries != nil {
-		if err := idx.queries.ClearFileHashes(ctx, string(projectID)); err != nil {
-			idx.emitWarning(fmt.Sprintf("clear file hashes: %v", err))
+	if idx.queries != nil {
+		pluginIDs := make([]string, 0, len(idx.plugins.Loaded()))
+		for _, plugin := range idx.plugins.Loaded() {
+			pluginIDs = append(pluginIDs, string(plugin.ID()))
 		}
+		if err := idx.queries.StartIndexRun(ctx, runID, string(projectID), pluginIDs, start.UnixMilli()); err != nil {
+			return Stats{}, err
+		}
+	}
+	transaction, atomicCommit := idx.substrate.(indexTransactionWriter)
+	transactionOpen := false
+	if atomicCommit {
+		if err := transaction.BeginIndexTransaction(ctx); err != nil {
+			idx.failRun(ctx, runID, err)
+			return Stats{}, fmt.Errorf("begin atomic index write: %w", err)
+		}
+		transactionOpen = true
+		defer func() {
+			if transactionOpen {
+				if err := transaction.AbortIndexTransaction(context.Background()); err != nil {
+					idx.emitWarning(fmt.Sprintf("abort atomic index write: %v", err))
+				}
+			}
+		}()
 	}
 
 	// Set up the directory walker.
@@ -175,6 +205,7 @@ func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.Proj
 		MaxFileSizeBytes: idx.cfg.Indexer.MaxFileSizeBytes,
 	})
 	if err != nil {
+		idx.failRun(ctx, runID, err)
 		return Stats{}, fmt.Errorf("create walker: %w", err)
 	}
 
@@ -202,7 +233,10 @@ func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.Proj
 
 	now := time.Now().UnixMilli()
 
-	tracker := &reindexTracker{walked: map[string]struct{}{}, changed: map[string][]string{}}
+	tracker := &reindexTracker{
+		walked:  map[string]struct{}{},
+		outputs: map[string]queries.FileOutput{},
+	}
 
 	for i := 0; i < workerCount; i++ {
 		wg.Add(1)
@@ -211,7 +245,7 @@ func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.Proj
 			for result := range fileResults {
 				atomic.AddInt64(&filesWalked, 1)
 				tracker.markWalked(result.RelPath)
-				n, e, err := idx.processFile(ctx, projectID, result, existingHashes, now, tracker)
+				n, e, err := idx.processFile(ctx, projectID, result, existingHashes, now, runID, tracker)
 				if err != nil {
 					atomic.AddInt64(&filesErrored, 1)
 					idx.emitWarning(fmt.Sprintf("index %s: %v", result.RelPath, err))
@@ -231,43 +265,61 @@ func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.Proj
 
 	wg.Wait()
 
+	stats := func() Stats {
+		return Stats{FilesWalked: int(filesWalked), FilesIndexed: int(filesIndexed), FilesSkipped: int(filesSkipped), FilesErrored: int(filesErrored), NodesWritten: int(nodesWritten), EdgesWritten: int(edgesWritten), Duration: time.Since(start)}
+	}
 	if walkErr := <-walkErrCh; walkErr != nil && ctx.Err() == nil {
-		return Stats{}, fmt.Errorf("walk: %w", walkErr)
+		err := fmt.Errorf("walk: %w", walkErr)
+		idx.failRun(ctx, runID, err)
+		return stats(), err
 	}
 
-	// Flush the write buffer so all writes are committed before pruning.
-	if err := idx.substrate.Flush(ctx); err != nil {
-		idx.emitWarning(fmt.Sprintf("flush write buffer: %v", err))
+	if filesErrored > 0 || ctx.Err() != nil {
+		runErr := ctx.Err()
+		if runErr == nil {
+			runErr = fmt.Errorf("%d files failed; graph changes were not committed as an index run", filesErrored)
+		}
+		idx.failRun(ctx, runID, runErr)
+		return stats(), runErr
+	}
+	// Make the fully-validated run visible only after every file completed.
+	// Legacy writers fall back to Flush; the engine writer holds all index ops
+	// and commits them in a single graph transaction.
+	if atomicCommit {
+		if err := transaction.CommitIndexTransaction(ctx); err != nil {
+			runErr := fmt.Errorf("commit atomic index write: %w", err)
+			idx.failRun(ctx, runID, runErr)
+			return stats(), runErr
+		}
+		transactionOpen = false
+	} else if err := idx.substrate.Flush(ctx); err != nil {
+		runErr := fmt.Errorf("flush write buffer: %w", err)
+		idx.failRun(ctx, runID, runErr)
+		return stats(), runErr
 	}
 
-	// Incremental prune: now that the fresh nodes are committed, drop the stale
-	// ones. For a changed file, remove the symbols it no longer produces; for a
-	// file gone from disk, remove everything it contributed. (A full reindex
-	// re-stamps every node's source_file, which is what makes this exact.)
-	if !full && idx.queries != nil && ctx.Err() == nil {
-		idx.pruneStale(ctx, projectID, existingHashes, tracker)
+	// This transaction is the authoritative index-run commit marker. It replaces
+	// each processed file's prior membership, removes vanished output (including
+	// moved-offset facts), then advances hashes last in the same transaction.
+	if idx.queries != nil {
+		if err := idx.queries.ReconcileIndexRun(ctx, string(projectID), runID, tracker.outputs, tracker.walked, full, int(filesIndexed), int(nodesWritten), int(edgesWritten), time.Now().UnixMilli()); err != nil {
+			idx.failRun(ctx, runID, err)
+			return stats(), fmt.Errorf("reconcile index run: %w", err)
+		}
 	}
 
-	stats := Stats{
-		FilesWalked:  int(filesWalked),
-		FilesIndexed: int(filesIndexed),
-		FilesSkipped: int(filesSkipped),
-		FilesErrored: int(filesErrored),
-		NodesWritten: int(nodesWritten),
-		EdgesWritten: int(edgesWritten),
-		Duration:     time.Since(start),
-	}
+	finalStats := stats()
 
 	idx.emitProgress(fmt.Sprintf(
 		"index complete: %d files, %d nodes, %d edges (%s)",
-		stats.FilesIndexed, stats.NodesWritten, stats.EdgesWritten,
-		stats.Duration.Round(time.Millisecond),
+		finalStats.FilesIndexed, finalStats.NodesWritten, finalStats.EdgesWritten,
+		finalStats.Duration.Round(time.Millisecond),
 	))
 
 	if ctx.Err() != nil {
-		return stats, ctx.Err()
+		return finalStats, ctx.Err()
 	}
-	return stats, nil
+	return finalStats, nil
 }
 
 // processFile processes a single file and writes nodes/edges to the substrate.
@@ -280,6 +332,7 @@ func (idx *Indexer) processFile(
 	result walker.WalkResult,
 	existingHashes map[string]string,
 	now int64,
+	runID string,
 	tracker *reindexTracker,
 ) (int, int, error) {
 	content, err := os.ReadFile(result.Path)
@@ -288,10 +341,6 @@ func (idx *Indexer) processFile(
 	}
 
 	hash := fileHash(content)
-
-	// A file with a prior hash that we're re-processing is a change — its stale
-	// symbols get pruned after the run (a brand-new file has nothing to prune).
-	_, changed := existingHashes[result.RelPath]
 
 	// Incremental check — skip if content unchanged.
 	if existingHashes != nil {
@@ -302,7 +351,10 @@ func (idx *Indexer) processFile(
 
 	// Find all plugins that handle this file. Generic language plugins provide
 	// structural symbols; convention plugins can add framework-specific meaning.
-	matchingPlugins := idx.plugins.PluginsForFile(result.RelPath)
+	matchingPlugins, err := idx.plugins.IndexPlanForFile(result.RelPath)
+	if err != nil {
+		return 0, 0, fmt.Errorf("resolve plugin composition: %w", err)
+	}
 	if len(matchingPlugins) == 0 {
 		return -1, 0, nil // no plugin handles this extension
 	}
@@ -316,10 +368,10 @@ func (idx *Indexer) processFile(
 
 	nodesOut := 0
 	edgesOut := 0
-	successfulPlugins := 0
-	extractErrors := 0
 	var filePluginIIR []core.IIRExtracted // plugin-lifted IIR (Track B), if any
-	var keepIDs []string                  // ids emitted this run — survivors of the prune
+	var output queries.FileOutput
+	output.Hash = hash
+	anchor := canonicalFileAnchor(projectID, result.RelPath, now, runID)
 	type pluginExtraction struct {
 		plugin     core.Plugin
 		extraction core.ExtractionResult
@@ -334,11 +386,8 @@ func (idx *Indexer) processFile(
 		// Call the plugin's extract() function.
 		extraction, err := langHandler.Extract(result.RelPath, content, treeJSON)
 		if err != nil {
-			idx.emitWarning(fmt.Sprintf("extract %s with %s: %v", result.RelPath, p.ID(), err))
-			extractErrors++
-			continue
+			return 0, 0, fmt.Errorf("extract %s with %s: %w", result.RelPath, p.ID(), err)
 		}
-		successfulPlugins++
 		extractions = append(extractions, pluginExtraction{plugin: p, extraction: extraction})
 	}
 
@@ -348,107 +397,205 @@ func (idx *Indexer) processFile(
 	sharedIDs := make(map[core.NodeID]core.NodeID)
 	for _, item := range extractions {
 		for _, node := range item.extraction.Nodes {
+			if node.Type == core.NodeTypeFile {
+				sharedIDs[node.ID] = anchor.ID
+				continue
+			}
 			sharedIDs[node.ID] = core.NodeID(core.MakeNodeID(string(projectID), node.Type, node.CanonicalID))
 		}
 	}
-
+	candidateNodes := []core.Node{anchor}
+	var candidateEdges []core.Edge
 	for _, item := range extractions {
 		p := item.plugin
 		// Remap node/edge IDs from the plugin's empty project context to the real projectID.
-		remapped := remapIDsWithReferences(item.extraction, projectID, p.ID(), now, sharedIDs)
+		remapped := remapIDsWithReferences(item.extraction, projectID, p.ID(), now, sharedIDs, &anchor)
 		filePluginIIR = append(filePluginIIR, remapped.IIR...)
 
-		for _, node := range remapped.Nodes {
+		for i := range remapped.Nodes {
+			node := remapped.Nodes[i]
 			node.SourceFile = result.RelPath // stamp for incremental pruning
-			if err := idx.substrate.UpsertNode(ctx, node); err != nil {
-				idx.emitWarning(fmt.Sprintf("write node %s: %v", node.CanonicalID, err))
-				continue
-			}
-			keepIDs = append(keepIDs, string(node.ID))
-			nodesOut++
+			node.IndexManaged = true
+			node.LastIndexRunID = runID
+			candidateNodes = append(candidateNodes, node)
 		}
 
-		for _, edge := range remapped.Edges {
-			if err := idx.substrate.UpsertEdge(ctx, edge); err != nil {
-				idx.emitWarning(fmt.Sprintf("write edge: %v", err))
-				continue
-			}
-			edgesOut++
+		for i := range remapped.Edges {
+			edge := remapped.Edges[i]
+			edge.IndexManaged = true
+			edge.LastIndexRunID = runID
+			candidateEdges = append(candidateEdges, edge)
 		}
 
 		// Run analyzer passes — each produces additional edges from extracted nodes.
 		for _, analyzer := range p.Analyzers() {
 			extraEdges, err := analyzer.Analyze(remapped.Nodes)
 			if err != nil {
-				idx.emitWarning(fmt.Sprintf("analyzer %s on %s: %v", analyzer.Name(), result.RelPath, err))
-				continue
+				return 0, 0, fmt.Errorf("analyzer %s on %s: %w", analyzer.Name(), result.RelPath, err)
 			}
 			for _, edge := range extraEdges {
 				edge.ProjectID = projectID
-				if err := idx.substrate.UpsertEdge(ctx, edge); err != nil {
-					idx.emitWarning(fmt.Sprintf("write analyzer edge: %v", err))
-					continue
+				edge.PluginID = p.ID()
+				if edge.ID == "" {
+					edge.ID = core.EdgeID(core.MakeEdgeID(string(edge.SourceID), edge.Type, string(edge.TargetID)))
 				}
-				edgesOut++
+				edge.IndexManaged = true
+				edge.LastIndexRunID = runID
+				candidateEdges = append(candidateEdges, edge)
 			}
 		}
 	}
-
-	if successfulPlugins == 0 && extractErrors > 0 {
-		return 0, 0, fmt.Errorf("extract failed for all matching plugins")
+	mergedNodes, err := mergeContributionNodes(candidateNodes)
+	if err != nil {
+		return 0, 0, fmt.Errorf("merge file contribution: %w", err)
+	}
+	mergedEdges, err := mergeContributionEdges(candidateEdges)
+	if err != nil {
+		return 0, 0, fmt.Errorf("merge file contribution: %w", err)
+	}
+	for _, node := range mergedNodes {
+		if err := idx.substrate.UpsertNode(ctx, node); err != nil {
+			return 0, 0, fmt.Errorf("write node %s: %w", node.CanonicalID, err)
+		}
+		output.NodeIDs = append(output.NodeIDs, string(node.ID))
+		nodesOut++
+	}
+	for _, edge := range mergedEdges {
+		if err := idx.substrate.UpsertEdge(ctx, edge); err != nil {
+			return 0, 0, fmt.Errorf("write edge: %w", err)
+		}
+		output.EdgeIDs = append(output.EdgeIDs, string(edge.ID))
+		edgesOut++
 	}
 
 	// Store the IIR the language plugin lifted and attached to its nodes. The
 	// host no longer runs its own extractor at index time — IIR is owned entirely
 	// by plugins (Track B); files no plugin lifts simply get no IIR.
 	if idx.cfg.IIR.Enabled && len(filePluginIIR) > 0 {
-		idx.writePluginIIR(ctx, projectID, hash, filePluginIIR, now)
+		iirIDs, err := idx.writePluginIIR(ctx, projectID, hash, filePluginIIR, runID, now)
+		if err != nil {
+			return 0, 0, err
+		}
+		output.IIRIDs = append(output.IIRIDs, iirIDs...)
 	}
 
-	// Persist the file hash for future incremental runs.
-	if idx.queries != nil {
-		_ = idx.queries.UpsertFileHash(ctx, string(projectID), result.RelPath, hash) //nolint:errcheck // best-effort; next run re-hashes if missing
-	}
-
-	// A changed file may have dropped symbols since last index; record the ids it
-	// still emits so the post-run prune can remove the rest.
-	if changed && tracker != nil {
-		tracker.markChanged(result.RelPath, keepIDs)
-	}
+	tracker.markIndexed(result.RelPath, output)
 
 	return nodesOut, edgesOut, nil
-}
-
-// pruneStale removes nodes left over from a previous index that the current
-// incremental run supersedes: symbols dropped from changed files, and every
-// node contributed by files that no longer exist on disk. Runs after the write
-// buffer is flushed, single-threaded, so its direct deletes don't contend with
-// buffered writes.
-func (idx *Indexer) pruneStale(ctx context.Context, projectID core.ProjectID, existingHashes map[string]string, tracker *reindexTracker) {
-	// Changed files: drop the symbols they no longer produce.
-	for relPath, keepIDs := range tracker.changed {
-		if _, err := idx.queries.PruneFileNodes(ctx, string(projectID), relPath, keepIDs); err != nil {
-			idx.emitWarning(fmt.Sprintf("prune changed %s: %v", relPath, err))
-		}
-	}
-	// Deleted files: present in the prior index, absent from this walk.
-	for relPath := range existingHashes {
-		if _, seen := tracker.walked[relPath]; seen {
-			continue
-		}
-		if _, err := idx.queries.PruneFileNodes(ctx, string(projectID), relPath, nil); err != nil {
-			idx.emitWarning(fmt.Sprintf("prune deleted %s: %v", relPath, err))
-		}
-		if err := idx.queries.DeleteFileHash(ctx, string(projectID), relPath); err != nil {
-			idx.emitWarning(fmt.Sprintf("delete hash %s: %v", relPath, err))
-		}
-	}
 }
 
 // fileHash returns the SHA-256 hash of content as a lowercase hex string.
 func fileHash(content []byte) string {
 	h := sha256.Sum256(content)
 	return hex.EncodeToString(h[:])
+}
+
+func newIndexRunID() (string, error) {
+	var bytes [16]byte
+	if _, err := rand.Read(bytes[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes[:]), nil
+}
+
+func canonicalFileAnchor(projectID core.ProjectID, relPath string, now int64, runID string) core.Node {
+	return core.Node{ID: core.NodeID(core.MakeNodeID(string(projectID), core.NodeTypeFile, relPath)), ProjectID: projectID, Type: core.NodeTypeFile, Label: filepath.Base(relPath), CanonicalID: relPath, SourceClass: core.SourceStructural, SourceFile: relPath, IndexManaged: true, LastIndexRunID: runID, Properties: map[string]any{"file_path": relPath}, CreatedAt: now, UpdatedAt: now}
+}
+
+// mergeContributionNodes/Edges make same-file plugin composition explicit.
+// The former pending-map behaviour silently selected the last writer for a
+// duplicate ID; that makes plugin registration order part of graph semantics.
+// We instead accept only equivalent claims and a non-conflicting property merge.
+func mergeContributionNodes(nodes []core.Node) ([]core.Node, error) {
+	byID := make(map[core.NodeID]core.Node, len(nodes))
+	order := make([]core.NodeID, 0, len(nodes))
+	for _, node := range nodes {
+		current, exists := byID[node.ID]
+		if !exists {
+			byID[node.ID] = node
+			order = append(order, node.ID)
+			continue
+		}
+		if current.ProjectID != node.ProjectID || current.Type != node.Type || current.CanonicalID != node.CanonicalID || current.Label != node.Label || current.SourceClass != node.SourceClass || (current.PluginID != "" && node.PluginID != "" && current.PluginID != node.PluginID) {
+			return nil, fmt.Errorf("conflicting node claims for %s", node.ID)
+		}
+		if current.PluginID == "" {
+			current.PluginID = node.PluginID
+		}
+		properties, err := mergeContributionProperties(current.Properties, node.Properties)
+		if err != nil {
+			return nil, fmt.Errorf("node %s: %w", node.ID, err)
+		}
+		current.Properties = properties
+		byID[node.ID] = current
+	}
+	out := make([]core.Node, 0, len(order))
+	for _, id := range order {
+		out = append(out, byID[id])
+	}
+	return out, nil
+}
+
+func mergeContributionEdges(edges []core.Edge) ([]core.Edge, error) {
+	byID := make(map[core.EdgeID]core.Edge, len(edges))
+	order := make([]core.EdgeID, 0, len(edges))
+	for _, edge := range edges {
+		current, exists := byID[edge.ID]
+		if !exists {
+			byID[edge.ID] = edge
+			order = append(order, edge.ID)
+			continue
+		}
+		if current.ProjectID != edge.ProjectID || current.SourceID != edge.SourceID || current.TargetID != edge.TargetID || current.Type != edge.Type || current.SourceClass != edge.SourceClass || (current.PluginID != "" && edge.PluginID != "" && current.PluginID != edge.PluginID) {
+			return nil, fmt.Errorf("conflicting edge claims for %s", edge.ID)
+		}
+		if current.PluginID == "" {
+			current.PluginID = edge.PluginID
+		}
+		properties, err := mergeContributionProperties(current.Properties, edge.Properties)
+		if err != nil {
+			return nil, fmt.Errorf("edge %s: %w", edge.ID, err)
+		}
+		current.Properties = properties
+		byID[edge.ID] = current
+	}
+	out := make([]core.Edge, 0, len(order))
+	for _, id := range order {
+		out = append(out, byID[id])
+	}
+	return out, nil
+}
+
+func mergeContributionProperties(left, right map[string]any) (map[string]any, error) {
+	merged := make(map[string]any, len(left)+len(right))
+	for key, value := range left {
+		merged[key] = value
+	}
+	for key, value := range right {
+		if existing, exists := merged[key]; exists {
+			a, _ := json.Marshal(existing)
+			b, _ := json.Marshal(value)
+			if string(a) != string(b) {
+				return nil, fmt.Errorf("property %q has conflicting values", key)
+			}
+		} else {
+			merged[key] = value
+		}
+	}
+	return merged, nil
+}
+
+func (idx *Indexer) failRun(ctx context.Context, runID string, runErr error) {
+	if idx.queries == nil || runID == "" {
+		return
+	}
+	// The caller's context may already be cancelled; use a short independent
+	// context so the failed state remains visible and reads stay guarded.
+	markCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := idx.queries.FailIndexRun(markCtx, runID, time.Now().UnixMilli(), runErr); err != nil {
+		idx.emitWarning(fmt.Sprintf("record failed index run: %v", err))
+	}
 }
 
 // remapIDsWithReferences additionally resolves node IDs emitted by a sibling
@@ -460,15 +607,22 @@ func remapIDsWithReferences(
 	pluginID core.PluginID,
 	now int64,
 	references map[core.NodeID]core.NodeID,
+	anchor *core.Node,
 ) core.ExtractionResult {
 	pidStr := string(projectID)
 
 	oldToNew := make(map[core.NodeID]core.NodeID, len(result.Nodes))
-	nodes := make([]core.Node, len(result.Nodes))
+	nodes := make([]core.Node, 0, len(result.Nodes))
 
-	for i, n := range result.Nodes {
+	for _, n := range result.Nodes {
 		newID := core.NodeID(core.MakeNodeID(pidStr, n.Type, n.CanonicalID))
+		if anchor != nil && n.Type == core.NodeTypeFile {
+			newID = anchor.ID
+		}
 		oldToNew[n.ID] = newID
+		if anchor != nil && n.Type == core.NodeTypeFile {
+			continue // CE owns the sole canonical file anchor.
+		}
 
 		sc := n.SourceClass
 		if sc == "" {
@@ -478,7 +632,7 @@ func remapIDsWithReferences(
 		if props == nil {
 			props = map[string]any{}
 		}
-		nodes[i] = core.Node{
+		nodes = append(nodes, core.Node{
 			ID:          newID,
 			ProjectID:   projectID,
 			Type:        n.Type,
@@ -489,7 +643,7 @@ func remapIDsWithReferences(
 			Properties:  props,
 			CreatedAt:   now,
 			UpdatedAt:   now,
-		}
+		})
 	}
 
 	edges := make([]core.Edge, len(result.Edges))

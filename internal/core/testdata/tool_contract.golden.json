@@ -33,6 +33,8 @@
         "SourceClass": "derived",
         "PluginID": "",
         "SourceFile": "",
+        "IndexManaged": false,
+        "LastIndexRunID": "",
         "Properties": null,
         "CreatedAt": 0,
         "UpdatedAt": 0
@@ -48,6 +50,8 @@
         "SourceClass": "derived",
         "Weight": 0.5,
         "PluginID": "",
+        "IndexManaged": false,
+        "LastIndexRunID": "",
         "Properties": null,
         "CreatedAt": 0
       }

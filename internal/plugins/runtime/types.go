@@ -13,6 +13,9 @@ type PluginManifest struct {
 	ABI          *PluginABIInfo      `json:"abi,omitempty"`
 	Capabilities PluginCapabilities  `json:"capabilities"`
 	Language     *PluginLanguageInfo `json:"language,omitempty"`
+	Provides     []string            `json:"provides,omitempty"`
+	Requires     []string            `json:"requires,omitempty"`
+	Enriches     []string            `json:"enriches,omitempty"`
 
 	// IIRRules is an optional IIR rule pack (YAML or JSON) this plugin
 	// contributes — its "flavour" of code expectations. Declarative data: the
@@ -58,6 +61,9 @@ type PluginCapabilities struct {
 // PluginLanguageInfo is the optional language metadata in the manifest.
 // Declared by plugins that handle file parsing.
 type PluginLanguageInfo struct {
+	// Name is the canonical language name used by composition capabilities
+	// (for example "php"). It is optional for legacy plugins.
+	Name string `json:"name,omitempty"`
 	// Extensions are the file extensions this plugin handles.
 	Extensions []string `json:"extensions"`
 	// Grammar is the path to a tree-sitter grammar WASM file,

@@ -42,6 +42,9 @@ export interface PluginManifest {
     tools:     string[]
   }
   language?: { extensions: string[]; grammar?: string }
+	provides?: string[]
+	requires?: string[]
+	enriches?: string[]
   iirRules?: IIRRulePack
 }
 
@@ -66,6 +69,9 @@ export function buildPluginManifest(plugin: PluginDefinition): PluginManifest {
     language: plugin.language
       ? { extensions: plugin.language.extensions ?? [], grammar: plugin.language.grammar }
       : undefined,
+	provides: plugin.provides,
+	requires: plugin.requires,
+	enriches: plugin.enriches,
     // Contributed IIR conformance rules; the host merges them over its defaults.
     iirRules: plugin.iirRules,
   }
@@ -95,16 +101,18 @@ export function ceLanguageExtract(): void {
   }
   // The host sends the serialized tree as a { root, source, language } wrapper;
   // hand the extractor the root SyntaxNode directly.
-  const input = parseInput<{
+	const input = parseInput<{
     file_path?: string
     filePath?:  string
     content?:   string
-    tree?:      { root?: SyntaxNode | null } | null
-  }>()
+		tree?:      { root?: SyntaxNode | null } | null
+		source_anchor?: { type?: "file"; canonical_id?: string }
+	}>()
   writeJSON(plugin.language.extract(
     input.file_path ?? input.filePath ?? "",
     input.content ?? "",
     input.tree?.root ?? null,
+		input.source_anchor ? { type: "file", canonicalID: input.source_anchor.canonical_id ?? input.file_path ?? input.filePath ?? "" } : undefined,
   ))
 }
 

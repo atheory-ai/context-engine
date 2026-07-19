@@ -14,7 +14,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@atheory-ai/ce-plugin-sdk": "workspace:*",
+    "@atheory-ai/ce-plugin-sdk": "workspace:^",
     "chalk": "^5.x"
   },
   "devDependencies": {
@@ -24,6 +24,9 @@
     "@types/node": "^20.x"
   },
   "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
   "homepage": "https://github.com/atheory-ai/context-engine/tree/main/sdk/packages/plugin-sandbox#readme",
   "bugs": {
     "url": "https://github.com/atheory-ai/context-engine/issues"
@@ -38,6 +41,8 @@
   },
   "files": [
     "dist",
-    "README.md"
-  ]
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": ["context-engine", "plugin", "wasm", "validation", "cli"]
 }

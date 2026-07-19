@@ -26,6 +26,8 @@
           "SourceClass": "",
           "PluginID": "",
           "SourceFile": "",
+          "IndexManaged": false,
+          "LastIndexRunID": "",
           "Properties": null,
           "CreatedAt": 0,
           "UpdatedAt": 0
@@ -50,6 +52,8 @@
           "SourceClass": "",
           "PluginID": "",
           "SourceFile": "",
+          "IndexManaged": false,
+          "LastIndexRunID": "",
           "Properties": null,
           "CreatedAt": 0,
           "UpdatedAt": 0

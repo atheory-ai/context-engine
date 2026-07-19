@@ -22,11 +22,38 @@ func TestRemapIDsResolvesSharedFileReferenceFromConventionPlugin(t *testing.T) {
 		Edges: []core.Edge{{ID: "edge", SourceID: pluginFileID, TargetID: fact.ID, Type: "contains"}},
 	}
 
-	remapped := remapIDsWithReferences(result, projectID, "com.example.wordpress", 1, references)
+	remapped := remapIDsWithReferences(result, projectID, "com.example.wordpress", 1, references, nil)
 	if got := remapped.Edges[0].SourceID; got != fileID {
 		t.Errorf("edge source = %q, want shared file ID %q", got, fileID)
 	}
 	if got := remapped.Edges[0].TargetID; got != remapped.Nodes[0].ID {
 		t.Errorf("edge target = %q, want remapped convention node %q", got, remapped.Nodes[0].ID)
+	}
+}
+
+func TestRemapIDsUsesHostOwnedFileAnchor(t *testing.T) {
+	projectID := core.ProjectID("project")
+	anchor := canonicalFileAnchor(projectID, "wp/plugin.php", 1, "run")
+	pluginFileID := core.NodeID("plugin-file")
+	fact := core.Node{ID: "fact", Type: "wordpress_hook", CanonicalID: "wordpress:hook:demo"}
+	remapped := remapIDsWithReferences(core.ExtractionResult{
+		Nodes: []core.Node{{ID: pluginFileID, Type: core.NodeTypeFile, CanonicalID: "different-plugin-path"}, fact},
+		Edges: []core.Edge{{SourceID: pluginFileID, TargetID: fact.ID, Type: "contains"}},
+	}, projectID, "wp", 1, nil, &anchor)
+	if len(remapped.Nodes) != 1 || remapped.Nodes[0].Type == core.NodeTypeFile {
+		t.Fatalf("plugin file node was retained: %#v", remapped.Nodes)
+	}
+	if got := remapped.Edges[0].SourceID; got != anchor.ID {
+		t.Fatalf("edge source = %q, want host anchor %q", got, anchor.ID)
+	}
+}
+
+func TestMergeContributionRejectsOrderDependentClaims(t *testing.T) {
+	node := core.Node{ID: "node", ProjectID: "p", Type: "symbol", CanonicalID: "p:f", Label: "f", SourceClass: core.SourceStructural, PluginID: "php", Properties: map[string]any{"kind": "function"}}
+	conflict := node
+	conflict.PluginID = "wordpress"
+	conflict.Properties = map[string]any{"kind": "hook"}
+	if _, err := mergeContributionNodes([]core.Node{node, conflict}); err == nil {
+		t.Fatal("expected conflicting plugin claims to fail instead of last-writer-wins")
 	}
 }

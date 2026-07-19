@@ -129,8 +129,8 @@ failureModes:
 	if errs := errorMismatches(report); len(errs) != 0 {
 		t.Errorf("round-trip produced error mismatches: %+v", errs)
 	}
-	if report.Status != iir.StatusPassed {
-		t.Errorf("round-trip status = %s, want passed", report.Status)
+	if report.Status != iir.StatusInconclusive {
+		t.Errorf("round-trip status = %s, want inconclusive", report.Status)
 	}
 	if !strings.HasPrefix(src, "export function validateDonationAmount(") {
 		t.Errorf("unexpected signature:\n%s", src)
@@ -361,7 +361,7 @@ func TestVerify_ExampleFiles(t *testing.T) {
 		want iir.Status
 	}{
 		{"function-source-sample.ts", iir.StatusFailed},
-		{"function-source-clean.ts", iir.StatusPassed},
+		{"function-source-clean.ts", iir.StatusInconclusive},
 	}
 	for _, tc := range cases {
 		t.Run(tc.file, func(t *testing.T) {

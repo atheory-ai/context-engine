@@ -27,6 +27,7 @@ type pluginInstance struct {
 	config    extism.PluginConfig
 	exports   map[string]bool // set of exported function names
 	mu        sync.Mutex
+	indexPool *pluginInstancePool // base instance only; clones have nil
 }
 
 const (
@@ -112,6 +113,12 @@ func (p *pluginInstance) callConvention() string {
 func (p *pluginInstance) ID() core.PluginID { return p.id }
 func (p *pluginInstance) Name() string      { return p.name }
 func (p *pluginInstance) Version() string   { return p.version }
+
+// IndexContract exposes declarative indexing dependencies without making them
+// part of the mandatory core.Plugin ABI.
+func (p *pluginInstance) IndexContract() core.PluginIndexContract {
+	return core.PluginIndexContract{Provides: append([]string(nil), p.manifest.Provides...), Requires: append([]string(nil), p.manifest.Requires...), Enriches: append([]string(nil), p.manifest.Enriches...)}
+}
 
 // Language returns the language handler if this plugin declares language capability.
 func (p *pluginInstance) Language() core.LanguageHandler {
@@ -200,5 +207,12 @@ func (p *pluginInstance) Analyzers() []core.Analyzer {
 
 // Close unloads the WASM plugin and frees wazero resources.
 func (p *pluginInstance) Close() error {
+	if p.indexPool != nil {
+		return p.indexPool.Close()
+	}
+	return p.closeDirect()
+}
+
+func (p *pluginInstance) closeDirect() error {
 	return p.wasm.Close(context.Background())
 }

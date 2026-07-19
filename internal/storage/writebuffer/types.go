@@ -26,7 +26,8 @@ const (
 	OpRecordEnrichment           OpType = "record_enrichment"
 )
 
-// WriteOp is the unit of work the buffer accepts.
+// WriteOp is the unit of work the buffer accepts. Send applies bounded
+// backpressure: an operation is either queued or the caller receives an error.
 type WriteOp struct {
 	Type      OpType
 	ProjectID string // determines which graph DB to write to
@@ -56,30 +57,34 @@ type WeightUpdate struct {
 // NodeUpsert inserts or updates a node row.
 // Idempotent by design — same ID always produces the same result.
 type NodeUpsert struct {
-	ID          string
-	ProjectID   string
-	Type        string
-	Label       string
-	CanonicalID string
-	SourceClass string
-	PluginID    string
-	SourceFile  string // project-relative path the node was extracted from ('' if unknown)
-	Properties  string // JSON
-	CreatedAt   int64
-	UpdatedAt   int64
+	ID             string
+	ProjectID      string
+	Type           string
+	Label          string
+	CanonicalID    string
+	SourceClass    string
+	PluginID       string
+	SourceFile     string // project-relative path the node was extracted from ('' if unknown)
+	IndexManaged   bool
+	LastIndexRunID string
+	Properties     string // JSON
+	CreatedAt      int64
+	UpdatedAt      int64
 }
 
 // EdgeUpsert inserts or updates an edge row.
 type EdgeUpsert struct {
-	ID          string
-	ProjectID   string
-	SourceID    string
-	TargetID    string
-	Type        string
-	SourceClass string
-	PluginID    string
-	Properties  string // JSON
-	CreatedAt   int64
+	ID             string
+	ProjectID      string
+	SourceID       string
+	TargetID       string
+	Type           string
+	SourceClass    string
+	PluginID       string
+	IndexManaged   bool
+	LastIndexRunID string
+	Properties     string // JSON
+	CreatedAt      int64
 }
 
 // ConceptUpsert inserts or updates a concept seed row.

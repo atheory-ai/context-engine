@@ -3,7 +3,10 @@ package writebuffer_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +18,25 @@ import (
 // testProvider implements DBProvider for tests using a single in-memory database.
 type testProvider struct {
 	db *sql.DB
+}
+
+type blockingProvider struct {
+	db      *sql.DB
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (p *blockingProvider) GraphDB(_ string) (*sql.DB, error) {
+	p.once.Do(func() { close(p.entered) })
+	<-p.release
+	return p.db, nil
+}
+
+type failingProvider struct{}
+
+func (failingProvider) GraphDB(_ string) (*sql.DB, error) {
+	return nil, errors.New("graph unavailable")
 }
 
 func (p *testProvider) GraphDB(_ string) (*sql.DB, error) {
@@ -74,7 +96,7 @@ func TestActivationDeduplication(t *testing.T) {
 
 	// Send 10 activation updates for the same node — only the last should persist.
 	for i := 0; i < 10; i++ {
-		if err := buf.Send(writebuffer.WriteOp{
+		if err := buf.Send(ctx, writebuffer.WriteOp{
 			Type:      writebuffer.OpUpdateActivation,
 			ProjectID: "proj1",
 			Payload: writebuffer.ActivationUpdate{
@@ -102,6 +124,37 @@ func TestActivationDeduplication(t *testing.T) {
 	}
 }
 
+func TestIndexTransactionKeepsWritesInvisibleUntilCommit(t *testing.T) {
+	graphDB := setupGraphDB(t)
+	insertTestNode(t, graphDB, "node1", "proj1")
+	ctx := context.Background()
+	buf := newTestBuffer(ctx, &testProvider{db: graphDB})
+	defer buf.Close(ctx)
+	if err := buf.BeginIndexTransaction(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := buf.Send(ctx, writebuffer.WriteOp{Type: writebuffer.OpUpdateActivation, ProjectID: "proj1", Payload: writebuffer.ActivationUpdate{NodeID: "node1", Activation: 0.9, UpdatedAt: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond) // exceeds normal auto-flush interval
+	var count int
+	if err := graphDB.QueryRow(`SELECT COUNT(*) FROM node_activation WHERE node_id = 'node1'`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatal("held index write became visible before commit")
+	}
+	if err := buf.CommitIndexTransaction(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := graphDB.QueryRow(`SELECT COUNT(*) FROM node_activation WHERE node_id = 'node1'`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("committed index write count = %d, want 1", count)
+	}
+}
+
 func TestPeakActivationTracked(t *testing.T) {
 	graphDB := setupGraphDB(t)
 	insertTestNode(t, graphDB, "node1", "proj1")
@@ -112,7 +165,7 @@ func TestPeakActivationTracked(t *testing.T) {
 
 	// Send: 5.0, then 2.0. Peak should be 5.0; current should be 2.0.
 	for _, a := range []float64{5.0, 2.0} {
-		buf.Send(writebuffer.WriteOp{
+		buf.Send(ctx, writebuffer.WriteOp{
 			Type:      writebuffer.OpUpdateActivation,
 			ProjectID: "proj1",
 			Payload:   writebuffer.ActivationUpdate{NodeID: "node1", Activation: a, UpdatedAt: time.Now().UnixMilli()},
@@ -147,7 +200,7 @@ func TestWeightCoActivationAccumulation(t *testing.T) {
 
 	// Send 3 weight updates with delta=1 each. CoActivationCount should be 3.
 	for range 3 {
-		buf.Send(writebuffer.WriteOp{
+		buf.Send(ctx, writebuffer.WriteOp{
 			Type:      writebuffer.OpUpdateWeight,
 			ProjectID: "proj1",
 			Payload: writebuffer.WeightUpdate{
@@ -189,7 +242,7 @@ func TestEnrichmentAlwaysAppends(t *testing.T) {
 
 	// Send 3 enrichment records — all should be written (no deduplication).
 	for i := range 3 {
-		buf.Send(writebuffer.WriteOp{
+		buf.Send(ctx, writebuffer.WriteOp{
 			Type:      writebuffer.OpRecordEnrichment,
 			ProjectID: "proj1",
 			Payload: writebuffer.EnrichmentRecord{
@@ -231,7 +284,7 @@ func TestNodeUpsertDeduplication(t *testing.T) {
 	// Send two upserts for the same node — only the final label should win.
 	for i, label := range []string{"first", "second"} {
 		_ = i
-		buf.Send(writebuffer.WriteOp{
+		buf.Send(ctx, writebuffer.WriteOp{
 			Type:      writebuffer.OpUpsertNode,
 			ProjectID: "proj1",
 			Payload: writebuffer.NodeUpsert{
@@ -272,7 +325,7 @@ func TestCloseFlushesRemaining(t *testing.T) {
 	ctx := context.Background()
 	buf := newTestBuffer(ctx, &testProvider{db: graphDB})
 
-	buf.Send(writebuffer.WriteOp{
+	buf.Send(ctx, writebuffer.WriteOp{
 		Type:      writebuffer.OpUpdateActivation,
 		ProjectID: "proj1",
 		Payload:   writebuffer.ActivationUpdate{NodeID: "nodeX", Activation: 7.0, UpdatedAt: time.Now().UnixMilli()},
@@ -293,5 +346,51 @@ func TestCloseFlushesRemaining(t *testing.T) {
 	}
 	if activation != 7.0 {
 		t.Errorf("got activation=%.1f after close, want 7.0", activation)
+	}
+}
+
+func TestSendBackpressuresUntilContextCancelled(t *testing.T) {
+	graphDB := setupGraphDB(t)
+	provider := &blockingProvider{db: graphDB, entered: make(chan struct{}), release: make(chan struct{})}
+	ctx := context.Background()
+	buf := writebuffer.New(ctx, provider, 1, time.Hour)
+	defer func() {
+		close(provider.release)
+		_ = buf.Close(context.Background())
+	}()
+
+	op := writebuffer.WriteOp{Type: writebuffer.OpUpsertNode, ProjectID: "proj1", Payload: writebuffer.NodeUpsert{
+		ID: "n", ProjectID: "proj1", Type: "symbol", Label: "n", CanonicalID: "n", SourceClass: "structural", Properties: "{}",
+	}}
+	if err := buf.Send(ctx, op); err != nil {
+		t.Fatalf("first Send: %v", err)
+	}
+	<-provider.entered // writer is blocked in its first flush
+	if err := buf.Send(ctx, op); err != nil {
+		t.Fatalf("second Send: %v", err)
+	}
+
+	deadline, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
+	defer cancel()
+	if err := buf.Send(deadline, op); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("third Send error = %v, want deadline exceeded", err)
+	}
+}
+
+func TestFlushReturnsStorageFailure(t *testing.T) {
+	ctx := context.Background()
+	buf := writebuffer.New(ctx, failingProvider{}, 1, time.Hour)
+	defer buf.Close(ctx)
+
+	op := writebuffer.WriteOp{Type: writebuffer.OpUpsertNode, ProjectID: "proj1", Payload: writebuffer.NodeUpsert{
+		ID: "n", ProjectID: "proj1", Type: "symbol", Label: "n", CanonicalID: "n", SourceClass: "structural", Properties: "{}",
+	}}
+	if err := buf.Send(ctx, op); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	deadline, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	if err := buf.Flush(deadline); err == nil || !strings.Contains(err.Error(), "graph unavailable") {
+		t.Fatalf("Flush error = %v, want graph failure", err)
 	}
 }

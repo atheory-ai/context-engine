@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -75,9 +76,6 @@ func (h *wasmLanguageHandler) HasCustomMatch() bool {
 // treeJSON is the serialized SyntaxTree (JSON bytes), or nil if no grammar available.
 // Input to ce_language_extract: {"file_path":"...","content":"...","tree":{...}|null}
 func (h *wasmLanguageHandler) Extract(filePath string, content []byte, treeJSON []byte) (core.ExtractionResult, error) {
-	h.plugin.mu.Lock()
-	defer h.plugin.mu.Unlock()
-
 	var treeRaw json.RawMessage
 	if treeJSON != nil {
 		treeRaw = json.RawMessage(treeJSON)
@@ -87,16 +85,27 @@ func (h *wasmLanguageHandler) Extract(filePath string, content []byte, treeJSON 
 		"file_path": filePath,
 		"content":   string(content),
 		"tree":      treeRaw,
+		// Stable source reference is optional for ABI-v1 plugins, which simply
+		// ignore unknown JSON fields. The indexer supplies the canonical anchor
+		// through the file path contract until the richer extraction API is used.
+		"source_anchor": map[string]any{"type": "file", "canonical_id": filePath},
 	})
 
-	result, err := h.plugin.call("ce_language_extract", input)
-	if err != nil {
-		return core.ExtractionResult{}, fmt.Errorf("ce_language_extract: %w", err)
-	}
-
 	var out core.ExtractionResult
-	if err := json.Unmarshal(result, &out); err != nil {
-		return core.ExtractionResult{}, fmt.Errorf("parse extraction result: %w", err)
+	err := h.plugin.indexPool.withInstance(context.Background(), func(instance *pluginInstance) error {
+		instance.mu.Lock()
+		defer instance.mu.Unlock()
+		result, err := instance.call("ce_language_extract", input)
+		if err != nil {
+			return fmt.Errorf("ce_language_extract: %w", err)
+		}
+		if err := json.Unmarshal(result, &out); err != nil {
+			return fmt.Errorf("parse extraction result: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return core.ExtractionResult{}, err
 	}
 	return out, nil
 }

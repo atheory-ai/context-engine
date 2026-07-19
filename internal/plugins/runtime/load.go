@@ -90,7 +90,7 @@ func (r *Runtime) Load(ctx context.Context, wasmPath string, pluginConfig map[st
 	}
 
 	// ── 8. Wrap in Plugin instance ───────────────────────────────────────────
-	return &pluginInstance{
+	instance := &pluginInstance{
 		id:        core.PluginID(pmeta.ID),
 		name:      pmeta.Name,
 		version:   pmeta.Version,
@@ -101,7 +101,9 @@ func (r *Runtime) Load(ctx context.Context, wasmPath string, pluginConfig map[st
 		hostFuncs: hostFuncs,
 		config:    extismConfig,
 		exports:   exports,
-	}, nil
+	}
+	instance.indexPool = newPluginInstancePool(instance)
+	return instance, nil
 }
 
 func validateManifestABI(abi *PluginABIInfo) error {

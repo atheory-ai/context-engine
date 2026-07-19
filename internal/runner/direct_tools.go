@@ -22,6 +22,9 @@ type DirectToolResult struct {
 }
 
 func (e *Engine) RunDirectTool(ctx context.Context, opts DirectToolOptions) (*DirectToolResult, error) {
+	if err := e.requireReadyCorpus(ctx); err != nil {
+		return nil, err
+	}
 	if opts.Tool == "" {
 		return nil, fmt.Errorf("tool is required")
 	}

@@ -1,6 +1,6 @@
 {
   "name": "@atheory-ai/ce-plugin-sdk",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "TypeScript SDK for authoring Context Engine plugins.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -20,20 +20,27 @@
       "import": "./dist/build/ce-abi.js",
       "types": "./dist/build/ce-abi.d.ts"
     },
+    "./eslint-plugin-ce": {
+      "import": "./dist/eslint/index.js",
+      "types": "./dist/eslint/index.d.ts"
+    },
     "./tsconfig.plugin.json": {
       "default": "./tsconfig.plugin.json"
     }
   },
   "peerDependencies": {
-    "@atheory-ai/wasm-plugin-toolkit": "^0.0.4"
+    "@atheory-ai/wasm-plugin-toolkit": "^0.0.4",
+    "eslint": "^8.57.0 || ^9.0.0"
   },
   "peerDependenciesMeta": {
-    "@atheory-ai/wasm-plugin-toolkit": { "optional": true }
+    "@atheory-ai/wasm-plugin-toolkit": { "optional": true },
+    "eslint": { "optional": true }
   },
   "files": [
     "dist",
     "tsconfig.plugin.json",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "node build.mjs && tsc --emitDeclarationOnly --declaration --declarationMap",
@@ -49,6 +56,9 @@
     "vitest": "*"
   },
   "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
   "homepage": "https://github.com/atheory-ai/context-engine/tree/main/sdk/packages/plugin-sdk#readme",
   "bugs": {
     "url": "https://github.com/atheory-ai/context-engine/issues"
@@ -60,5 +70,6 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "keywords": ["context-engine", "plugin-sdk", "wasm", "webassembly", "semantic-code"]
 }

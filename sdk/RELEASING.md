@@ -49,8 +49,8 @@ pnpm release:dry-run -- --package plugin-sdk
 4. Merge to `main`, then tag that commit, for example:
 
    ```bash
-   git tag plugin-sdk-v0.1.1
-   git push origin plugin-sdk-v0.1.1
+   git tag plugin-sdk-v0.2.0
+   git push origin plugin-sdk-v0.2.0
    ```
 
 5. Approve the `npm-release` environment and confirm npm provenance.
