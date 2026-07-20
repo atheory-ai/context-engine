@@ -68,9 +68,9 @@ func TestSemanticBuildGraphMigrationConstraintsAndRollback(t *testing.T) {
 	if _, err := database.Exec(`INSERT INTO semantic_recipes (id, project_id, plan_revision_id, schema_version, target_language, renderer_profile, payload, created_at) VALUES ('orphan', 'p', 'missing', 'v1', 'typescript', '{}', '{}', 1)`); err == nil {
 		t.Fatal("semantic recipe foreign key accepted missing plan")
 	}
-	// Index ownership is the latest graph migration; roll it and the semantic
-	// graph migration back to verify the semantic migration remains reversible.
-	if err := migrations.RollbackGraph(database, 2); err != nil {
+	// Index staging and ownership follow the semantic graph migration; roll all
+	// three back to verify the semantic migration remains reversible.
+	if err := migrations.RollbackGraph(database, 3); err != nil {
 		t.Fatalf("rollback semantic build graph: %v", err)
 	}
 	if tableExists(t, database, "semantic_plans") {
