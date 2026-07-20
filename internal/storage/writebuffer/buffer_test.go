@@ -155,6 +155,57 @@ func TestIndexTransactionStillFlushesBoundedWrites(t *testing.T) {
 	}
 }
 
+func TestIndexManagedGraphWritesStageUntilReconciliation(t *testing.T) {
+	graphDB := setupGraphDB(t)
+	ctx := context.Background()
+	buf := newTestBuffer(ctx, &testProvider{db: graphDB})
+	defer buf.Close(ctx)
+
+	for _, op := range []writebuffer.WriteOp{
+		{
+			Type:      writebuffer.OpUpsertNode,
+			ProjectID: "proj1",
+			Payload: writebuffer.NodeUpsert{
+				ID: "staged-node", ProjectID: "proj1", Type: "symbol", Label: "staged-node", CanonicalID: "file.go:staged-node",
+				SourceClass: "structural", IndexManaged: true, LastIndexRunID: "run-1", CreatedAt: 1, UpdatedAt: 1, Properties: "{}",
+			},
+		},
+		{
+			Type:      writebuffer.OpUpsertEdge,
+			ProjectID: "proj1",
+			Payload: writebuffer.EdgeUpsert{
+				ID: "staged-edge", ProjectID: "proj1", SourceID: "staged-node", TargetID: "staged-node", Type: "references",
+				SourceClass: "structural", IndexManaged: true, LastIndexRunID: "run-1", CreatedAt: 1, Properties: "{}",
+			},
+		},
+	} {
+		if err := buf.Send(ctx, op); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := buf.Flush(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if count := queryCount(t, graphDB, `SELECT COUNT(*) FROM index_staging_nodes WHERE run_id = 'run-1'`); count != 1 {
+		t.Fatalf("staged nodes = %d, want 1", count)
+	}
+	if count := queryCount(t, graphDB, `SELECT COUNT(*) FROM index_staging_edges WHERE run_id = 'run-1'`); count != 1 {
+		t.Fatalf("staged edges = %d, want 1", count)
+	}
+	if count := queryCount(t, graphDB, `SELECT COUNT(*) FROM nodes WHERE id = 'staged-node'`); count != 0 {
+		t.Fatalf("live nodes = %d, want 0 before reconciliation", count)
+	}
+}
+
+func queryCount(t *testing.T, graphDB *sql.DB, query string) int {
+	t.Helper()
+	var count int
+	if err := graphDB.QueryRow(query).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	return count
+}
+
 func TestPeakActivationTracked(t *testing.T) {
 	graphDB := setupGraphDB(t)
 	insertTestNode(t, graphDB, "node1", "proj1")
