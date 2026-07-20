@@ -283,9 +283,9 @@ func (w *Writer) Flush(ctx context.Context) error {
 	return w.buffer.Flush(ctx)
 }
 
-// BeginIndexTransaction/CommitIndexTransaction make a successful index run
-// visible in one write-buffer flush. While held, writes are accepted and
-// validated but never reach the live graph; Abort drops them on any failure.
+// BeginIndexTransaction/CommitIndexTransaction bracket an index run while
+// preserving normal bounded write-buffer flushing. Index-run publication, not
+// an unbounded in-memory write set, controls graph visibility.
 func (w *Writer) BeginIndexTransaction(ctx context.Context) error {
 	return w.buffer.BeginIndexTransaction(ctx)
 }

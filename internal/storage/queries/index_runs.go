@@ -39,11 +39,22 @@ func (q *IndexQueries) FailIndexRun(ctx context.Context, id string, completedAt 
 	if runErr != nil {
 		message = runErr.Error()
 	}
-	_, err := q.db.ExecContext(ctx, `UPDATE index_runs SET status = 'failed', completed_at = ?, error_message = ? WHERE id = ?`, completedAt, message, id)
+	tx, err := q.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin failed index cleanup: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.ExecContext(ctx, `DELETE FROM index_staging_edges WHERE run_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM index_staging_nodes WHERE run_id = ?`, id); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE index_runs SET status = 'failed', completed_at = ?, error_message = ? WHERE id = ?`, completedAt, message, id)
 	if err != nil {
 		return fmt.Errorf("fail index run: %w", err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // ReconcileIndexRun is the commit point for an index. It replaces ownership
@@ -55,6 +66,9 @@ func (q *IndexQueries) ReconcileIndexRun(ctx context.Context, projectID, runID s
 		return fmt.Errorf("begin index reconciliation: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
+	if err := promoteStagedIndexOutput(ctx, tx, projectID, runID); err != nil {
+		return err
+	}
 
 	paths := make(map[string]struct{}, len(outputs))
 	for path, out := range outputs {
@@ -119,7 +133,52 @@ func (q *IndexQueries) ReconcileIndexRun(ctx context.Context, projectID, runID s
 	if err != nil {
 		return fmt.Errorf("complete index run: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM index_staging_edges WHERE run_id = ?`, runID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM index_staging_nodes WHERE run_id = ?`, runID); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+func promoteStagedIndexOutput(ctx context.Context, tx *sql.Tx, projectID, runID string) error {
+	nodes, err := tx.QueryContext(ctx, `SELECT id,type,label,canonical_id,source_class,COALESCE(plugin_id,''),COALESCE(source_file,''),index_managed,COALESCE(last_index_run_id,''),created_at,updated_at,properties FROM index_staging_nodes WHERE run_id = ? AND project_id = ?`, runID, projectID)
+	if err != nil {
+		return fmt.Errorf("read staged nodes: %w", err)
+	}
+	defer nodes.Close()
+	for nodes.Next() {
+		var id, typ, label, canonical, class, plugin, sourceFile, lastRun, props string
+		var managed int
+		var created, updated int64
+		if err := nodes.Scan(&id, &typ, &label, &canonical, &class, &plugin, &sourceFile, &managed, &lastRun, &created, &updated, &props); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO nodes (id,project_id,type,label,canonical_id,source_class,plugin_id,source_file,index_managed,last_index_run_id,created_at,updated_at,properties) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,source_class=excluded.source_class,plugin_id=excluded.plugin_id,source_file=excluded.source_file,index_managed=excluded.index_managed,last_index_run_id=excluded.last_index_run_id,updated_at=excluded.updated_at,properties=excluded.properties`, id, projectID, typ, label, canonical, class, plugin, sourceFile, managed, lastRun, created, updated, props); err != nil {
+			return fmt.Errorf("promote node: %w", err)
+		}
+	}
+	if err := nodes.Err(); err != nil {
+		return err
+	}
+	edges, err := tx.QueryContext(ctx, `SELECT id,source_id,target_id,type,source_class,COALESCE(plugin_id,''),index_managed,COALESCE(last_index_run_id,''),created_at,properties FROM index_staging_edges WHERE run_id = ? AND project_id = ?`, runID, projectID)
+	if err != nil {
+		return fmt.Errorf("read staged edges: %w", err)
+	}
+	defer edges.Close()
+	for edges.Next() {
+		var id, source, target, typ, class, plugin, lastRun, props string
+		var managed int
+		var created int64
+		if err := edges.Scan(&id, &source, &target, &typ, &class, &plugin, &managed, &lastRun, &created, &props); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO edges (id,project_id,source_id,target_id,type,source_class,plugin_id,index_managed,last_index_run_id,created_at,properties) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET source_class=excluded.source_class,plugin_id=excluded.plugin_id,index_managed=excluded.index_managed,last_index_run_id=excluded.last_index_run_id,properties=excluded.properties`, id, projectID, source, target, typ, class, plugin, managed, lastRun, created, props); err != nil {
+			return fmt.Errorf("promote edge: %w", err)
+		}
+	}
+	return edges.Err()
 }
 
 func upsertMemberships(ctx context.Context, tx *sql.Tx, projectID, path, runID string, out FileOutput) error {
