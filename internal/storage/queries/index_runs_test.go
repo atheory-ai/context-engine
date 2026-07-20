@@ -91,3 +91,32 @@ func TestReconcileIndexRun_IncrementalRemovesStaleEdgeWithSurvivingEndpoints(t *
 		t.Fatal("surviving endpoints were removed")
 	}
 }
+
+func TestReconcileIndexRun_PromotesStagedOutputWithoutChangingNullProvenance(t *testing.T) {
+	database := migratedGraph(t)
+	ctx := context.Background()
+	q := queries.NewIndexQueries(database)
+	const project, run = "p", "run"
+	if err := q.StartIndexRun(ctx, run, project, nil, 1); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"left", "right"} {
+		if _, err := database.Exec(`INSERT INTO index_staging_nodes (run_id, id, project_id, type, label, canonical_id, source_class, plugin_id, source_file, index_managed, last_index_run_id, created_at, updated_at, properties) VALUES (?, ?, ?, 'symbol', ?, ?, 'structural', NULL, '', 1, ?, 1, 1, '{}')`, run, id, project, id, id, run); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := database.Exec(`INSERT INTO index_staging_edges (run_id, id, project_id, source_id, target_id, type, source_class, plugin_id, index_managed, last_index_run_id, created_at, properties) VALUES (?, 'edge', ?, 'left', 'right', 'calls', 'structural', NULL, 1, ?, 1, '{}')`, run, project, run); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.ReconcileIndexRun(ctx, project, run, map[string]queries.FileOutput{"file.go": {Hash: "hash", NodeIDs: []string{"left", "right"}, EdgeIDs: []string{"edge"}}}, map[string]struct{}{"file.go": {}}, true, 1, 2, 1, 2); err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{
+		`SELECT plugin_id IS NULL AND last_index_run_id = 'run' FROM nodes WHERE id = 'left'`,
+		`SELECT plugin_id IS NULL AND last_index_run_id = 'run' FROM edges WHERE id = 'edge'`,
+	} {
+		if count(t, database, query) != 1 {
+			t.Fatalf("nullable provenance was not preserved: %s", query)
+		}
+	}
+}

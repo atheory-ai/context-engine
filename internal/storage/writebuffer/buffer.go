@@ -26,9 +26,10 @@ type Buffer interface {
 	// Used at the end of a query turn to ensure all writes land.
 	Flush(ctx context.Context) error
 
-	// BeginIndexTransaction holds index writes in the buffer after first
-	// flushing older work. CommitIndexTransaction flushes the complete held set
-	// in one project transaction; AbortIndexTransaction drops it.
+	// BeginIndexTransaction marks an indexing run after first flushing older
+	// work. Index writes continue to use normal bounded timer/size flushing;
+	// graph visibility is controlled by the index-run publisher, not by retaining
+	// an unbounded corpus-sized pending map in RAM.
 	BeginIndexTransaction(ctx context.Context) error
 	CommitIndexTransaction(ctx context.Context) error
 	AbortIndexTransaction(ctx context.Context) error
@@ -178,19 +179,19 @@ func (b *buffer) run(ctx context.Context) {
 	ticker := time.NewTicker(b.flushInterval)
 	defer ticker.Stop()
 
-	held := false
+	indexing := false
 	for {
 		select {
 		case op := <-b.ch:
 			if b.failure() == nil {
 				b.pending.merge(op)
-				if !held && b.pending.len() >= b.bufSize {
+				if b.pending.len() >= b.bufSize {
 					b.setFailure(b.doFlush(ctx))
 				}
 			}
 
 		case <-ticker.C:
-			if !held && b.pending.len() > 0 && b.failure() == nil {
+			if b.pending.len() > 0 && b.failure() == nil {
 				b.setFailure(b.doFlush(ctx))
 			}
 
@@ -206,29 +207,34 @@ func (b *buffer) run(ctx context.Context) {
 			var err error
 			switch req.action {
 			case "begin":
-				if held {
+				if indexing {
 					err = errors.New("index transaction already active")
 				} else if b.pending.len() > 0 {
 					err = b.doFlush(ctx)
 				}
 				if err == nil {
-					held = true
+					indexing = true
 				}
 			case "commit":
-				if !held {
+				if !indexing {
 					err = errors.New("no active index transaction")
 				} else {
 					b.drainCh()
 					err = b.doFlush(ctx)
-					held = false
+					indexing = false
 				}
 			case "abort":
-				if !held {
+				if !indexing {
 					err = errors.New("no active index transaction")
 				} else {
 					b.drainCh()
-					_ = b.pending.drain()
-					held = false
+					// Earlier batches are intentionally already durable. The index-run
+					// reconciliation/publisher decides whether they become visible;
+					// never retain a corpus in RAM merely to make abort discard it.
+					if b.pending.len() > 0 {
+						err = b.doFlush(ctx)
+					}
+					indexing = false
 				}
 			default:
 				err = errors.New("unknown index transaction action")
@@ -333,6 +339,10 @@ func execOp(ctx context.Context, tx *sql.Tx, op WriteOp) error {
 	switch op.Type {
 	case OpUpsertNode:
 		n := op.Payload.(NodeUpsert)
+		if n.IndexManaged && n.LastIndexRunID != "" {
+			_, err := tx.ExecContext(ctx, `INSERT INTO index_staging_nodes (run_id,id,project_id,type,label,canonical_id,source_class,plugin_id,source_file,index_managed,last_index_run_id,created_at,updated_at,properties) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(run_id,id) DO UPDATE SET label=excluded.label,source_class=excluded.source_class,plugin_id=excluded.plugin_id,source_file=excluded.source_file,index_managed=excluded.index_managed,last_index_run_id=excluded.last_index_run_id,updated_at=excluded.updated_at,properties=excluded.properties`, n.LastIndexRunID, n.ID, n.ProjectID, n.Type, n.Label, n.CanonicalID, n.SourceClass, nullableString(n.PluginID), n.SourceFile, n.IndexManaged, n.LastIndexRunID, n.CreatedAt, n.UpdatedAt, n.Properties)
+			return err
+		}
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO nodes (id, project_id, type, label, canonical_id, source_class, plugin_id, source_file, index_managed, last_index_run_id, created_at, updated_at, properties)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -350,6 +360,10 @@ func execOp(ctx context.Context, tx *sql.Tx, op WriteOp) error {
 
 	case OpUpsertEdge:
 		e := op.Payload.(EdgeUpsert)
+		if e.IndexManaged && e.LastIndexRunID != "" {
+			_, err := tx.ExecContext(ctx, `INSERT INTO index_staging_edges (run_id,id,project_id,source_id,target_id,type,source_class,plugin_id,index_managed,last_index_run_id,created_at,properties) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(run_id,id) DO UPDATE SET source_class=excluded.source_class,plugin_id=excluded.plugin_id,index_managed=excluded.index_managed,last_index_run_id=excluded.last_index_run_id,properties=excluded.properties`, e.LastIndexRunID, e.ID, e.ProjectID, e.SourceID, e.TargetID, e.Type, e.SourceClass, nullableString(e.PluginID), e.IndexManaged, e.LastIndexRunID, e.CreatedAt, e.Properties)
+			return err
+		}
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO edges (id, project_id, source_id, target_id, type, source_class, plugin_id, index_managed, last_index_run_id, created_at, properties)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

@@ -124,7 +124,7 @@ func TestActivationDeduplication(t *testing.T) {
 	}
 }
 
-func TestIndexTransactionKeepsWritesInvisibleUntilCommit(t *testing.T) {
+func TestIndexTransactionStillFlushesBoundedWrites(t *testing.T) {
 	graphDB := setupGraphDB(t)
 	insertTestNode(t, graphDB, "node1", "proj1")
 	ctx := context.Background()
@@ -141,8 +141,8 @@ func TestIndexTransactionKeepsWritesInvisibleUntilCommit(t *testing.T) {
 	if err := graphDB.QueryRow(`SELECT COUNT(*) FROM node_activation WHERE node_id = 'node1'`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	if count != 0 {
-		t.Fatal("held index write became visible before commit")
+	if count != 1 {
+		t.Fatal("index transaction suppressed the normal timer flush")
 	}
 	if err := buf.CommitIndexTransaction(ctx); err != nil {
 		t.Fatal(err)

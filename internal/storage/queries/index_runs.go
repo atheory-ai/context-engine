@@ -39,11 +39,22 @@ func (q *IndexQueries) FailIndexRun(ctx context.Context, id string, completedAt 
 	if runErr != nil {
 		message = runErr.Error()
 	}
-	_, err := q.db.ExecContext(ctx, `UPDATE index_runs SET status = 'failed', completed_at = ?, error_message = ? WHERE id = ?`, completedAt, message, id)
+	tx, err := q.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin failed index cleanup: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.ExecContext(ctx, `DELETE FROM index_staging_edges WHERE run_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM index_staging_nodes WHERE run_id = ?`, id); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE index_runs SET status = 'failed', completed_at = ?, error_message = ? WHERE id = ?`, completedAt, message, id)
 	if err != nil {
 		return fmt.Errorf("fail index run: %w", err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // ReconcileIndexRun is the commit point for an index. It replaces ownership
@@ -55,6 +66,9 @@ func (q *IndexQueries) ReconcileIndexRun(ctx context.Context, projectID, runID s
 		return fmt.Errorf("begin index reconciliation: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
+	if err := promoteStagedIndexOutput(ctx, tx, projectID, runID); err != nil {
+		return err
+	}
 
 	paths := make(map[string]struct{}, len(outputs))
 	for path, out := range outputs {
@@ -119,7 +133,51 @@ func (q *IndexQueries) ReconcileIndexRun(ctx context.Context, projectID, runID s
 	if err != nil {
 		return fmt.Errorf("complete index run: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM index_staging_edges WHERE run_id = ?`, runID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM index_staging_nodes WHERE run_id = ?`, runID); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+func promoteStagedIndexOutput(ctx context.Context, tx *sql.Tx, projectID, runID string) error {
+	// Promotion must remain in ReconcileIndexRun's transaction so a completed
+	// index run becomes query-visible as one atomic graph replacement. Copying
+	// inside SQLite avoids N+1 writes and preserves nullable provenance fields.
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO nodes (id, project_id, type, label, canonical_id, source_class, plugin_id, source_file, index_managed, last_index_run_id, created_at, updated_at, properties)
+		SELECT id, project_id, type, label, canonical_id, source_class, plugin_id, COALESCE(source_file, ''), index_managed, last_index_run_id, created_at, updated_at, properties
+		FROM index_staging_nodes
+		WHERE run_id = ? AND project_id = ?
+		ON CONFLICT(id) DO UPDATE SET
+			label = excluded.label,
+			source_class = excluded.source_class,
+			plugin_id = excluded.plugin_id,
+			source_file = excluded.source_file,
+			index_managed = excluded.index_managed,
+			last_index_run_id = excluded.last_index_run_id,
+			updated_at = excluded.updated_at,
+			properties = excluded.properties
+	`, runID, projectID); err != nil {
+		return fmt.Errorf("promote staged nodes: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO edges (id, project_id, source_id, target_id, type, source_class, plugin_id, index_managed, last_index_run_id, created_at, properties)
+		SELECT id, project_id, source_id, target_id, type, source_class, plugin_id, index_managed, last_index_run_id, created_at, properties
+		FROM index_staging_edges
+		WHERE run_id = ? AND project_id = ?
+		ON CONFLICT(id) DO UPDATE SET
+			source_class = excluded.source_class,
+			plugin_id = excluded.plugin_id,
+			index_managed = excluded.index_managed,
+			last_index_run_id = excluded.last_index_run_id,
+			properties = excluded.properties
+	`, runID, projectID); err != nil {
+		return fmt.Errorf("promote staged edges: %w", err)
+	}
+	return nil
 }
 
 func upsertMemberships(ctx context.Context, tx *sql.Tx, projectID, path, runID string, out FileOutput) error {

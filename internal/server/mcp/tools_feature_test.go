@@ -1,8 +1,10 @@
 package mcp
 
 import (
+	"encoding/json"
 	"testing"
 
+	"github.com/atheory-ai/context-engine/internal/buildinfo"
 	"github.com/atheory-ai/context-engine/internal/config"
 	"github.com/atheory-ai/context-engine/internal/server/mcp/protocol"
 )
@@ -20,6 +22,19 @@ func TestCEQueryToolHiddenByDefault(t *testing.T) {
 		if !hasTool(s.tools, name) {
 			t.Fatalf("%s should be registered as a deterministic direct tool", name)
 		}
+	}
+}
+
+func TestInitializeReportsBuildVersion(t *testing.T) {
+	s := New(&config.Config{}, nil)
+	response := s.handleInitialize(protocol.Request{ID: "initialize"})
+
+	var result protocol.InitializeResult
+	if err := json.Unmarshal(response.Result, &result); err != nil {
+		t.Fatalf("decode initialize response: %v", err)
+	}
+	if result.ServerInfo.Version != buildinfo.Version {
+		t.Fatalf("server version = %q, want %q", result.ServerInfo.Version, buildinfo.Version)
 	}
 }
 

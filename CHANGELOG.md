@@ -6,7 +6,21 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
 
 ## [Unreleased]
 
-- Corrected release binaries so `ce version` reports the tagged version.
+## [0.3.0]
+
+### Runtime
+
+- Fixed index writes so completed file contributions flush in bounded SQLite
+  WAL batches during a run, rather than accumulating in memory until its end.
+- Stage index-managed nodes and edges until a successful run promotes them,
+  preserving the prior complete graph if indexing fails.
+- Unified the CLI and MCP server version metadata; release builds now report
+  the tagged CE version consistently.
+
+### Upgrade
+
+- The graph migration adds internal index-staging tables automatically. Re-run
+  `ce index --full` after upgrading to replace output from interrupted runs.
 
 ## [0.2.0]
 
