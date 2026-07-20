@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/atheory-ai/context-engine/internal/buildinfo"
 	"github.com/atheory-ai/context-engine/internal/config"
 	"github.com/atheory-ai/context-engine/internal/runner"
 	"github.com/atheory-ai/context-engine/internal/server/mcp/protocol"
@@ -14,9 +15,6 @@ import (
 
 // MCPProtocolVersion is the MCP spec version this server implements.
 const MCPProtocolVersion = "2024-11-05"
-
-// serverVersion is returned in initialize responses.
-const serverVersion = "0.1.0-dev"
 
 // toolHandler is the function signature for MCP tool implementations.
 type toolHandler = tools.HandlerFunc
@@ -98,7 +96,7 @@ func (s *Server) handleInitialize(req protocol.Request) protocol.Response {
 		},
 		ServerInfo: protocol.ServerInfo{
 			Name:    "context-engine",
-			Version: serverVersion,
+			Version: buildinfo.Version,
 		},
 	}
 	return protocol.OKResponse(req.ID, result)
