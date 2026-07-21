@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
 
 ## [Unreleased]
 
+## [0.4.0]
+
+### Runtime
+
+- Reworked indexing into bounded parse and extraction stages. Source plus CST
+  admission is now byte-budgeted, with independently configurable parse and
+  extraction worker pools.
+- Persist content-addressed source and compact CST artifacts, allowing later
+  host-side analysis to reuse the initial parse without retaining the corpus in
+  process memory.
+- Stage file output in SQLite as each file completes, then reconcile it as one
+  replacement-safe index run. Completed work flushes in bounded batches rather
+  than accumulating until the end of a large corpus.
+- Run independent same-file plugins concurrently according to manifest
+  capabilities while preserving declared dependency layers and legacy plugin
+  ordering. Each file still merges and validates all plugin output before it is
+  staged.
+- Report source, serialized CST, and estimated plugin-input byte totals in the
+  CLI index summary to aid worker and byte-budget tuning.
+
+### Upgrade
+
+- The graph migration adds durable source/CST artifact and staged-file tables
+  automatically. Run `ce index --full` after upgrading so existing content is
+  recorded with the new artifact and replacement metadata.
+
 ## [0.3.0]
 
 ### Runtime

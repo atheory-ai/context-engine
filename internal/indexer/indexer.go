@@ -35,13 +35,16 @@ import (
 
 // Stats summarises the results of an index run.
 type Stats struct {
-	FilesWalked  int
-	FilesIndexed int
-	FilesSkipped int
-	FilesErrored int
-	NodesWritten int
-	EdgesWritten int
-	Duration     time.Duration
+	FilesWalked                 int
+	FilesIndexed                int
+	FilesSkipped                int
+	FilesErrored                int
+	NodesWritten                int
+	EdgesWritten                int
+	SourceBytesProcessed        int64
+	CSTBytesProcessed           int64
+	PluginPayloadBytesEstimated int64
+	Duration                    time.Duration
 }
 
 // Indexer orchestrates full and incremental indexing for a project.
@@ -58,6 +61,15 @@ type indexTransactionWriter interface {
 	BeginIndexTransaction(context.Context) error
 	CommitIndexTransaction(context.Context) error
 	AbortIndexTransaction(context.Context) error
+}
+
+type preparedFile struct {
+	result   walker.WalkResult
+	content  []byte
+	hash     string
+	treeJSON []byte
+	plugins  []core.Plugin
+	release  func()
 }
 
 // New creates an Indexer backed by the given plugin registry. Files are parsed
@@ -129,27 +141,6 @@ func (idx *Indexer) parseFile(ctx context.Context, relPath string, content []byt
 	return idx.wasm.ParseFile(ctx, relPath, content)
 }
 
-// reindexTracker records, across the concurrent workers, which files were seen
-// this run and the fresh node ids each changed file produced — the inputs to
-// the post-pass incremental prune.
-type reindexTracker struct {
-	mu      sync.Mutex
-	walked  map[string]struct{}
-	outputs map[string]queries.FileOutput // committed only after a complete file output is accepted
-}
-
-func (t *reindexTracker) markWalked(relPath string) {
-	t.mu.Lock()
-	t.walked[relPath] = struct{}{}
-	t.mu.Unlock()
-}
-
-func (t *reindexTracker) markIndexed(relPath string, output queries.FileOutput) {
-	t.mu.Lock()
-	t.outputs[relPath] = output
-	t.mu.Unlock()
-}
-
 // Run performs a full or incremental index of rootDir.
 // projectID identifies the substrate graph to write to.
 // full=true forces reindex of all files regardless of cached hashes.
@@ -215,58 +206,102 @@ func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.Proj
 		walkErrCh <- w.Walk(ctx, fileResults)
 	}()
 
-	// Process files concurrently — cap at 8 workers.
-	workerCount := runtime.NumCPU()
-	if workerCount > 8 {
-		workerCount = 8
+	workerCount := idx.cfg.Indexer.ExtractWorkers
+	if workerCount < 1 {
+		workerCount = runtime.NumCPU()
+		if workerCount > 8 {
+			workerCount = 8
+		}
 	}
+	limiter := newByteLimiter(idx.cfg.Indexer.MaxInFlightBytes)
 
 	var (
-		wg           sync.WaitGroup
-		filesWalked  int64
-		filesIndexed int64
-		filesSkipped int64
-		filesErrored int64
-		nodesWritten int64
-		edgesWritten int64
+		wg                 sync.WaitGroup
+		filesWalked        int64
+		filesIndexed       int64
+		filesSkipped       int64
+		filesErrored       int64
+		nodesWritten       int64
+		edgesWritten       int64
+		sourceBytes        int64
+		cstBytes           int64
+		pluginPayloadBytes int64
 	)
 
 	now := time.Now().UnixMilli()
 
-	tracker := &reindexTracker{
-		walked:  map[string]struct{}{},
-		outputs: map[string]queries.FileOutput{},
+	parseWorkers := idx.cfg.Indexer.ParseWorkers
+	if parseWorkers < 1 {
+		parseWorkers = workerCount
 	}
-
-	for i := 0; i < workerCount; i++ {
+	preparedCh := make(chan *preparedFile, workerCount)
+	for i := 0; i < parseWorkers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for result := range fileResults {
 				atomic.AddInt64(&filesWalked, 1)
-				tracker.markWalked(result.RelPath)
-				n, e, err := idx.processFile(ctx, projectID, result, existingHashes, now, runID, tracker)
+				if idx.queries != nil {
+					if err := idx.queries.StageWalked(ctx, runID, string(projectID), result.RelPath); err != nil {
+						atomic.AddInt64(&filesErrored, 1)
+						continue
+					}
+				}
+				release, err := limiter.acquire(ctx, int(result.Info.Size())*8)
 				if err != nil {
+					atomic.AddInt64(&filesErrored, 1)
+					continue
+				}
+				prepared, skipped, err := idx.prepareFile(ctx, projectID, result, existingHashes, now)
+				if skipped {
+					release()
+					atomic.AddInt64(&filesSkipped, 1)
+					continue
+				}
+				if err != nil {
+					release()
 					atomic.AddInt64(&filesErrored, 1)
 					idx.emitWarning(fmt.Sprintf("index %s: %v", result.RelPath, err))
 					continue
 				}
-				if n < 0 {
-					// Skipped: unchanged hash or no matching plugin.
-					atomic.AddInt64(&filesSkipped, 1)
+				prepared.release = release
+				select {
+				case preparedCh <- prepared:
+				case <-ctx.Done():
+					release()
+					atomic.AddInt64(&filesErrored, 1)
+				}
+			}
+		}()
+	}
+
+	go func() { wg.Wait(); close(preparedCh) }()
+	var extractWG sync.WaitGroup
+	for i := 0; i < workerCount; i++ {
+		extractWG.Add(1)
+		go func() {
+			defer extractWG.Done()
+			for prepared := range preparedCh {
+				n, e, err := idx.processFile(ctx, projectID, prepared, now, runID)
+				prepared.release()
+				if err != nil {
+					atomic.AddInt64(&filesErrored, 1)
+					idx.emitWarning(fmt.Sprintf("index %s: %v", prepared.result.RelPath, err))
 					continue
 				}
 				atomic.AddInt64(&filesIndexed, 1)
 				atomic.AddInt64(&nodesWritten, int64(n))
 				atomic.AddInt64(&edgesWritten, int64(e))
+				atomic.AddInt64(&sourceBytes, int64(len(prepared.content)))
+				atomic.AddInt64(&cstBytes, int64(len(prepared.treeJSON)))
+				atomic.AddInt64(&pluginPayloadBytes, int64(len(prepared.plugins)*(len(prepared.content)+len(prepared.treeJSON))))
 			}
 		}()
 	}
-
-	wg.Wait()
+	extractWG.Wait()
 
 	stats := func() Stats {
-		return Stats{FilesWalked: int(filesWalked), FilesIndexed: int(filesIndexed), FilesSkipped: int(filesSkipped), FilesErrored: int(filesErrored), NodesWritten: int(nodesWritten), EdgesWritten: int(edgesWritten), Duration: time.Since(start)}
+		return Stats{FilesWalked: int(filesWalked), FilesIndexed: int(filesIndexed), FilesSkipped: int(filesSkipped), FilesErrored: int(filesErrored), NodesWritten: int(nodesWritten), EdgesWritten: int(edgesWritten), SourceBytesProcessed: atomic.LoadInt64(&sourceBytes), CSTBytesProcessed: atomic.LoadInt64(&cstBytes), PluginPayloadBytesEstimated: atomic.LoadInt64(&pluginPayloadBytes), Duration: time.Since(start)}
 	}
 	if walkErr := <-walkErrCh; walkErr != nil && ctx.Err() == nil {
 		err := fmt.Errorf("walk: %w", walkErr)
@@ -302,7 +337,7 @@ func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.Proj
 	// each processed file's prior membership, removes vanished output (including
 	// moved-offset facts), then advances hashes last in the same transaction.
 	if idx.queries != nil {
-		if err := idx.queries.ReconcileIndexRun(ctx, string(projectID), runID, tracker.outputs, tracker.walked, full, int(filesIndexed), int(nodesWritten), int(edgesWritten), time.Now().UnixMilli()); err != nil {
+		if err := idx.queries.ReconcileStagedIndexRun(ctx, string(projectID), runID, full, int(filesIndexed), int(nodesWritten), int(edgesWritten), time.Now().UnixMilli()); err != nil {
 			idx.failRun(ctx, runID, err)
 			return stats(), fmt.Errorf("reconcile index run: %w", err)
 		}
@@ -322,49 +357,51 @@ func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.Proj
 	return finalStats, nil
 }
 
-// processFile processes a single file and writes nodes/edges to the substrate.
+// prepareFile performs the reusable, bounded parse stage.
+func (idx *Indexer) prepareFile(ctx context.Context, projectID core.ProjectID, result walker.WalkResult, existingHashes map[string]string, now int64) (*preparedFile, bool, error) {
+	content, err := os.ReadFile(result.Path)
+	if err != nil {
+		return nil, false, fmt.Errorf("read: %w", err)
+	}
+	hash := fileHash(content)
+	if existingHashes != nil && existingHashes[result.RelPath] == hash {
+		return nil, true, nil
+	}
+	plugins, err := idx.plugins.IndexPlanForFile(result.RelPath)
+	if err != nil {
+		return nil, false, fmt.Errorf("resolve plugin composition: %w", err)
+	}
+	if len(plugins) == 0 {
+		return nil, true, nil
+	}
+	treeJSON, err := idx.parseFile(ctx, result.RelPath, content)
+	if err != nil {
+		return nil, false, fmt.Errorf("parse: %w", err)
+	}
+	if idx.queries != nil {
+		compact, err := compactCST(treeJSON)
+		if err != nil {
+			return nil, false, err
+		}
+		if err := idx.queries.StoreParseArtifact(ctx, string(projectID), hash, "tree-sitter-wasm/v1", filepath.Ext(result.RelPath), content, compact, now); err != nil {
+			return nil, false, err
+		}
+	}
+	return &preparedFile{result: result, content: content, hash: hash, treeJSON: treeJSON, plugins: plugins}, false, nil
+}
+
+// processFile performs extraction and staged graph writes for a prepared file.
 // Returns (nodesWritten, edgesWritten, nil) on success.
 // Returns (-1, 0, nil) if the file should be skipped (unchanged or no plugin).
 // Returns (0, 0, err) on a processing error.
 func (idx *Indexer) processFile(
 	ctx context.Context,
 	projectID core.ProjectID,
-	result walker.WalkResult,
-	existingHashes map[string]string,
+	prepared *preparedFile,
 	now int64,
 	runID string,
-	tracker *reindexTracker,
 ) (int, int, error) {
-	content, err := os.ReadFile(result.Path)
-	if err != nil {
-		return 0, 0, fmt.Errorf("read: %w", err)
-	}
-
-	hash := fileHash(content)
-
-	// Incremental check — skip if content unchanged.
-	if existingHashes != nil {
-		if existingHash, ok := existingHashes[result.RelPath]; ok && existingHash == hash {
-			return -1, 0, nil
-		}
-	}
-
-	// Find all plugins that handle this file. Generic language plugins provide
-	// structural symbols; convention plugins can add framework-specific meaning.
-	matchingPlugins, err := idx.plugins.IndexPlanForFile(result.RelPath)
-	if err != nil {
-		return 0, 0, fmt.Errorf("resolve plugin composition: %w", err)
-	}
-	if len(matchingPlugins) == 0 {
-		return -1, 0, nil // no plugin handles this extension
-	}
-
-	// Parse the file to the serialized SyntaxTree the plugin consumes.
-	// treeJSON is nil if no bundled grammar handles the file.
-	treeJSON, err := idx.parseFile(ctx, result.RelPath, content)
-	if err != nil {
-		return 0, 0, fmt.Errorf("parse: %w", err)
-	}
+	result, content, hash, treeJSON, matchingPlugins := prepared.result, prepared.content, prepared.hash, prepared.treeJSON, prepared.plugins
 
 	nodesOut := 0
 	edgesOut := 0
@@ -377,18 +414,37 @@ func (idx *Indexer) processFile(
 		extraction core.ExtractionResult
 	}
 	var extractions []pluginExtraction
-	for _, p := range matchingPlugins {
-		langHandler := p.Language()
-		if langHandler == nil {
-			continue
+	for _, layer := range pluginExtractionLayers(matchingPlugins) {
+		results := make([]pluginExtraction, len(layer))
+		errs := make([]error, len(layer))
+		var layerWG sync.WaitGroup
+		for i, p := range layer {
+			layerWG.Add(1)
+			go func(i int, p core.Plugin) {
+				defer layerWG.Done()
+				lang := p.Language()
+				if lang == nil {
+					return
+				}
+				extraction, err := lang.Extract(result.RelPath, content, treeJSON)
+				if err != nil {
+					errs[i] = err
+					return
+				}
+				results[i] = pluginExtraction{plugin: p, extraction: extraction}
+			}(i, p)
 		}
-
-		// Call the plugin's extract() function.
-		extraction, err := langHandler.Extract(result.RelPath, content, treeJSON)
-		if err != nil {
-			return 0, 0, fmt.Errorf("extract %s with %s: %w", result.RelPath, p.ID(), err)
+		layerWG.Wait()
+		for i, err := range errs {
+			if err != nil {
+				return 0, 0, fmt.Errorf("extract %s with %s: %w", result.RelPath, layer[i].ID(), err)
+			}
 		}
-		extractions = append(extractions, pluginExtraction{plugin: p, extraction: extraction})
+		for _, extraction := range results {
+			if extraction.plugin != nil {
+				extractions = append(extractions, extraction)
+			}
+		}
 	}
 
 	// Language and convention plugins may intentionally share a file node while
@@ -479,7 +535,11 @@ func (idx *Indexer) processFile(
 		output.IIRIDs = append(output.IIRIDs, iirIDs...)
 	}
 
-	tracker.markIndexed(result.RelPath, output)
+	if idx.queries != nil {
+		if err := idx.queries.StageFileOutput(ctx, runID, string(projectID), result.RelPath, output); err != nil {
+			return 0, 0, fmt.Errorf("stage file output: %w", err)
+		}
+	}
 
 	return nodesOut, edgesOut, nil
 }
@@ -488,6 +548,107 @@ func (idx *Indexer) processFile(
 func fileHash(content []byte) string {
 	h := sha256.Sum256(content)
 	return hex.EncodeToString(h[:])
+}
+
+// compactCST removes source and duplicated per-node text while preserving the
+// node type, fields, offsets, positions, and child topology needed to recover
+// text from the content-addressed source artifact later.
+func compactCST(treeJSON []byte) ([]byte, error) {
+	if len(treeJSON) == 0 {
+		return nil, nil
+	}
+	var tree any
+	if err := json.Unmarshal(treeJSON, &tree); err != nil {
+		return nil, err
+	}
+	var compact func(any)
+	compact = func(v any) {
+		switch x := v.(type) {
+		case map[string]any:
+			delete(x, "source")
+			delete(x, "text")
+			for _, child := range x {
+				compact(child)
+			}
+		case []any:
+			for _, child := range x {
+				compact(child)
+			}
+		}
+	}
+	compact(tree)
+	return json.Marshal(tree)
+}
+
+// pluginExtractionLayers recreates the manifest dependency DAG as execution
+// layers. A legacy plugin acts as a serial barrier: registration order was its
+// implicit contract, so declared plugins on either side cannot overtake it.
+// Explicitly-declared peers without dependencies can safely fan out.
+func pluginExtractionLayers(plugins []core.Plugin) [][]core.Plugin {
+	providers := map[string]int{}
+	contracts := make([]core.PluginIndexContract, len(plugins))
+	explicit := make([]bool, len(plugins))
+	for i, plugin := range plugins {
+		if c, ok := plugin.(core.IndexContractContributor); ok {
+			contracts[i] = c.IndexContract()
+			explicit[i] = len(contracts[i].Provides)+len(contracts[i].Requires)+len(contracts[i].Enriches) > 0
+			for _, capability := range contracts[i].Provides {
+				providers[capability] = i
+			}
+		}
+	}
+	deps := make([]map[int]struct{}, len(plugins))
+	for i := range plugins {
+		deps[i] = map[int]struct{}{}
+		if !explicit[i] {
+			continue
+		}
+		for _, capability := range contracts[i].Requires {
+			if provider, ok := providers[capability]; ok && provider != i {
+				deps[i][provider] = struct{}{}
+			}
+		}
+		for _, language := range contracts[i].Enriches {
+			if provider, ok := providers["language:"+language]; ok && provider != i {
+				deps[i][provider] = struct{}{}
+			}
+		}
+	}
+	// Preserve the serial behaviour of legacy plugins even in a mixed plan.
+	// Without this, an explicit plugin after a legacy plugin could run before
+	// it merely because it has no declared capabilities.
+	for i := 1; i < len(plugins); i++ {
+		if !explicit[i-1] || !explicit[i] {
+			deps[i][i-1] = struct{}{}
+		}
+	}
+	done := make([]bool, len(plugins))
+	var layers [][]core.Plugin
+	remaining := len(plugins)
+	for remaining > 0 {
+		var layer []int
+		for i := range plugins {
+			if !done[i] && len(deps[i]) == 0 {
+				layer = append(layer, i)
+			}
+		}
+		if len(layer) == 0 {
+			break
+		}
+		out := make([]core.Plugin, 0, len(layer))
+		for _, i := range layer {
+			done[i] = true
+			out = append(out, plugins[i])
+		}
+		remaining -= len(layer)
+		for _, i := range layer {
+			for child := range plugins {
+				delete(deps[child], i)
+			}
+		}
+		layers = append(layers, out)
+	}
+	return layers
 }
 
 func newIndexRunID() (string, error) {

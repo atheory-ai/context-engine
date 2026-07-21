@@ -120,3 +120,49 @@ func TestReconcileIndexRun_PromotesStagedOutputWithoutChangingNullProvenance(t *
 		}
 	}
 }
+
+func TestFailIndexRunClearsAllDurableStaging(t *testing.T) {
+	database := migratedGraph(t)
+	q := queries.NewIndexQueries(database)
+	ctx := context.Background()
+	const run, project = "cancelled", "p"
+	if err := q.StartIndexRun(ctx, run, project, nil, 1); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO index_staging_files (run_id,project_id,rel_path,source_hash,status) VALUES ('cancelled','p','a.go','h','indexed')`,
+		`INSERT INTO index_staging_file_nodes (run_id,rel_path,node_id) VALUES ('cancelled','a.go','n')`,
+		`INSERT INTO index_staging_file_edges (run_id,rel_path,edge_id) VALUES ('cancelled','a.go','e')`,
+		`INSERT INTO index_staging_file_iir (run_id,rel_path,iir_id) VALUES ('cancelled','a.go','i')`,
+	} {
+		if _, err := database.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := q.FailIndexRun(ctx, run, 2, context.Canceled); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"index_staging_files", "index_staging_file_nodes", "index_staging_file_edges", "index_staging_file_iir"} {
+		if got := count(t, database, `SELECT COUNT(*) FROM `+table+` WHERE run_id='cancelled'`); got != 0 {
+			t.Fatalf("%s retained %d rows", table, got)
+		}
+	}
+	if got := count(t, database, `SELECT COUNT(*) FROM index_runs WHERE id='cancelled' AND status='failed'`); got != 1 {
+		t.Fatalf("run status = %d", got)
+	}
+}
+
+func TestParseArtifactRoundTrip(t *testing.T) {
+	database := migratedGraph(t)
+	q := queries.NewIndexQueries(database)
+	if err := q.StoreParseArtifact(context.Background(), "p", "h", "v1", ".go", []byte("package p"), []byte(`{"root":{}}`), 1); err != nil {
+		t.Fatal(err)
+	}
+	source, cst, err := q.ParseArtifact(context.Background(), "p", "h", "v1", ".go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(source) != "package p" || string(cst) != `{"root":{}}` {
+		t.Fatalf("artifact = %q / %q", source, cst)
+	}
+}
