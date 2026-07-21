@@ -73,30 +73,24 @@ func (q *IndexQueries) StageFileOutput(ctx context.Context, runID, projectID, pa
 		return err
 	}
 	for _, entry := range []struct {
-		table string
-		ids   []string
-	}{{"index_staging_file_nodes", out.NodeIDs}, {"index_staging_file_edges", out.EdgeIDs}, {"index_staging_file_iir", out.IIRIDs}} {
-		if _, err = tx.ExecContext(ctx, "DELETE FROM "+entry.table+" WHERE run_id=? AND rel_path=?", runID, path); err != nil {
+		ids         []string
+		deleteQuery string
+		insertQuery string
+	}{
+		{out.NodeIDs, `DELETE FROM index_staging_file_nodes WHERE run_id=? AND rel_path=?`, `INSERT INTO index_staging_file_nodes (run_id,rel_path,node_id) VALUES (?,?,?)`},
+		{out.EdgeIDs, `DELETE FROM index_staging_file_edges WHERE run_id=? AND rel_path=?`, `INSERT INTO index_staging_file_edges (run_id,rel_path,edge_id) VALUES (?,?,?)`},
+		{out.IIRIDs, `DELETE FROM index_staging_file_iir WHERE run_id=? AND rel_path=?`, `INSERT INTO index_staging_file_iir (run_id,rel_path,iir_id) VALUES (?,?,?)`},
+	} {
+		if _, err = tx.ExecContext(ctx, entry.deleteQuery, runID, path); err != nil {
 			return err
 		}
 		for _, id := range uniqueStrings(entry.ids) {
-			if _, err = tx.ExecContext(ctx, "INSERT INTO "+entry.table+" (run_id,rel_path,"+stagedIDColumn(entry.table)+") VALUES (?,?,?)", runID, path, id); err != nil {
+			if _, err = tx.ExecContext(ctx, entry.insertQuery, runID, path, id); err != nil {
 				return err
 			}
 		}
 	}
 	return tx.Commit()
-}
-
-func stagedIDColumn(table string) string {
-	switch table {
-	case "index_staging_file_nodes":
-		return "node_id"
-	case "index_staging_file_edges":
-		return "edge_id"
-	default:
-		return "iir_id"
-	}
 }
 
 // StartIndexRun records an attempt before it can write graph data. A failed
@@ -124,9 +118,17 @@ func (q *IndexQueries) FailIndexRun(ctx context.Context, id string, completedAt 
 		return fmt.Errorf("begin failed index cleanup: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
-	for _, table := range []string{"index_staging_file_iir", "index_staging_file_edges", "index_staging_file_nodes", "index_staging_files"} {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE run_id = ?", id); err != nil {
-			return fmt.Errorf("clear failed %s: %w", table, err)
+	for _, entry := range []struct {
+		name  string
+		query string
+	}{
+		{"staged file IIR", `DELETE FROM index_staging_file_iir WHERE run_id = ?`},
+		{"staged file edges", `DELETE FROM index_staging_file_edges WHERE run_id = ?`},
+		{"staged file nodes", `DELETE FROM index_staging_file_nodes WHERE run_id = ?`},
+		{"staged files", `DELETE FROM index_staging_files WHERE run_id = ?`},
+	} {
+		if _, err := tx.ExecContext(ctx, entry.query, id); err != nil {
+			return fmt.Errorf("clear failed %s: %w", entry.name, err)
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM index_staging_edges WHERE run_id = ?`, id); err != nil {
@@ -224,9 +226,17 @@ func (q *IndexQueries) ReconcileIndexRun(ctx context.Context, projectID, runID s
 	if _, err := tx.ExecContext(ctx, `DELETE FROM index_staging_nodes WHERE run_id = ?`, runID); err != nil {
 		return err
 	}
-	for _, table := range []string{"index_staging_file_iir", "index_staging_file_edges", "index_staging_file_nodes", "index_staging_files"} {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE run_id = ?", runID); err != nil {
-			return fmt.Errorf("clear completed %s: %w", table, err)
+	for _, entry := range []struct {
+		name  string
+		query string
+	}{
+		{"staged file IIR", `DELETE FROM index_staging_file_iir WHERE run_id = ?`},
+		{"staged file edges", `DELETE FROM index_staging_file_edges WHERE run_id = ?`},
+		{"staged file nodes", `DELETE FROM index_staging_file_nodes WHERE run_id = ?`},
+		{"staged files", `DELETE FROM index_staging_files WHERE run_id = ?`},
+	} {
+		if _, err := tx.ExecContext(ctx, entry.query, runID); err != nil {
+			return fmt.Errorf("clear completed %s: %w", entry.name, err)
 		}
 	}
 	return tx.Commit()
@@ -244,10 +254,16 @@ func (q *IndexQueries) ReconcileStagedIndexRun(ctx context.Context, projectID, r
 	if err := promoteStagedIndexOutput(ctx, tx, projectID, runID); err != nil {
 		return err
 	}
-	for _, e := range []struct{ stage, live, col string }{{"index_staging_file_nodes", "index_file_nodes", "node_id"}, {"index_staging_file_edges", "index_file_edges", "edge_id"}, {"index_staging_file_iir", "index_file_iir", "iir_id"}} {
-		query := `INSERT INTO ` + e.live + ` (project_id,rel_path,` + e.col + `,last_seen_run_id) SELECT f.project_id,s.rel_path,s.` + e.col + `,s.run_id FROM ` + e.stage + ` s JOIN index_staging_files f ON f.run_id=s.run_id AND f.rel_path=s.rel_path WHERE s.run_id=? AND f.project_id=? AND f.status='indexed' ON CONFLICT(project_id,rel_path,` + e.col + `) DO UPDATE SET last_seen_run_id=excluded.last_seen_run_id`
-		if _, err := tx.ExecContext(ctx, query, runID, projectID); err != nil {
-			return fmt.Errorf("stage memberships %s: %w", e.live, err)
+	for _, e := range []struct {
+		name  string
+		query string
+	}{
+		{"nodes", `INSERT INTO index_file_nodes (project_id,rel_path,node_id,last_seen_run_id) SELECT f.project_id,s.rel_path,s.node_id,s.run_id FROM index_staging_file_nodes s JOIN index_staging_files f ON f.run_id=s.run_id AND f.rel_path=s.rel_path WHERE s.run_id=? AND f.project_id=? AND f.status='indexed' ON CONFLICT(project_id,rel_path,node_id) DO UPDATE SET last_seen_run_id=excluded.last_seen_run_id`},
+		{"edges", `INSERT INTO index_file_edges (project_id,rel_path,edge_id,last_seen_run_id) SELECT f.project_id,s.rel_path,s.edge_id,s.run_id FROM index_staging_file_edges s JOIN index_staging_files f ON f.run_id=s.run_id AND f.rel_path=s.rel_path WHERE s.run_id=? AND f.project_id=? AND f.status='indexed' ON CONFLICT(project_id,rel_path,edge_id) DO UPDATE SET last_seen_run_id=excluded.last_seen_run_id`},
+		{"IIR", `INSERT INTO index_file_iir (project_id,rel_path,iir_id,last_seen_run_id) SELECT f.project_id,s.rel_path,s.iir_id,s.run_id FROM index_staging_file_iir s JOIN index_staging_files f ON f.run_id=s.run_id AND f.rel_path=s.rel_path WHERE s.run_id=? AND f.project_id=? AND f.status='indexed' ON CONFLICT(project_id,rel_path,iir_id) DO UPDATE SET last_seen_run_id=excluded.last_seen_run_id`},
+	} {
+		if _, err := tx.ExecContext(ctx, e.query, runID, projectID); err != nil {
+			return fmt.Errorf("stage memberships %s: %w", e.name, err)
 		}
 	}
 	if err := reconcileStagedMemberships(ctx, tx, projectID, runID, full); err != nil {
@@ -274,8 +290,15 @@ func (q *IndexQueries) ReconcileStagedIndexRun(ctx context.Context, projectID, r
 	if _, err := tx.ExecContext(ctx, `UPDATE index_runs SET status='completed',completed_at=?,files_processed=?,nodes_created=?,edges_created=? WHERE id=?`, completedAt, filesProcessed, nodesWritten, edgesWritten, runID); err != nil {
 		return err
 	}
-	for _, table := range []string{"index_staging_edges", "index_staging_nodes", "index_staging_file_iir", "index_staging_file_edges", "index_staging_file_nodes", "index_staging_files"} {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE run_id=?", runID); err != nil {
+	for _, query := range []string{
+		`DELETE FROM index_staging_edges WHERE run_id=?`,
+		`DELETE FROM index_staging_nodes WHERE run_id=?`,
+		`DELETE FROM index_staging_file_iir WHERE run_id=?`,
+		`DELETE FROM index_staging_file_edges WHERE run_id=?`,
+		`DELETE FROM index_staging_file_nodes WHERE run_id=?`,
+		`DELETE FROM index_staging_files WHERE run_id=?`,
+	} {
+		if _, err := tx.ExecContext(ctx, query, runID); err != nil {
 			return err
 		}
 	}
