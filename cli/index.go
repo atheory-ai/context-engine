@@ -95,6 +95,13 @@ func runIndex(cmd *cobra.Command, args []string) error {
 		stats.FilesIndexed, stats.NodesWritten, stats.EdgesWritten,
 		stats.Duration.Round(1000000), // round to milliseconds
 	)
+	if stats.SourceBytesProcessed > 0 {
+		fmt.Printf("  processed: %s source, %s serialized CST, %s estimated plugin input\n",
+			formatByteCount(stats.SourceBytesProcessed),
+			formatByteCount(stats.CSTBytesProcessed),
+			formatByteCount(stats.PluginPayloadBytesEstimated),
+		)
+	}
 	if stats.FilesSkipped > 0 {
 		fmt.Printf("  %d files skipped (no matching language handler)\n", stats.FilesSkipped)
 	}
@@ -102,4 +109,17 @@ func runIndex(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  %d files had extraction errors (check warnings above)\n", stats.FilesErrored)
 	}
 	return nil
+}
+
+func formatByteCount(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit && exp < 5; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }

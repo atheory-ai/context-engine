@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/atheory-ai/context-engine/internal/core"
 	"github.com/spf13/viper"
@@ -117,6 +118,15 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Indexer.WatchDebounceMS == 0 {
 		cfg.Indexer.WatchDebounceMS = 500
+	}
+	if cfg.Indexer.ParseWorkers == 0 {
+		cfg.Indexer.ParseWorkers = min(runtime.NumCPU(), 8)
+	}
+	if cfg.Indexer.ExtractWorkers == 0 {
+		cfg.Indexer.ExtractWorkers = min(runtime.NumCPU(), 8)
+	}
+	if cfg.Indexer.MaxInFlightBytes == 0 {
+		cfg.Indexer.MaxInFlightBytes = 64 * 1024 * 1024
 	}
 	if len(cfg.LLM.Models) == 0 {
 		cfg.LLM.Models = map[string]string{

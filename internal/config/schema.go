@@ -63,6 +63,9 @@ type IndexerConfig struct {
 	MaxFileSizeBytes int      `mapstructure:"max_file_size_bytes"`
 	IncludeTestFiles bool     `mapstructure:"include_test_files"`
 	WatchDebounceMS  int      `mapstructure:"watch_debounce_ms"`
+	ParseWorkers     int      `mapstructure:"parse_workers"`
+	ExtractWorkers   int      `mapstructure:"extract_workers"`
+	MaxInFlightBytes int      `mapstructure:"max_in_flight_bytes"`
 }
 
 // PluginEntry describes a single installed plugin.

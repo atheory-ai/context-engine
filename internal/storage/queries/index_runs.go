@@ -19,6 +19,80 @@ type FileOutput struct {
 	IIRIDs  []string
 }
 
+// StageWalked records discovery durably. It is deliberately tiny so the
+// walker can be ahead of extraction without retaining a corpus-sized path map.
+func (q *IndexQueries) StageWalked(ctx context.Context, runID, projectID, path string) error {
+	_, err := q.db.ExecContext(ctx, `INSERT INTO index_staging_files (run_id, project_id, rel_path, source_hash, status) VALUES (?, ?, ?, '', 'walked') ON CONFLICT(run_id, rel_path) DO NOTHING`, runID, projectID, path)
+	return err
+}
+
+// StoreParseArtifact keeps one source blob per hash and a compact, text-free
+// CST. The current ABI-v1 plugins still receive their legacy JSON envelope;
+// later stages can consume this durable form without reparsing source.
+func (q *IndexQueries) StoreParseArtifact(ctx context.Context, projectID, sourceHash, parserVersion, language string, source, compactCST []byte, createdAt int64) error {
+	tx, err := q.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err = tx.ExecContext(ctx, `INSERT INTO index_source_artifacts (project_id,source_hash,content,byte_length,created_at) VALUES (?,?,?,?,?) ON CONFLICT(project_id,source_hash) DO NOTHING`, projectID, sourceHash, source, len(source), createdAt); err != nil {
+		return err
+	}
+	if len(compactCST) > 0 {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO index_parse_artifacts (project_id,source_hash,parser_version,language,cst,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT(project_id,source_hash,parser_version,language) DO NOTHING`, projectID, sourceHash, parserVersion, language, compactCST, createdAt); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// ParseArtifact returns the content-addressed source and compact CST for a
+// later analyzer. Callers can recover source text from offsets without
+// rerunning the parser.
+func (q *IndexQueries) ParseArtifact(ctx context.Context, projectID, sourceHash, parserVersion, language string) ([]byte, []byte, error) {
+	var source, cst []byte
+	if err := q.db.QueryRowContext(ctx, `SELECT content FROM index_source_artifacts WHERE project_id=? AND source_hash=?`, projectID, sourceHash).Scan(&source); err != nil {
+		return nil, nil, err
+	}
+	if err := q.db.QueryRowContext(ctx, `SELECT cst FROM index_parse_artifacts WHERE project_id=? AND source_hash=? AND parser_version=? AND language=?`, projectID, sourceHash, parserVersion, language).Scan(&cst); err != nil {
+		return nil, nil, err
+	}
+	return source, cst, nil
+}
+
+// StageFileOutput persists a complete accepted file contribution. Its graph
+// facts are still written by the write buffer; this table is the durable input
+// to final ownership reconciliation.
+func (q *IndexQueries) StageFileOutput(ctx context.Context, runID, projectID, path string, out FileOutput) error {
+	tx, err := q.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err = tx.ExecContext(ctx, `INSERT INTO index_staging_files (run_id, project_id, rel_path, source_hash, status) VALUES (?, ?, ?, ?, 'indexed') ON CONFLICT(run_id, rel_path) DO UPDATE SET source_hash=excluded.source_hash,status='indexed'`, runID, projectID, path, out.Hash); err != nil {
+		return err
+	}
+	for _, entry := range []struct {
+		ids         []string
+		deleteQuery string
+		insertQuery string
+	}{
+		{out.NodeIDs, `DELETE FROM index_staging_file_nodes WHERE run_id=? AND rel_path=?`, `INSERT INTO index_staging_file_nodes (run_id,rel_path,node_id) VALUES (?,?,?)`},
+		{out.EdgeIDs, `DELETE FROM index_staging_file_edges WHERE run_id=? AND rel_path=?`, `INSERT INTO index_staging_file_edges (run_id,rel_path,edge_id) VALUES (?,?,?)`},
+		{out.IIRIDs, `DELETE FROM index_staging_file_iir WHERE run_id=? AND rel_path=?`, `INSERT INTO index_staging_file_iir (run_id,rel_path,iir_id) VALUES (?,?,?)`},
+	} {
+		if _, err = tx.ExecContext(ctx, entry.deleteQuery, runID, path); err != nil {
+			return err
+		}
+		for _, id := range uniqueStrings(entry.ids) {
+			if _, err = tx.ExecContext(ctx, entry.insertQuery, runID, path, id); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
+}
+
 // StartIndexRun records an attempt before it can write graph data. A failed
 // run is retained for diagnosis and never advances file hashes or ownership.
 func (q *IndexQueries) StartIndexRun(ctx context.Context, id, projectID string, pluginIDs []string, startedAt int64) error {
@@ -44,6 +118,19 @@ func (q *IndexQueries) FailIndexRun(ctx context.Context, id string, completedAt 
 		return fmt.Errorf("begin failed index cleanup: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
+	for _, entry := range []struct {
+		name  string
+		query string
+	}{
+		{"staged file IIR", `DELETE FROM index_staging_file_iir WHERE run_id = ?`},
+		{"staged file edges", `DELETE FROM index_staging_file_edges WHERE run_id = ?`},
+		{"staged file nodes", `DELETE FROM index_staging_file_nodes WHERE run_id = ?`},
+		{"staged files", `DELETE FROM index_staging_files WHERE run_id = ?`},
+	} {
+		if _, err := tx.ExecContext(ctx, entry.query, id); err != nil {
+			return fmt.Errorf("clear failed %s: %w", entry.name, err)
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM index_staging_edges WHERE run_id = ?`, id); err != nil {
 		return err
 	}
@@ -139,6 +226,82 @@ func (q *IndexQueries) ReconcileIndexRun(ctx context.Context, projectID, runID s
 	if _, err := tx.ExecContext(ctx, `DELETE FROM index_staging_nodes WHERE run_id = ?`, runID); err != nil {
 		return err
 	}
+	for _, entry := range []struct {
+		name  string
+		query string
+	}{
+		{"staged file IIR", `DELETE FROM index_staging_file_iir WHERE run_id = ?`},
+		{"staged file edges", `DELETE FROM index_staging_file_edges WHERE run_id = ?`},
+		{"staged file nodes", `DELETE FROM index_staging_file_nodes WHERE run_id = ?`},
+		{"staged files", `DELETE FROM index_staging_files WHERE run_id = ?`},
+	} {
+		if _, err := tx.ExecContext(ctx, entry.query, runID); err != nil {
+			return fmt.Errorf("clear completed %s: %w", entry.name, err)
+		}
+	}
+	return tx.Commit()
+}
+
+// ReconcileStagedIndexRun is the bounded-memory publication path. File
+// membership and hashes have already been persisted by workers, so this never
+// reconstructs a Go map of the corpus at the end of a run.
+func (q *IndexQueries) ReconcileStagedIndexRun(ctx context.Context, projectID, runID string, full bool, filesProcessed, nodesWritten, edgesWritten int, completedAt int64) error {
+	tx, err := q.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin index reconciliation: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if err := promoteStagedIndexOutput(ctx, tx, projectID, runID); err != nil {
+		return err
+	}
+	for _, e := range []struct {
+		name  string
+		query string
+	}{
+		{"nodes", `INSERT INTO index_file_nodes (project_id,rel_path,node_id,last_seen_run_id) SELECT f.project_id,s.rel_path,s.node_id,s.run_id FROM index_staging_file_nodes s JOIN index_staging_files f ON f.run_id=s.run_id AND f.rel_path=s.rel_path WHERE s.run_id=? AND f.project_id=? AND f.status='indexed' ON CONFLICT(project_id,rel_path,node_id) DO UPDATE SET last_seen_run_id=excluded.last_seen_run_id`},
+		{"edges", `INSERT INTO index_file_edges (project_id,rel_path,edge_id,last_seen_run_id) SELECT f.project_id,s.rel_path,s.edge_id,s.run_id FROM index_staging_file_edges s JOIN index_staging_files f ON f.run_id=s.run_id AND f.rel_path=s.rel_path WHERE s.run_id=? AND f.project_id=? AND f.status='indexed' ON CONFLICT(project_id,rel_path,edge_id) DO UPDATE SET last_seen_run_id=excluded.last_seen_run_id`},
+		{"IIR", `INSERT INTO index_file_iir (project_id,rel_path,iir_id,last_seen_run_id) SELECT f.project_id,s.rel_path,s.iir_id,s.run_id FROM index_staging_file_iir s JOIN index_staging_files f ON f.run_id=s.run_id AND f.rel_path=s.rel_path WHERE s.run_id=? AND f.project_id=? AND f.status='indexed' ON CONFLICT(project_id,rel_path,iir_id) DO UPDATE SET last_seen_run_id=excluded.last_seen_run_id`},
+	} {
+		if _, err := tx.ExecContext(ctx, e.query, runID, projectID); err != nil {
+			return fmt.Errorf("stage memberships %s: %w", e.name, err)
+		}
+	}
+	if err := reconcileStagedMemberships(ctx, tx, projectID, runID, full); err != nil {
+		return err
+	}
+	if full {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM file_hashes WHERE project_id=?`, projectID); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO file_hashes (project_id,rel_path,hash,indexed_at) SELECT project_id,rel_path,source_hash,? FROM index_staging_files WHERE run_id=? AND project_id=? AND status='indexed' ON CONFLICT(project_id,rel_path) DO UPDATE SET hash=excluded.hash,indexed_at=excluded.indexed_at`, completedAt, runID, projectID); err != nil {
+		return err
+	}
+	if !full {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM file_hashes WHERE project_id=? AND rel_path NOT IN (SELECT rel_path FROM index_staging_files WHERE run_id=? AND project_id=?)`, projectID, runID, projectID); err != nil {
+			return err
+		}
+	}
+	if full {
+		if err := deleteLegacyManaged(ctx, tx, projectID, runID); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE index_runs SET status='completed',completed_at=?,files_processed=?,nodes_created=?,edges_created=? WHERE id=?`, completedAt, filesProcessed, nodesWritten, edgesWritten, runID); err != nil {
+		return err
+	}
+	for _, query := range []string{
+		`DELETE FROM index_staging_edges WHERE run_id=?`,
+		`DELETE FROM index_staging_nodes WHERE run_id=?`,
+		`DELETE FROM index_staging_file_iir WHERE run_id=?`,
+		`DELETE FROM index_staging_file_edges WHERE run_id=?`,
+		`DELETE FROM index_staging_file_nodes WHERE run_id=?`,
+		`DELETE FROM index_staging_files WHERE run_id=?`,
+	} {
+		if _, err := tx.ExecContext(ctx, query, runID); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
 
@@ -230,6 +393,58 @@ func reconcileMemberships(ctx context.Context, tx *sql.Tx, projectID, runID stri
 		}
 	}
 	return nil
+}
+
+func reconcileStagedMemberships(ctx context.Context, tx *sql.Tx, projectID, runID string, full bool) error {
+	for _, entry := range []struct{ table, column, entity string }{{"index_file_iir", "iir_id", "iir"}, {"index_file_edges", "edge_id", "edges"}, {"index_file_nodes", "node_id", "nodes"}} {
+		where, args := stagedMembershipScope(projectID, runID, full)
+		rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT DISTINCT %s FROM %s WHERE %s`, entry.column, entry.table, where), args...)
+		if err != nil {
+			return err
+		}
+		var ids []string
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return err
+			}
+			ids = append(ids, id)
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE %s`, entry.table, where), args...); err != nil {
+			return err
+		}
+		for _, id := range ids {
+			var owned int
+			if err := tx.QueryRowContext(ctx, fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE %s=?`, entry.table, entry.column), id).Scan(&owned); err != nil {
+				return err
+			}
+			if owned != 0 {
+				continue
+			}
+			if entry.entity == "nodes" {
+				if _, err := tx.ExecContext(ctx, `DELETE FROM iir WHERE node_id=? AND kind='extracted'`, id); err != nil {
+					return err
+				}
+			}
+			if _, err := tx.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE id=?`, entry.entity), id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func stagedMembershipScope(projectID, runID string, full bool) (string, []any) {
+	if full {
+		return "project_id=? AND last_seen_run_id<>?", []any{projectID, runID}
+	}
+	// A path is in scope when it was walked this run, or when a formerly indexed
+	// path vanished from the walk and must have its old contribution removed.
+	return `project_id=? AND (rel_path IN (SELECT rel_path FROM index_staging_files WHERE run_id=? AND project_id=?) OR rel_path IN (SELECT h.rel_path FROM file_hashes h WHERE h.project_id=? AND NOT EXISTS (SELECT 1 FROM index_staging_files s WHERE s.run_id=? AND s.project_id=? AND s.rel_path=h.rel_path))) AND last_seen_run_id<>?`, []any{projectID, runID, projectID, projectID, runID, projectID, runID}
 }
 
 func staleMembershipIDs(ctx context.Context, tx *sql.Tx, table, column, projectID, runID string, paths []string, full bool) ([]string, error) {
