@@ -8,8 +8,11 @@ import (
 	"path/filepath"
 
 	"github.com/atheory-ai/context-engine/internal/config"
+	"github.com/atheory-ai/context-engine/internal/indexer"
+	"github.com/atheory-ai/context-engine/internal/indexer/watcher"
 	"github.com/atheory-ai/context-engine/internal/runner"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 func newIndexCmd() *cobra.Command {
@@ -33,6 +36,18 @@ Use --full to force a complete reindex.`,
 		"glob patterns to include (overrides ce.yaml)")
 	cmd.Flags().StringSlice("exclude", nil,
 		"glob patterns to exclude (overrides ce.yaml)")
+	cmd.Flags().String("profile-dir", "",
+		"write index CPU/heap/mutex/block profiles and a phase summary to this directory")
+	cmd.Flags().Bool("profile-trace", false,
+		"also write a detailed Go execution trace (large; intended for short runs)")
+	cmd.Flags().Int("parse-workers", 0,
+		"parse worker count (0 uses configured/default count)")
+	cmd.Flags().Int("extract-workers", 0,
+		"extract worker count (0 uses configured/default count)")
+	_ = viper.BindPFlag("indexer.profile_dir", cmd.Flags().Lookup("profile-dir"))
+	_ = viper.BindPFlag("indexer.profile_trace", cmd.Flags().Lookup("profile-trace"))
+	_ = viper.BindPFlag("indexer.parse_workers", cmd.Flags().Lookup("parse-workers"))
+	_ = viper.BindPFlag("indexer.extract_workers", cmd.Flags().Lookup("extract-workers"))
 
 	return cmd
 }
@@ -52,6 +67,7 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	}
 
 	full, _ := cmd.Flags().GetBool("full")
+	watch, _ := cmd.Flags().GetBool("watch")
 	include, _ := cmd.Flags().GetStringSlice("include")
 	exclude, _ := cmd.Flags().GetStringSlice("exclude")
 
@@ -83,15 +99,46 @@ func runIndex(cmd *cobra.Command, args []string) error {
 
 	stats, indexErr := engine.Index(ctx, absRoot, full)
 
-	renderer.Stop()
-	renderer.Wait()
-
 	if indexErr != nil && ctx.Err() == nil {
+		renderer.Stop()
+		renderer.Wait()
 		return indexErr
 	}
 
-	// Print summary.
-	fmt.Printf("\nIndex complete: %d files indexed, %d nodes, %d edges (%s)\n",
+	printIndexSummary("Index complete", stats)
+	if !watch || ctx.Err() != nil {
+		renderer.Stop()
+		renderer.Wait()
+		return nil
+	}
+
+	w, err := watcher.New(absRoot, cfg.Indexer.WatchDebounceMS, func(paths []string) {
+		fmt.Printf("\nDetected %d changed path(s); reindexing...\n", len(paths))
+		changedStats, err := engine.IndexPaths(ctx, absRoot, paths)
+		if err != nil {
+			if ctx.Err() == nil {
+				fmt.Fprintf(os.Stderr, "targeted reindex failed: %v\n", err)
+			}
+			return
+		}
+		printIndexSummary("Reindex complete", changedStats)
+	})
+	if err != nil {
+		renderer.Stop()
+		renderer.Wait()
+		return fmt.Errorf("watch project: %w", err)
+	}
+	defer w.Close()
+
+	fmt.Printf("\nWatching %s for changes (debounce %dms; Ctrl-C to stop)\n", absRoot, cfg.Indexer.WatchDebounceMS)
+	w.Run(ctx)
+	renderer.Stop()
+	renderer.Wait()
+	return nil
+}
+
+func printIndexSummary(prefix string, stats indexer.Stats) {
+	fmt.Printf("\n%s: %d files indexed, %d nodes, %d edges (%s)\n", prefix,
 		stats.FilesIndexed, stats.NodesWritten, stats.EdgesWritten,
 		stats.Duration.Round(1000000), // round to milliseconds
 	)
@@ -108,7 +155,6 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	if stats.FilesErrored > 0 {
 		fmt.Printf("  %d files had extraction errors (check warnings above)\n", stats.FilesErrored)
 	}
-	return nil
 }
 
 func formatByteCount(bytes int64) string {

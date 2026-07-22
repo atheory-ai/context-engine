@@ -14,7 +14,7 @@ import (
 	"github.com/atheory-ai/context-engine/internal/core"
 )
 
-const validManifestJSON = `{"id":"com.example.fixture","name":"Fixture Plugin","version":"0.1.0","capabilities":{"language":true,"role":false,"analyzers":[],"tools":[]},"language":{"extensions":[".fixture"]}}`
+const validManifestJSON = `{"id":"com.example.fixture","name":"Fixture Plugin","version":"0.1.0","abi":{"name":"ce-plugin","version":4,"callConvention":"extism-input-output"},"capabilities":{"language":true,"role":false,"analyzers":[],"tools":[]},"language":{"extensions":[".fixture"]}}`
 
 var emptyWASMModule = []byte{
 	0x00, 0x61, 0x73, 0x6d,
@@ -97,8 +97,8 @@ func TestPluginABIInfoUnmarshalAcceptsCamelAndSnakeCallConvention(t *testing.T) 
 	t.Parallel()
 
 	for _, raw := range []string{
-		`{"name":"ce-plugin","version":1,"callConvention":"javy-stream-io"}`,
-		`{"name":"ce-plugin","version":1,"call_convention":"javy-stream-io"}`,
+		`{"name":"ce-plugin","version":4,"callConvention":"javy-stream-io"}`,
+		`{"name":"ce-plugin","version":4,"call_convention":"javy-stream-io"}`,
 	} {
 		var abi PluginABIInfo
 		if err := json.Unmarshal([]byte(raw), &abi); err != nil {
@@ -118,23 +118,28 @@ func TestValidateManifestABI(t *testing.T) {
 		abi     *PluginABIInfo
 		wantErr string
 	}{
-		{name: "legacy manifest"},
+		{name: "missing ABI", wantErr: "missing ABI declaration"},
 		{
 			name: "stream io",
-			abi:  &PluginABIInfo{Name: "ce-plugin", Version: 1, CallConvention: callConventionJavyStreamIO},
+			abi:  &PluginABIInfo{Name: "ce-plugin", Version: 4, CallConvention: callConventionJavyStreamIO},
 		},
 		{
 			name: "extism input output",
-			abi:  &PluginABIInfo{Name: "ce-plugin", Version: 1, CallConvention: callConventionExtismInputOutput},
+			abi:  &PluginABIInfo{Name: "ce-plugin", Version: 4, CallConvention: callConventionExtismInputOutput},
+		},
+		{
+			name:    "stale v2 plugin",
+			abi:     &PluginABIInfo{Name: "ce-plugin", Version: 2, CallConvention: callConventionExtismInputOutput},
+			wantErr: "rebuild with the CE Plugin SDK",
 		},
 		{
 			name:    "unsupported convention",
-			abi:     &PluginABIInfo{Name: "ce-plugin", Version: 1, CallConvention: "unknown"},
+			abi:     &PluginABIInfo{Name: "ce-plugin", Version: 4, CallConvention: "unknown"},
 			wantErr: "call convention",
 		},
 		{
 			name:    "unsupported name",
-			abi:     &PluginABIInfo{Name: "argent-plugin", Version: 1, CallConvention: callConventionJavyStreamIO},
+			abi:     &PluginABIInfo{Name: "argent-plugin", Version: 4, CallConvention: callConventionJavyStreamIO},
 			wantErr: "name",
 		},
 	}
@@ -155,6 +160,28 @@ func TestValidateManifestABI(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLoadRejectsStreamPluginsUnlessDevelopmentEnabled(t *testing.T) {
+	ch := core.NewAppChannels()
+	rt, err := New(t.TempDir(), &ch)
+	if err != nil {
+		t.Fatalf("New(): %v", err)
+	}
+	defer rt.Close()
+
+	streamManifest := strings.Replace(validManifestJSON, callConventionExtismInputOutput, callConventionJavyStreamIO, 1)
+	path := writeWASMFixture(t, "stream-manifest.wasm", extismManifestWASM(streamManifest))
+	if _, err := rt.Load(context.Background(), path, nil); err == nil || !strings.Contains(err.Error(), "development-only Javy") {
+		t.Fatalf("Load() error = %v, want production stream rejection", err)
+	}
+
+	rt.SetAllowDevStreamPlugins(true)
+	plugin, err := rt.Load(context.Background(), path, nil)
+	if err != nil {
+		t.Fatalf("Load() with development stream enabled: %v", err)
+	}
+	defer plugin.Close()
 }
 
 func TestNewExtismManifestSandboxLimits(t *testing.T) {
@@ -285,6 +312,25 @@ func TestLanguagePluginPoolExpandsToConcurrentIndexWorkers(t *testing.T) {
 
 	if len(seen) != workers {
 		t.Fatalf("independent instances = %d, want %d", len(seen), workers)
+	}
+
+	oldBase := plugin.wasm
+	if err := pool.Trim(); err != nil {
+		t.Fatalf("Trim(): %v", err)
+	}
+	if pool.created != 1 || len(pool.instances) != 1 {
+		t.Fatalf("trimmed pool = %d created, %d instances; want one", pool.created, len(pool.instances))
+	}
+	if plugin.wasm == oldBase {
+		t.Fatal("Trim retained the bulk-grown base instance")
+	}
+	if err := pool.withInstance(context.Background(), func(instance *pluginInstance) error {
+		if instance != plugin {
+			t.Fatal("trimmed pool did not serve its replacement base instance")
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("withInstance after Trim(): %v", err)
 	}
 }
 

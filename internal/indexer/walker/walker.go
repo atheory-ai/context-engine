@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Config configures a Walker.
@@ -23,6 +24,53 @@ type WalkResult struct {
 	Path    string      // absolute path
 	RelPath string      // path relative to project root
 	Info    fs.FileInfo // file metadata
+	// Deleted is true when a requested path no longer exists. It is only
+	// produced by WalkPaths, allowing a targeted reindex to remove the prior
+	// derived contribution without walking the rest of the project.
+	Deleted bool
+}
+
+// WalkPaths sends a deduplicated, explicitly requested set of files to
+// results. Unlike Walk it does not traverse the project tree. Missing paths
+// are emitted with Deleted set so the indexer can remove their prior output.
+// Paths outside root and ignored/non-regular/oversize files are omitted.
+func (w *Walker) WalkPaths(ctx context.Context, paths []string, results chan<- WalkResult) error {
+	defer close(results)
+	seen := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(w.root, path)
+		}
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			continue
+		}
+		relPath, err := filepath.Rel(w.root, abs)
+		if err != nil || relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
+			continue
+		}
+		if _, ok := seen[relPath]; ok {
+			continue
+		}
+		seen[relPath] = struct{}{}
+
+		info, err := os.Stat(abs)
+		if os.IsNotExist(err) {
+			results <- WalkResult{Path: abs, RelPath: relPath, Deleted: true}
+			continue
+		}
+		if err != nil || !info.Mode().IsRegular() || info.Size() > w.maxSize || w.ignore.MatchFile(relPath) {
+			continue
+		}
+		results <- WalkResult{Path: abs, RelPath: relPath, Info: info}
+	}
+	return nil
 }
 
 // Walker walks a directory tree respecting ignore patterns.

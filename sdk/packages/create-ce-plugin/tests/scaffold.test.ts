@@ -26,9 +26,9 @@ describe("scaffold", () => {
     })
 
     expect(existsSync(join(project, "eslint.config.mjs"))).toBe(true)
-    expect(existsSync(join(project, "wasm-toolkit.config.mjs"))).toBe(true)
+    expect(existsSync(join(project, "wasm-toolkit.dev.config.mjs"))).toBe(true)
     expect(readFileSync(join(project, "package.json"), "utf8"))
-      .toContain("wasm-toolkit-build --plugin . --config wasm-toolkit.config.mjs")
+      .toContain("ce-plugin-build --plugin . --output dist/example-plugin.wasm")
     expect(readFileSync(join(project, "eslint.config.mjs"), "utf8"))
       .toContain("@atheory-ai/ce-plugin-sdk/eslint-plugin-ce")
   })

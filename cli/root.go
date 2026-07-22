@@ -61,12 +61,15 @@ func init() {
 		"show token cost after each query")
 	rootCmd.PersistentFlags().Bool("no-color", false,
 		"disable color output")
+	rootCmd.PersistentFlags().Bool("allow-dev-stream-plugins", false,
+		"allow Javy stream-I/O plugins for development (production requires the Extism input/output ABI)")
 
 	_ = viper.BindPFlag("data_dir", rootCmd.PersistentFlags().Lookup("data-dir"))
 	_ = viper.BindPFlag("token", rootCmd.PersistentFlags().Lookup("token"))
 	_ = viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
 	_ = viper.BindPFlag("show_cost", rootCmd.PersistentFlags().Lookup("show-cost"))
 	_ = viper.BindPFlag("no_color", rootCmd.PersistentFlags().Lookup("no-color"))
+	_ = viper.BindPFlag("features.allow_dev_stream_plugins", rootCmd.PersistentFlags().Lookup("allow-dev-stream-plugins"))
 
 	rootCmd.AddCommand(
 		newQueryCmd(),

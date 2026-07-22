@@ -2,6 +2,7 @@ package queries_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/atheory-ai/context-engine/internal/storage/queries"
@@ -30,7 +31,7 @@ func TestReconcileIndexRun_FullReplacesMovedFactsAndLegacyOutput(t *testing.T) {
 	if _, err := database.Exec(`INSERT INTO iir (id, project_id, node_id, kind, language, iir, run_id, created_at, updated_at) VALUES ('old-iir', ?, 'old-symbol', 'extracted', 'go', '{}', 'old-run', 1, 1)`, project); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.StartIndexRun(ctx, "new-run", project, []string{"plugin"}, 2); err != nil {
+	if err := q.StartIndexRun(ctx, "new-run", project, []string{"plugin"}, "fingerprint", 2); err != nil {
 		t.Fatal(err)
 	}
 
@@ -78,7 +79,7 @@ func TestReconcileIndexRun_IncrementalRemovesStaleEdgeWithSurvivingEndpoints(t *
 			t.Fatal(err)
 		}
 	}
-	if err := q.StartIndexRun(ctx, newRun, project, nil, 2); err != nil {
+	if err := q.StartIndexRun(ctx, newRun, project, nil, "fingerprint", 2); err != nil {
 		t.Fatal(err)
 	}
 	if err := q.ReconcileIndexRun(ctx, project, newRun, map[string]queries.FileOutput{"changed.go": {Hash: "new"}}, map[string]struct{}{"changed.go": {}, "left.go": {}, "right.go": {}}, false, 1, 0, 0, 3); err != nil {
@@ -97,7 +98,7 @@ func TestReconcileIndexRun_PromotesStagedOutputWithoutChangingNullProvenance(t *
 	ctx := context.Background()
 	q := queries.NewIndexQueries(database)
 	const project, run = "p", "run"
-	if err := q.StartIndexRun(ctx, run, project, nil, 1); err != nil {
+	if err := q.StartIndexRun(ctx, run, project, nil, "fingerprint", 1); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"left", "right"} {
@@ -121,12 +122,35 @@ func TestReconcileIndexRun_PromotesStagedOutputWithoutChangingNullProvenance(t *
 	}
 }
 
+func TestReconcileStagedIndexRunReportsBrokenEdgeEndpoint(t *testing.T) {
+	database := migratedGraph(t)
+	ctx := context.Background()
+	q := queries.NewIndexQueries(database)
+	const project, run = "p", "broken-edge-run"
+	if err := q.StartIndexRun(ctx, run, project, nil, "fingerprint", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO index_staging_nodes (run_id,id,project_id,type,label,canonical_id,source_class,plugin_id,source_file,index_managed,last_index_run_id,created_at,updated_at,properties) VALUES (?, 'present', ?, 'symbol', 'present', 'present', 'structural', NULL, '', 1, ?, 1, 1, '{}')`, run, project, run); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO index_staging_edges (run_id,id,project_id,source_id,target_id,type,source_class,plugin_id,index_managed,last_index_run_id,created_at,properties) VALUES (?, 'broken', ?, 'present', 'missing', 'calls', 'structural', 'com.example.plugin', 1, ?, 1, '{}')`, run, project, run); err != nil {
+		t.Fatal(err)
+	}
+	err := q.ReconcileStagedIndexRun(ctx, project, run, true, 1, 1, 1, 2)
+	if err == nil || !strings.Contains(err.Error(), `staged edge broken from plugin "com.example.plugin" has missing endpoint(s): target=missing`) {
+		t.Fatalf("ReconcileStagedIndexRun() error = %v", err)
+	}
+	if count(t, database, `SELECT COUNT(*) FROM nodes`) != 0 {
+		t.Fatal("failed reconciliation published nodes")
+	}
+}
+
 func TestFailIndexRunClearsAllDurableStaging(t *testing.T) {
 	database := migratedGraph(t)
 	q := queries.NewIndexQueries(database)
 	ctx := context.Background()
 	const run, project = "cancelled", "p"
-	if err := q.StartIndexRun(ctx, run, project, nil, 1); err != nil {
+	if err := q.StartIndexRun(ctx, run, project, nil, "fingerprint", 1); err != nil {
 		t.Fatal(err)
 	}
 	for _, statement := range []string{
@@ -152,17 +176,153 @@ func TestFailIndexRunClearsAllDurableStaging(t *testing.T) {
 	}
 }
 
-func TestParseArtifactRoundTrip(t *testing.T) {
+func TestStageFileEventsBatchesDiscoveryAndOutputAtomically(t *testing.T) {
 	database := migratedGraph(t)
+	ctx := context.Background()
 	q := queries.NewIndexQueries(database)
-	if err := q.StoreParseArtifact(context.Background(), "p", "h", "v1", ".go", []byte("package p"), []byte(`{"root":{}}`), 1); err != nil {
+	const run, project = "run", "p"
+	if err := q.StartIndexRun(ctx, run, project, nil, "fingerprint", 1); err != nil {
 		t.Fatal(err)
 	}
-	source, cst, err := q.ParseArtifact(context.Background(), "p", "h", "v1", ".go")
+	output := queries.FileOutput{Hash: "hash", NodeIDs: []string{"node", "node"}, EdgeIDs: []string{"edge"}, IIRIDs: []string{"iir"}}
+	if err := q.StageFileEvents(ctx, run, project, []queries.StagedFileEvent{
+		{Path: "walked.go"},
+		{Path: "indexed.go", Output: &output},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := count(t, database, `SELECT COUNT(*) FROM index_staging_files WHERE run_id='run' AND status='walked'`); got != 1 {
+		t.Fatalf("walked rows = %d, want 1", got)
+	}
+	if got := count(t, database, `SELECT COUNT(*) FROM index_staging_files WHERE run_id='run' AND rel_path='indexed.go' AND source_hash='hash' AND status='indexed'`); got != 1 {
+		t.Fatalf("indexed rows = %d, want 1", got)
+	}
+	for _, table := range []string{"index_staging_file_nodes", "index_staging_file_edges", "index_staging_file_iir"} {
+		if got := count(t, database, `SELECT COUNT(*) FROM `+table+` WHERE run_id='run' AND rel_path='indexed.go'`); got != 1 {
+			t.Fatalf("%s rows = %d, want 1", table, got)
+		}
+	}
+	if err := q.StageFileEvents(ctx, run, project, []queries.StagedFileEvent{{Path: "would-rollback.go"}, {}}); err == nil {
+		t.Fatal("expected empty path to reject whole batch")
+	}
+	if got := count(t, database, `SELECT COUNT(*) FROM index_staging_files WHERE run_id='run' AND rel_path='would-rollback.go'`); got != 0 {
+		t.Fatalf("invalid batch committed %d rows", got)
+	}
+}
+
+func TestLatestCompletedExtractorFingerprint(t *testing.T) {
+	database := migratedGraph(t)
+	ctx := context.Background()
+	q := queries.NewIndexQueries(database)
+	const project = "p"
+	for _, entry := range []struct {
+		id, fingerprint string
+		completedAt     int
+	}{
+		{"old", "old-fingerprint", 2},
+		{"new", "new-fingerprint", 3},
+	} {
+		if err := q.StartIndexRun(ctx, entry.id, project, nil, entry.fingerprint, 1); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := database.Exec(`UPDATE index_runs SET status='completed', completed_at=? WHERE id=?`, entry.completedAt, entry.id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := q.LatestCompletedExtractorFingerprint(ctx, project)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(source) != "package p" || string(cst) != `{"root":{}}` {
-		t.Fatalf("artifact = %q / %q", source, cst)
+	if got != "new-fingerprint" {
+		t.Fatalf("fingerprint = %q, want new-fingerprint", got)
+	}
+	missing, err := q.LatestCompletedExtractorFingerprint(ctx, "missing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missing != "" {
+		t.Fatalf("missing fingerprint = %q, want empty", missing)
+	}
+}
+
+func TestReconcileStagedIndexRunKeepsUnchangedWalkedFileOwnership(t *testing.T) {
+	database := migratedGraph(t)
+	ctx := context.Background()
+	q := queries.NewIndexQueries(database)
+	const project, oldRun, run = "p", "old", "new"
+	if _, err := database.Exec(`INSERT INTO nodes (id,project_id,type,label,canonical_id,source_class,index_managed,last_index_run_id,created_at,updated_at,properties) VALUES ('stable',?,'symbol','stable','stable','structural',1,?,1,1,'{}')`, project, oldRun); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO index_file_nodes (project_id,rel_path,node_id,last_seen_run_id) VALUES ('p','unchanged.go','stable','old')`,
+		`INSERT INTO file_hashes (project_id,rel_path,hash,indexed_at) VALUES ('p','unchanged.go','hash',1)`,
+	} {
+		if _, err := database.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := q.StartIndexRun(ctx, run, project, nil, "fingerprint", 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.StageWalked(ctx, run, project, "unchanged.go"); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.ReconcileStagedIndexRun(ctx, project, run, false, 0, 0, 0, 3); err != nil {
+		t.Fatal(err)
+	}
+	if !nodeExists(t, database, "stable") {
+		t.Fatal("unchanged file's node was removed")
+	}
+	if got := count(t, database, `SELECT COUNT(*) FROM index_file_nodes WHERE project_id='p' AND rel_path='unchanged.go' AND node_id='stable'`); got != 1 {
+		t.Fatalf("unchanged ownership rows = %d, want 1", got)
+	}
+	if got := count(t, database, `SELECT COUNT(*) FROM file_hashes WHERE project_id='p' AND rel_path='unchanged.go' AND hash='hash'`); got != 1 {
+		t.Fatalf("unchanged hash rows = %d, want 1", got)
+	}
+}
+
+func TestReconcileStagedIndexRunPathsOnlyReplacesRequestedPaths(t *testing.T) {
+	database := migratedGraph(t)
+	ctx := context.Background()
+	q := queries.NewIndexQueries(database)
+	const project, oldRun, run = "p", "old", "targeted"
+	for _, id := range []string{"keep", "gone"} {
+		if _, err := database.Exec(`INSERT INTO nodes (id,project_id,type,label,canonical_id,source_class,index_managed,last_index_run_id,created_at,updated_at,properties) VALUES (?,?,'symbol',?,?, 'structural',1,?,1,1,'{}')`, id, project, id, id, oldRun); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, statement := range []string{
+		`INSERT INTO index_file_nodes (project_id,rel_path,node_id,last_seen_run_id) VALUES ('p','keep.go','keep','old')`,
+		`INSERT INTO index_file_nodes (project_id,rel_path,node_id,last_seen_run_id) VALUES ('p','gone.go','gone','old')`,
+		`INSERT INTO file_hashes (project_id,rel_path,hash,indexed_at) VALUES ('p','keep.go','keep-hash',1)`,
+		`INSERT INTO file_hashes (project_id,rel_path,hash,indexed_at) VALUES ('p','gone.go','gone-hash',1)`,
+	} {
+		if _, err := database.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := q.StartIndexRun(ctx, run, project, nil, "fingerprint", 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.StageWalked(ctx, run, project, "keep.go"); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.StageDeleted(ctx, run, project, "gone.go"); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.ReconcileStagedIndexRunPaths(ctx, project, run, 0, 0, 0, 3); err != nil {
+		t.Fatal(err)
+	}
+	if !nodeExists(t, database, "keep") {
+		t.Fatal("unmodified requested path lost its contribution")
+	}
+	if nodeExists(t, database, "gone") {
+		t.Fatal("deleted requested path retained its contribution")
+	}
+	if got := count(t, database, `SELECT COUNT(*) FROM file_hashes WHERE project_id='p' AND rel_path='keep.go'`); got != 1 {
+		t.Fatalf("kept hash rows = %d, want 1", got)
+	}
+	if got := count(t, database, `SELECT COUNT(*) FROM file_hashes WHERE project_id='p' AND rel_path='gone.go'`); got != 0 {
+		t.Fatalf("deleted hash rows = %d, want 0", got)
 	}
 }

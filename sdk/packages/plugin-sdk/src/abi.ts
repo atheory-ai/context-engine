@@ -1,4 +1,5 @@
-import type { AnalyzerDefinition, IIRRulePack, Node, PluginDefinition, SubstrateQuery, SyntaxNode, ToolDefinition } from "./types.js"
+import type { AnalyzerDefinition, IIRRulePack, Node, PluginDefinition, SubstrateQuery, ToolDefinition } from "./types.js"
+import { decodeCompactExtractionInput } from "./compact-cst.js"
 
 declare const Javy: {
   IO: {
@@ -57,7 +58,7 @@ export function buildPluginManifest(plugin: PluginDefinition): PluginManifest {
     version: plugin.version,
     abi: {
       name: "ce-plugin",
-      version: 1,
+		version: 4,
       callConvention: "javy-stream-io",
     },
     capabilities: {
@@ -99,20 +100,12 @@ export function ceLanguageExtract(): void {
     writeJSON({ nodes: [], edges: [] })
     return
   }
-  // The host sends the serialized tree as a { root, source, language } wrapper;
-  // hand the extractor the root SyntaxNode directly.
-	const input = parseInput<{
-    file_path?: string
-    filePath?:  string
-    content?:   string
-		tree?:      { root?: SyntaxNode | null } | null
-		source_anchor?: { type?: "file"; canonical_id?: string }
-	}>()
+  const input = decodeCompactExtractionInput(readBytes())
   writeJSON(plugin.language.extract(
-    input.file_path ?? input.filePath ?? "",
-    input.content ?? "",
-    input.tree?.root ?? null,
-		input.source_anchor ? { type: "file", canonicalID: input.source_anchor.canonical_id ?? input.file_path ?? input.filePath ?? "" } : undefined,
+    input.filePath,
+    input.content,
+    input.tree,
+		input.sourceAnchor,
   ))
 }
 
@@ -176,7 +169,11 @@ function parseInput<T>(): T {
 }
 
 function read(): string {
-  const chunks: Uint8Array[] = []
+	return new TextDecoder().decode(readBytes())
+}
+
+function readBytes(): Uint8Array {
+	const chunks: Uint8Array[] = []
   const buffer = new Uint8Array(4096)
   for (;;) {
     const n = Javy.IO.readSync(0, buffer)
@@ -190,7 +187,7 @@ function read(): string {
     all.set(chunk, offset)
     offset += chunk.length
   }
-  return new TextDecoder().decode(all)
+	return all
 }
 
 function writeJSON(value: unknown): void {

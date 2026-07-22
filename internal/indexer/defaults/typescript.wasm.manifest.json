@@ -1,0 +1,32 @@
+{
+  "id": "com.atheory-ai.typescript",
+  "name": "TypeScript & JavaScript",
+  "version": "1.0.0",
+  "abi": {
+    "name": "ce-plugin",
+    "version": 4,
+    "callConvention": "extism-input-output"
+  },
+  "capabilities": {
+    "language": true,
+    "role": false,
+    "analyzers": [
+      "import-graph",
+      "react-components"
+    ],
+    "tools": []
+  },
+  "language": {
+    "extensions": [
+      ".ts",
+      ".tsx",
+      ".js",
+      ".jsx",
+      ".mts",
+      ".cts",
+      ".mjs",
+      ".cjs"
+    ]
+  },
+  "wasm_sha256": "9c61435c2510d4496d423d42f31f750e7509fd0361bbbed3ef80e60b17e03e4a"
+}

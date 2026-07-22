@@ -1,6 +1,7 @@
 package config
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -32,6 +33,13 @@ func TestLoadAcceptsDocumentedPluginInstalledShape(t *testing.T) {
 	}
 }
 
+func TestDefaultIndexWorkersCapsOversubscription(t *testing.T) {
+	want := min(max(1, runtime.NumCPU()*2), 12)
+	if got := defaultIndexWorkers(); got != want {
+		t.Fatalf("defaultIndexWorkers() = %d, want %d", got, want)
+	}
+}
+
 func TestLoadRetainsBarePluginListCompatibility(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
@@ -44,6 +52,30 @@ func TestLoadRetainsBarePluginListCompatibility(t *testing.T) {
 	}
 	if len(cfg.Plugins) != 1 || cfg.Plugins[0].Path != "./plugins/existing.wasm" {
 		t.Fatalf("cfg.Plugins = %#v, want existing bare-list plugin", cfg.Plugins)
+	}
+}
+
+func TestLoadExtractsPluginActivationFromDocumentedPluginsBlock(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.Set("data", map[string]any{"dir": t.TempDir()})
+	viper.Set("plugins", map[string]any{
+		"profile":   "wordpress",
+		"enabled":   []string{"com.example.php", "com.example.wordpress"},
+		"installed": []map[string]any{{"path": "./plugins/php.wasm"}},
+	})
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.PluginActivation.Profile != "wordpress" {
+		t.Fatalf("profile = %q", cfg.PluginActivation.Profile)
+	}
+	if len(cfg.PluginActivation.Enabled) != 2 || cfg.PluginActivation.Enabled[1] != "com.example.wordpress" {
+		t.Fatalf("enabled = %#v", cfg.PluginActivation.Enabled)
+	}
+	if len(cfg.Plugins) != 1 || cfg.Plugins[0].Path != "./plugins/php.wasm" {
+		t.Fatalf("installed = %#v", cfg.Plugins)
 	}
 }
 

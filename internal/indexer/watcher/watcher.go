@@ -55,7 +55,7 @@ func (w *Watcher) Run(ctx context.Context) {
 			if !ok {
 				return
 			}
-			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Rename) {
+			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Rename) || event.Has(fsnotify.Remove) {
 				w.debounce.Add(event.Name)
 			}
 			// If a new directory appeared, watch it recursively.

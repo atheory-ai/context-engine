@@ -73,23 +73,11 @@ func (h *wasmLanguageHandler) HasCustomMatch() bool {
 }
 
 // Extract parses a file and returns the nodes and edges to add to the graph.
-// treeJSON is the serialized SyntaxTree (JSON bytes), or nil if no grammar available.
-// Input to ce_language_extract: {"file_path":"...","content":"...","tree":{...}|null}
-func (h *wasmLanguageHandler) Extract(filePath string, content []byte, treeJSON []byte) (core.ExtractionResult, error) {
-	var treeRaw json.RawMessage
-	if treeJSON != nil {
-		treeRaw = json.RawMessage(treeJSON)
-	}
-
-	input, _ := json.Marshal(map[string]any{
-		"file_path": filePath,
-		"content":   string(content),
-		"tree":      treeRaw,
-		// Stable source reference is optional for ABI-v1 plugins, which simply
-		// ignore unknown JSON fields. The indexer supplies the canonical anchor
-		// through the file path contract until the richer extraction API is used.
-		"source_anchor": map[string]any{"type": "file", "canonical_id": filePath},
-	})
+// treeData is the compact binary CST produced by wasmparse, or nil if no
+// grammar is available. ABI-v4 sends source bytes once, followed by the CST
+// node table, avoiding JSON.parse and the duplicated JS object graph.
+func (h *wasmLanguageHandler) Extract(filePath string, content []byte, treeData []byte) (core.ExtractionResult, error) {
+	input := compactExtractionInput(filePath, content, treeData)
 
 	var out core.ExtractionResult
 	err := h.plugin.indexPool.withInstance(context.Background(), func(instance *pluginInstance) error {

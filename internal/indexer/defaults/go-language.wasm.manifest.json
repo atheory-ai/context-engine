@@ -1,0 +1,25 @@
+{
+  "id": "com.atheory-ai.go-language",
+  "name": "Go Language",
+  "version": "1.0.0",
+  "abi": {
+    "name": "ce-plugin",
+    "version": 4,
+    "callConvention": "extism-input-output"
+  },
+  "capabilities": {
+    "language": true,
+    "role": false,
+    "analyzers": [
+      "interface-impl",
+      "package-deps"
+    ],
+    "tools": []
+  },
+  "language": {
+    "extensions": [
+      ".go"
+    ]
+  },
+  "wasm_sha256": "031475b46bda6c71b9bcad0de1920791f931cff50eb0b5e11c6f457f9f985383"
+}

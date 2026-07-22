@@ -46,6 +46,7 @@ func NewIIRExtractor(ctx context.Context, cfg *config.Config, ch *core.AppChanne
 	if err := reg.Initialize(cfg.DataDir, ch); err != nil {
 		return nil, nil, fmt.Errorf("init plugin runtime: %w", err)
 	}
+	reg.SetAllowDevStreamPlugins(cfg.Features.AllowDevStreamPlugins)
 	defaultsDir := filepath.Join(cfg.DataDir, "plugins", "defaults")
 	for _, name := range defaultPluginNames {
 		path := filepath.Join(defaultsDir, name)

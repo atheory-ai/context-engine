@@ -133,6 +133,13 @@ verify-iir-contract: test-iir-golden
 bundle-default-plugins: sdk-build
 	@mkdir -p internal/indexer/defaults
 	@set -e; for p in $(SDK_DEFAULT_PLUGINS); do \
-		cp sdk/plugins/$$p/dist/*.wasm internal/indexer/defaults/ ; \
+		case "$$p" in \
+			go-language) artifact=go-language.wasm ;; \
+			typescript-language) artifact=typescript.wasm ;; \
+			python-language) artifact=python.wasm ;; \
+		*) echo "unknown SDK default plugin: $$p" >&2; exit 1 ;; \
+		esac; \
+		cp "sdk/plugins/$$p/dist/$$artifact" internal/indexer/defaults/ ; \
+		cp "sdk/plugins/$$p/dist/$$artifact.manifest.json" internal/indexer/defaults/ ; \
 	done
 	@echo "staged SDK default plugin wasm into internal/indexer/defaults/"

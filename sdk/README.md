@@ -45,9 +45,11 @@ scripts/               — release and package-maintenance scripts
 | Node.js | 20+ | |
 | pnpm | 11.1.3+ | Enable through Corepack |
 | `ce` binary | Latest | Required for `ce plugin validate` and sandbox testing |
+| `extism-js` | Current | Production JavaScript-to-WASM compiler from the Extism JS PDK |
 
-`@atheory-ai/wasm-plugin-toolkit` provides the supported JavaScript-to-WASM
-build path for plugins. The toolkit manages the Javy compiler it needs.
+Production plugins are compiled with the Extism JS PDK and CE's byte
+input/output ABI. `@atheory-ai/wasm-plugin-toolkit`/Javy remains a development
+path only and requires CE's explicit `--allow-dev-stream-plugins` flag.
 
 ---
 
@@ -72,6 +74,11 @@ pnpm --filter go-language-plugin build
 pnpm --filter typescript-language-plugin build
 pnpm --filter python-language-plugin build
 ```
+
+Each production build invokes `ce-plugin-build`, which requires `extism-js` on
+`PATH` (or `EXTISM_JS=/path/to/extism-js`). These compiled artifacts are the
+ones to publish from CI and install in CE. A `build:dev` script may use the
+legacy stream-I/O toolchain for local plugin authoring only.
 
 Built `.wasm` files land in each plugin's `dist/` directory:
 
@@ -214,15 +221,15 @@ concepts: [
 
 ## Build pipeline
 
-Each plugin's build goes through two steps:
+Each production plugin's build goes through two steps:
 
 ```text
-TypeScript → wasm-plugin-toolkit → Javy → plugin WASM
+TypeScript → Extism JavaScript PDK → plugin WASM
 ```
 
-Default plugins use `wasm-toolkit-build` with
-[`wasm-toolkit.config.mjs`](./wasm-toolkit.config.mjs). Generated plugins use
-the same build path.
+Default and generated plugins use `ce-plugin-build`. The optional
+`wasm-toolkit-build` configuration produces a Javy stream-I/O development
+artifact only; CE loads it only with `--allow-dev-stream-plugins`.
 
 ---
 

@@ -1,6 +1,6 @@
 import type { LanguageDefinition } from "@atheory-ai/ce-plugin-sdk"
 
-const EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"])
+const EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"])
 
 export const match: LanguageDefinition["match"] = (filePath: string): boolean => {
   const dot = filePath.lastIndexOf(".")

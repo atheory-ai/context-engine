@@ -3,7 +3,6 @@ package runtime
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"sync"
 
 	extism "github.com/extism/go-sdk"
@@ -11,8 +10,8 @@ import (
 
 // pluginInstancePool provides independent Extism instances for index-time
 // language extraction. Extism instances are not goroutine-safe, so a checked
-// out instance is used by one worker at a time. Compilation remains shared by
-// the wazero cache carried in plugin.config.
+// out instance is used by one worker at a time. Production plugins share an
+// Extism CompiledPlugin, so expanding the pool does not recompile their WASM.
 type pluginInstancePool struct {
 	base      *pluginInstance
 	available chan *pluginInstance
@@ -24,12 +23,14 @@ type pluginInstancePool struct {
 	max       int
 }
 
-func newPluginInstancePool(base *pluginInstance) *pluginInstancePool {
-	poolSize := runtime.NumCPU()
-	if poolSize > 8 {
-		poolSize = 8
-	}
+func newPluginInstancePool(base *pluginInstance, poolSize int) *pluginInstancePool {
 	if poolSize < 1 {
+		poolSize = 1
+	}
+	// Javy's development stream convention constructs a one-shot WASI module
+	// per call, so it cannot safely share Extism instances. Keep it serial;
+	// production Extism plugins receive the scalable pool below.
+	if base.callConvention() == callConventionJavyStreamIO {
 		poolSize = 1
 	}
 	p := &pluginInstancePool{
@@ -110,7 +111,10 @@ func (p *pluginInstancePool) release(instance *pluginInstance) {
 }
 
 func (p *pluginInstancePool) clone() (*pluginInstance, error) {
-	wasm, err := extism.NewPlugin(context.Background(), newExtismManifest(p.base.wasmBytes), p.base.config, p.base.hostFuncs)
+	if p.base.compiled == nil {
+		return nil, fmt.Errorf("plugin %s does not have a reusable compiled instance", p.base.name)
+	}
+	wasm, err := p.base.compiled.Instance(context.Background(), extism.PluginInstanceConfig{})
 	if err != nil {
 		return nil, fmt.Errorf("create plugin extraction instance: %w", err)
 	}
@@ -139,6 +143,59 @@ func (p *pluginInstancePool) Close() error {
 	p.mu.Unlock()
 
 	var firstErr error
+	for _, instance := range instances {
+		if err := instance.closeDirect(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if p.base.compiled != nil {
+		if err := p.base.compiled.Close(context.Background()); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+// Trim replaces every extraction instance after a completed bulk index. A
+// warm base may itself have grown to the largest bulk-run payload, so retaining
+// it defeats memory reclamation for a long-lived watcher. The replacement is a
+// fresh, small instance from the already-compiled module; it stays ready for
+// the next file change without retaining the bulk high-water linear memory.
+func (p *pluginInstancePool) Trim() error {
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return nil
+	}
+	compiled := p.base.compiled
+	p.mu.Unlock()
+	if compiled == nil {
+		return fmt.Errorf("plugin %s does not have a reusable compiled instance", p.base.name)
+	}
+	fresh, err := compiled.Instance(context.Background(), extism.PluginInstanceConfig{})
+	if err != nil {
+		return fmt.Errorf("create trimmed plugin instance: %w", err)
+	}
+
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return fresh.Close(context.Background())
+	}
+	instances := append([]*pluginInstance(nil), p.instances[1:]...)
+	p.base.mu.Lock()
+	oldBase := p.base.wasm
+	p.base.wasm = fresh
+	p.base.mu.Unlock()
+	p.instances = p.instances[:1]
+	p.created = 1
+	p.available = make(chan *pluginInstance, p.max)
+	p.available <- p.base
+	p.mu.Unlock()
+	var firstErr error
+	if err := oldBase.Close(context.Background()); err != nil {
+		firstErr = err
+	}
 	for _, instance := range instances {
 		if err := instance.closeDirect(); err != nil && firstErr == nil {
 			firstErr = err

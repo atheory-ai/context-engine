@@ -1,6 +1,6 @@
 {
   "name": "@atheory-ai/create-ce-plugin",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Scaffold Context Engine plugins.",
   "type": "module",
   "bin": {

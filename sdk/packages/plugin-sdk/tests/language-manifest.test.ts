@@ -14,6 +14,14 @@ const lang = {
 }
 
 describe("buildPluginManifest language", () => {
+  it("declares compact-binary CST ABI v4", () => {
+    expect(buildPluginManifest(base).abi).toMatchObject({
+      name: "ce-plugin",
+      version: 4,
+      callConvention: "javy-stream-io",
+    })
+  })
+
   it("emits declared extensions and grammar path", () => {
     const m = buildPluginManifest({
       ...base,

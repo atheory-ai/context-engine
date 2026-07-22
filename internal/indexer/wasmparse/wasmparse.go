@@ -11,7 +11,6 @@ package wasmparse
 import (
 	"context"
 	_ "embed"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -134,7 +133,16 @@ func (p *Parser) grammarForExt(ext string) string {
 // and reused on the next run rather than recompiled every time. Pass "" for an
 // in-memory cache (tests, one-off use).
 func New(ctx context.Context, cacheDir string) (*Parser, error) {
-	n := runtime.GOMAXPROCS(0)
+	return NewWithPoolSize(ctx, cacheDir, 0)
+}
+
+// NewWithPoolSize builds a parser with no more engines than active parse
+// workers. Passing zero retains the normal GOMAXPROCS-derived default.
+func NewWithPoolSize(ctx context.Context, cacheDir string, poolSize int) (*Parser, error) {
+	n := poolSize
+	if n <= 0 {
+		n = runtime.GOMAXPROCS(0)
+	}
 	if n > 8 {
 		n = 8
 	}
@@ -222,21 +230,23 @@ func GrammarForExt(ext string) string {
 	return ""
 }
 
-// ParseFile parses a file by extension and returns the serialized SyntaxTree
-// JSON for the plugin boundary, or nil if no bundled grammar handles it.
+// ParseFile parses a file by extension and returns the compact binary CST used
+// at the plugin boundary, or nil if no bundled grammar handles it. Source text
+// is deliberately not embedded: the runtime supplies it once alongside this
+// table when it invokes a language plugin.
 func (p *Parser) ParseFile(ctx context.Context, filePath string, content []byte) ([]byte, error) {
 	name := p.grammarForExt(strings.ToLower(filepath.Ext(filePath)))
 	if name == "" {
 		return nil, nil
 	}
-	tree, err := p.Parse(ctx, name, content)
+	tree, err := p.parse(ctx, name, content, false)
 	if err != nil {
 		return nil, err
 	}
 	if tree == nil {
 		return nil, nil
 	}
-	return json.Marshal(tree)
+	return EncodeCompactTree(tree)
 }
 
 // builtinGrammar returns embedded grammar WASM for a language name, if bundled.
@@ -322,6 +332,10 @@ func (in *instance) loadGrammar(ctx context.Context, name string, wasmBytes []by
 // if the grammar is not bundled. Checks out a pooled engine instance so calls
 // can run concurrently; blocks until one is free or ctx is cancelled.
 func (p *Parser) Parse(ctx context.Context, grammarName string, source []byte) (*SyntaxTree, error) {
+	return p.parse(ctx, grammarName, source, true)
+}
+
+func (p *Parser) parse(ctx context.Context, grammarName string, source []byte, includeText bool) (*SyntaxTree, error) {
 	wasmBytes, ok := p.grammarWASM(grammarName)
 	if !ok {
 		return nil, nil
@@ -329,7 +343,7 @@ func (p *Parser) Parse(ctx context.Context, grammarName string, source []byte) (
 	select {
 	case in := <-p.pool:
 		defer func() { p.pool <- in }()
-		return in.parse(ctx, grammarName, wasmBytes, source)
+		return in.parse(ctx, grammarName, wasmBytes, source, includeText)
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -337,7 +351,7 @@ func (p *Parser) Parse(ctx context.Context, grammarName string, source []byte) (
 
 // parse runs the full dynamic-link + parse on this instance. Not goroutine-safe;
 // the pool guarantees a single caller.
-func (in *instance) parse(ctx context.Context, grammarName string, wasmBytes, source []byte) (*SyntaxTree, error) {
+func (in *instance) parse(ctx context.Context, grammarName string, wasmBytes, source []byte, includeText bool) (*SyntaxTree, error) {
 	lang, err := in.loadGrammar(ctx, grammarName, wasmBytes)
 	if err != nil {
 		return nil, err
@@ -377,11 +391,15 @@ func (in *instance) parse(ctx context.Context, grammarName string, wasmBytes, so
 	if _, err := in.call(ctx, in.core, "ts_tree_root_node", rootBuf, tree); err != nil {
 		return nil, err
 	}
-	root, err := in.serializeNode(ctx, uint32(rootBuf), source, "")
+	root, err := in.serializeNode(ctx, uint32(rootBuf), source, "", includeText)
 	if err != nil {
 		return nil, err
 	}
-	return &SyntaxTree{Root: root, Source: string(source), Language: grammarName}, nil
+	treeOut := &SyntaxTree{Root: root, Language: grammarName}
+	if includeText {
+		treeOut.Source = string(source)
+	}
+	return treeOut, nil
 }
 
 const (
@@ -391,7 +409,7 @@ const (
 
 // serializeNode mirrors parser.serializeNode but walks the WASM tree via the
 // core's exported ts_node_* functions. nodePtr points to a 24-byte TSNode.
-func (in *instance) serializeNode(ctx context.Context, nodePtr uint32, source []byte, fieldName string) (*SyntaxNode, error) {
+func (in *instance) serializeNode(ctx context.Context, nodePtr uint32, source []byte, fieldName string, includeText bool) (*SyntaxNode, error) {
 	typ, err := in.readCStr(ctx, in.core, "ts_node_type", uint64(nodePtr))
 	if err != nil {
 		return nil, err
@@ -420,11 +438,13 @@ func (in *instance) serializeNode(ctx context.Context, nodePtr uint32, source []
 	sn := &SyntaxNode{
 		Type:          typ,
 		IsNamed:       named != 0,
-		Text:          string(source[sb:eb]),
 		StartByte:     uint32(sb),
 		EndByte:       uint32(eb),
 		StartPosition: sp,
 		EndPosition:   ep,
+	}
+	if includeText {
+		sn.Text = string(source[sb:eb])
 	}
 	if fieldName != "" {
 		sn.FieldName = &fieldName
@@ -448,7 +468,7 @@ func (in *instance) serializeNode(ctx context.Context, nodePtr uint32, source []
 			if err != nil {
 				return nil, err
 			}
-			child, err := in.serializeNode(ctx, uint32(childBuf), source, field)
+			child, err := in.serializeNode(ctx, uint32(childBuf), source, field, includeText)
 			if err != nil {
 				return nil, err
 			}

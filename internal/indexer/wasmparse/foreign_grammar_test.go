@@ -3,7 +3,6 @@ package wasmparse
 import (
 	"context"
 	_ "embed"
-	"encoding/json"
 	"testing"
 )
 
@@ -56,9 +55,9 @@ func TestRegisterForeignGrammar(t *testing.T) {
 	if treeJSON == nil {
 		t.Fatal("nil tree from foreign grammar")
 	}
-	var tree SyntaxTree
-	if err := json.Unmarshal(treeJSON, &tree); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+	tree, err := DecodeCompactTree(treeJSON)
+	if err != nil {
+		t.Fatalf("decode compact tree: %v", err)
 	}
 	if tree.Root.Type != "source_file" {
 		t.Fatalf("root = %q, want source_file", tree.Root.Type)
@@ -69,7 +68,7 @@ func TestRegisterForeignGrammar(t *testing.T) {
 	if st == nil {
 		t.Fatal("no struct_item — foreign grammar did not parse Rust struct")
 	}
-	if n := field(st, "name"); n == nil || n.Type != "type_identifier" || n.Text != "Point" {
+	if n := field(st, "name"); n == nil || n.Type != "type_identifier" || string(src[n.StartByte:n.EndByte]) != "Point" {
 		t.Fatalf("struct name field = %+v, want type_identifier 'Point'", n)
 	}
 
@@ -77,7 +76,7 @@ func TestRegisterForeignGrammar(t *testing.T) {
 	if fn == nil {
 		t.Fatal("no function_item — foreign grammar did not parse Rust fn")
 	}
-	if n := field(fn, "name"); n == nil || n.Type != "identifier" || n.Text != "add" {
+	if n := field(fn, "name"); n == nil || n.Type != "identifier" || string(src[n.StartByte:n.EndByte]) != "add" {
 		t.Fatalf("fn name field = %+v, want identifier 'add'", n)
 	}
 	// The external scanner + grammar must resolve the return type field.
@@ -106,9 +105,9 @@ func TestRegisterPHPGrammar(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseFile(hooks.php): %v", err)
 	}
-	var tree SyntaxTree
-	if err := json.Unmarshal(treeJSON, &tree); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+	tree, err := DecodeCompactTree(treeJSON)
+	if err != nil {
+		t.Fatalf("decode compact tree: %v", err)
 	}
 	if tree.Root.Type != "program" {
 		t.Fatalf("root = %q, want program", tree.Root.Type)
@@ -117,7 +116,7 @@ func TestRegisterPHPGrammar(t *testing.T) {
 	if call == nil {
 		t.Fatal("no function_call_expression")
 	}
-	if function := field(call, "function"); function == nil || function.Text != "add_action" {
+	if function := field(call, "function"); function == nil || string([]byte("<?php\nadd_action('demo_ready', 'demo_callback');\n")[function.StartByte:function.EndByte]) != "add_action" {
 		t.Fatalf("call function = %+v, want add_action", function)
 	}
 	arguments := field(call, "arguments")
@@ -125,7 +124,7 @@ func TestRegisterPHPGrammar(t *testing.T) {
 		t.Fatal("call has no arguments field")
 	}
 	firstString := descendant(arguments, "string")
-	if firstString == nil || firstString.Text != "'demo_ready'" {
+	if firstString == nil || string([]byte("<?php\nadd_action('demo_ready', 'demo_callback');\n")[firstString.StartByte:firstString.EndByte]) != "'demo_ready'" {
 		t.Fatalf("arguments = %+v, want string demo_ready", arguments)
 	}
 }
