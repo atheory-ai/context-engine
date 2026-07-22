@@ -12,6 +12,7 @@ export default definePlugin({
 
   language: {
     match,
+    extensions: [".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"],
     extract,
     concepts: tsConceptSeeds,
   },

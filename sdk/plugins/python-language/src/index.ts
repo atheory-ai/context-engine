@@ -12,6 +12,7 @@ export default definePlugin({
 
   language: {
     match,
+    extensions: [".py", ".pyi", ".pyw"],
     extract,
     concepts: pythonConceptSeeds,
   },

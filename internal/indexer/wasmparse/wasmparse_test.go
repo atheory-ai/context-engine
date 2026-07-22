@@ -3,6 +3,7 @@ package wasmparse
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"sync"
 	"testing"
 )
@@ -88,6 +89,70 @@ func TestParseGo(t *testing.T) {
 	}
 }
 
+func TestNewWithPoolSizeUsesRequestedConcurrency(t *testing.T) {
+	ctx := context.Background()
+	p, err := NewWithPoolSize(ctx, "", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close(ctx)
+	if got := len(p.all); got != 2 {
+		t.Fatalf("parser instances = %d, want 2", got)
+	}
+}
+
+func TestParseFileCompactBinaryAvoidsJSONTreeExpansion(t *testing.T) {
+	ctx := context.Background()
+	p, err := New(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close(ctx)
+
+	// Many small syntax nodes make the old JSON object representation costly
+	// even after eager node text was removed. The binary node table must remain
+	// materially smaller while preserving the same structural tree.
+	src := []byte("package p\n")
+	for i := 0; i < 200; i++ {
+		src = append(src, []byte("func f"+strconv.Itoa(i)+"(value string) string { return value + \"suffix\" }\n")...)
+	}
+	legacyTree, err := p.Parse(ctx, "go", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clearNodeText(legacyTree.Root)
+	legacyTree.Source = ""
+	legacyJSON, err := json.Marshal(legacyTree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compact, err := p.ParseFile(ctx, "generated.go", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compact) >= len(legacyJSON)/3 {
+		t.Fatalf("compact binary CST = %d bytes, legacy compact JSON = %d bytes; expected at least 3x reduction", len(compact), len(legacyJSON))
+	}
+	decoded, err := DecodeCompactTree(compact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(decoded.Root.Children); got != 201 { // package clause + 200 functions
+		t.Fatalf("decoded root children = %d, want 201", got)
+	}
+	t.Logf("compact CST %d bytes vs JSON CST %d bytes (%.1fx smaller)", len(compact), len(legacyJSON), float64(len(legacyJSON))/float64(len(compact)))
+}
+
+func clearNodeText(node *SyntaxNode) {
+	if node == nil {
+		return
+	}
+	node.Text = ""
+	for _, child := range node.Children {
+		clearNodeText(child)
+	}
+}
+
 // TestRegisterGrammar registers a grammar at runtime under a novel extension
 // and parses through it, exercising the plugin-provided-grammar path.
 func TestRegisterGrammar(t *testing.T) {
@@ -118,9 +183,9 @@ func TestRegisterGrammar(t *testing.T) {
 	if tree == nil {
 		t.Fatal("nil tree from registered grammar")
 	}
-	var st SyntaxTree
-	if err := json.Unmarshal(tree, &st); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+	st, err := DecodeCompactTree(tree)
+	if err != nil {
+		t.Fatalf("decode compact tree: %v", err)
 	}
 	if st.Root.Type != "source_file" {
 		t.Errorf("root = %q, want source_file", st.Root.Type)

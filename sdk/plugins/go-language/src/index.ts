@@ -12,6 +12,7 @@ export default definePlugin({
 
   language: {
     match,
+    extensions: [".go"],
     extract,
     concepts: goConceptSeeds,
   },

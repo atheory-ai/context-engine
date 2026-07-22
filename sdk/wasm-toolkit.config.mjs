@@ -1,4 +1,5 @@
-// Root config consumed by every plugin's `wasm-toolkit-build` invocation.
+// Development-only Javy stream-I/O config. Production plugins use
+// `ce-plugin-build`, which emits the Extism byte input/output ABI.
 // Each plugin/<name>/package.json points at this file via
 // `--config ../../wasm-toolkit.config.mjs`.
 //

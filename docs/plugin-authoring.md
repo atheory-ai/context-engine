@@ -116,7 +116,7 @@ file path + file content + optional serialized syntax tree
   -> project graph
 ```
 
-At the CE runtime boundary, `ce_language_extract` receives a JSON payload with `file_path`, `content`, and `tree`. The SDK authoring API presents the stable TypeScript `language.extract` function; plugin authors should use the SDK surface instead of depending on the low-level payload shape directly.
+At the CE runtime boundary, `ce_language_extract` receives an ABI-v4 binary envelope containing the path, source bytes, canonical source anchor, and a compact CST node table. The SDK exposes the stable TypeScript `language.extract` function; plugin authors should use that surface instead of depending on the transport format directly.
 
 Return an `ExtractionResult`:
 
@@ -307,10 +307,14 @@ Plugin-specific config is declared under `plugins` in `ce.yaml`:
 
 ```yaml
 plugins:
-  - path: ./plugins/my-plugin.wasm
-    config:
-      framework: nextjs
-      include_tests: false
+  # Installed plugins are cataloged without instantiating their WASM. CE
+  # activates matching extensions automatically, or exactly this list.
+  enabled: ["com.example.my-plugin"]
+  installed:
+    - path: ./plugins/my-plugin.wasm
+      config:
+        framework: nextjs
+        include_tests: false
 ```
 
 Read config through the SDK:

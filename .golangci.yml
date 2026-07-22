@@ -1,13 +1,10 @@
-# Shared lint config from atheory-ai/release-template v0.2.3.
-# Copy as-is — no placeholders. Run with `make lint` or
-# `golangci-lint run` (v1.64.x).
-
+# Shared lint configuration. Kept on golangci-lint v2 so CI supports the
+# project's Go 1.25 toolchain.
+version: "2"
 run:
-  timeout: 5m
   tests: true
-
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck
     - gosec
@@ -16,127 +13,151 @@ linters:
     - revive
     - staticcheck
     - unused
-
-linters-settings:
-  errcheck:
-    # Type-assertion discards (`v, _ := x.(T)`) are idiomatic in Go;
-    # checking forces unwieldy `v, ok := ...; if !ok { ... }` even when
-    # the zero value is the intended fallback.
-    check-type-assertions: false
-    check-blank: true
-    exclude-functions:
-      # Always-discarded idioms
-      - (io.Closer).Close
-      - (*os.File).Close
-      - fmt.Fprintln
-      - fmt.Fprintf
-      - fmt.Fprint
-      - fmt.Println
-      - fmt.Printf
-      - fmt.Print
-      # filepath.Rel/Abs only error on malformed paths; usually safe.
-      - path/filepath.Rel
-      - path/filepath.Abs
-      # JSON marshal of statically-typed maps/structs is never an error
-      # at runtime; checking is noise.
-      - encoding/json.Marshal
-      - encoding/json.MarshalIndent
-      # Interactive prompts; error usually means EOF and we fall through.
-      - fmt.Scan
-      - fmt.Scanf
-      - fmt.Scanln
-      # cobra/pflag/viper accessors only error on programmer mistakes
-      # (wrong type or unknown flag); the callsite has already declared
-      # the flag, so the error is unreachable in practice.
-      - (*github.com/spf13/pflag.FlagSet).GetString
-      - (*github.com/spf13/pflag.FlagSet).GetStringSlice
-      - (*github.com/spf13/pflag.FlagSet).GetBool
-      - (*github.com/spf13/pflag.FlagSet).GetInt
-      - (*github.com/spf13/pflag.FlagSet).GetInt64
-      - (*github.com/spf13/pflag.FlagSet).GetUint
-      - (*github.com/spf13/pflag.FlagSet).GetFloat64
-      - (*github.com/spf13/pflag.FlagSet).GetDuration
-      - github.com/spf13/viper.BindPFlag
-      - github.com/spf13/viper.BindPFlags
-      - github.com/spf13/viper.BindEnv
-      # Extism CurrentPlugin memory I/O inside WASM host functions —
-      # errors only on malformed pointers, which is a programmer bug,
-      # not a runtime condition. Pattern is `val, _ := p.ReadString(...)`.
-      - (*github.com/extism/go-sdk.CurrentPlugin).ReadString
-      - (*github.com/extism/go-sdk.CurrentPlugin).WriteString
-      - (*github.com/extism/go-sdk.CurrentPlugin).ReadBytes
-      - (*github.com/extism/go-sdk.CurrentPlugin).WriteBytes
-
-  gosec:
-    excludes:
-      - G104   # duplicates errcheck
-      - G204   # subprocess from user input — too noisy in CLIs / test helpers
-      - G304   # file inclusion via variable — too noisy in CLIs
-      - G306   # WriteFile permissions — projects choose their own perms
-    severity: medium
-    confidence: medium
-
-  govet:
-    enable-all: true
-    disable:
-      - fieldalignment   # opt in per project; noisy on most codebases
-      - shadow           # flags idiomatic `if err := f(); err != nil` patterns
-
-  revive:
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: true
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+        - fmt.Fprintln
+        - fmt.Fprintf
+        - fmt.Fprint
+        - fmt.Println
+        - fmt.Printf
+        - fmt.Print
+        - path/filepath.Rel
+        - path/filepath.Abs
+        - encoding/json.Marshal
+        - encoding/json.MarshalIndent
+        - fmt.Scan
+        - fmt.Scanf
+        - fmt.Scanln
+        - (*github.com/spf13/pflag.FlagSet).GetString
+        - (*github.com/spf13/pflag.FlagSet).GetStringSlice
+        - (*github.com/spf13/pflag.FlagSet).GetBool
+        - (*github.com/spf13/pflag.FlagSet).GetInt
+        - (*github.com/spf13/pflag.FlagSet).GetInt64
+        - (*github.com/spf13/pflag.FlagSet).GetUint
+        - (*github.com/spf13/pflag.FlagSet).GetFloat64
+        - (*github.com/spf13/pflag.FlagSet).GetDuration
+        - github.com/spf13/viper.BindPFlag
+        - github.com/spf13/viper.BindPFlags
+        - github.com/spf13/viper.BindEnv
+        - (*github.com/extism/go-sdk.CurrentPlugin).ReadString
+        - (*github.com/extism/go-sdk.CurrentPlugin).WriteString
+        - (*github.com/extism/go-sdk.CurrentPlugin).ReadBytes
+        - (*github.com/extism/go-sdk.CurrentPlugin).WriteBytes
+    gosec:
+      excludes:
+        - G104
+        - G204
+        - G304
+        - G306
+        # Newly introduced by the upgraded gosec; existing background workers
+        # deliberately outlive their request contexts and manage cancellation
+        # through their own lifecycle context.
+        - G118
+      severity: medium
+      confidence: medium
+    govet:
+      disable:
+        - fieldalignment
+        - shadow
+      enable-all: true
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+          arguments:
+            - sayRepetitiveInsteadOfStutters
+        - name: if-return
+        - name: increment-decrement
+        - name: var-declaration
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: indent-error-flow
+        - name: errorf
+        - name: empty-block
+        - name: superfluous-else
+        - name: unused-parameter
+          disabled: true
+        - name: unreachable-code
+        - name: redefines-builtin-id
+    staticcheck:
+      checks:
+        - all
+        - -ST1000
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        # These diagnostics were introduced after the v1 staticcheck bundled
+        # with the prior lint policy. Keep this migration scope-neutral.
+        - -QF1008
+        - -QF1012
+        - -S1005
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
-      - name: blank-imports
-      - name: context-as-argument
-      - name: context-keys-type
-      - name: dot-imports
-      - name: error-return
-      - name: error-strings
-      - name: error-naming
-      - name: exported
-        arguments: ["sayRepetitiveInsteadOfStutters"]
-      - name: if-return
-      - name: increment-decrement
-      - name: var-declaration
-      - name: package-comments
-      - name: range
-      - name: receiver-naming
-      - name: time-naming
-      - name: unexported-return
-      - name: indent-error-flow
-      - name: errorf
-      - name: empty-block
-      - name: superfluous-else
-      - name: unused-parameter
-        disabled: true
-      - name: unreachable-code
-      - name: redefines-builtin-id
-
-  staticcheck:
-    checks:
-      - all
-      - "-ST1000"
-      - "-ST1020"
-      - "-ST1021"
-      - "-ST1022"
-
+      - linters:
+          - errcheck
+          - gosec
+          - revive
+        path: _test\.go
+      - linters:
+          - errcheck
+          - gosec
+          - revive
+          - staticcheck
+          - unused
+        path: ^test/
+      - linters:
+          - errcheck
+          - gosec
+          - revive
+          - staticcheck
+          - unused
+        path: /testdata/
+      - linters:
+          - errcheck
+          - gosec
+          - revive
+          - staticcheck
+          - unused
+        path: \.pb\.go
+      - linters:
+          - revive
+        source: '^//go:generate '
+      - linters:
+          - gosec
+        path: internal/indexer/wasmparse/
+        text: G115
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  exclude-rules:
-    - path: _test\.go
-      linters: [errcheck, gosec, revive]
-    - path: ^test/
-      linters: [errcheck, gosec, revive, staticcheck, unused]
-    - path: /testdata/
-      linters: [errcheck, gosec, revive, staticcheck, unused]
-    - path: \.pb\.go
-      linters: [errcheck, gosec, revive, staticcheck, unused]
-    - source: "^//go:generate "
-      linters: [revive]
-    # WASM binary parsing + wasm32 pointer arithmetic inherently convert between
-    # uint64 (LEB128 values), int (indices/sizes), and uint32/int32 (wasm32
-    # addresses). These conversions are safe by construction; G115 is noise here.
-    - path: internal/indexer/wasmparse/
-      text: "G115"
-      linters: [gosec]
-
   max-issues-per-linter: 0
   max-same-issues: 0
   new: false
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

@@ -75,19 +75,31 @@ function liftParams(fnNode: SyntaxNode): IIRParam[] {
   const out: IIRParam[] = []
   for (const kind of ["required_parameter", "optional_parameter", "rest_parameter"]) {
     for (const p of childrenByType(params, kind)) {
-      out.push({ name: paramName(p), type: paramType(p) })
+      out.push({ name: paramName(p, out.length), type: paramType(p) })
     }
   }
   return out
 }
 
-function paramName(p: SyntaxNode): string {
+function paramName(p: SyntaxNode, index: number): string {
   const pattern = childByField(p, "pattern")
-  if (!pattern) return ""
-  if (pattern.type === "rest_pattern") {
-    return (pattern.children ?? []).find(c => c.type === "identifier")?.text ?? ""
+  if (pattern?.type === "rest_pattern") {
+    const restName = (pattern.children ?? []).find(c => c.type === "identifier")?.text.trim()
+    if (restName) return restName
   }
-  return pattern.text
+  if (pattern?.text.trim()) return pattern.text.trim()
+
+  // Tree-sitter's parameter fields vary for TS-only forms (notably `this`
+  // parameters and some default/destructured forms). Preserve an identifier
+  // when one exists; otherwise use a stable synthetic name. An observed IIR
+  // record must never contain an invalid empty input name.
+  let identifier = ""
+  walk(p, (node) => {
+    if (!identifier && node.type === "identifier" && node.text.trim()) {
+      identifier = node.text.trim()
+    }
+  })
+  return identifier || `arg${index + 1}`
 }
 
 function paramType(p: SyntaxNode): string {

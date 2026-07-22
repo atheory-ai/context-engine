@@ -20,6 +20,7 @@ type pluginInstance struct {
 	name      string
 	version   string
 	wasm      *extism.Plugin
+	compiled  *extism.CompiledPlugin
 	manifest  PluginManifest
 	wasmDir   string // directory containing the plugin .wasm file
 	wasmBytes []byte
@@ -211,6 +212,13 @@ func (p *pluginInstance) Close() error {
 		return p.indexPool.Close()
 	}
 	return p.closeDirect()
+}
+
+func (p *pluginInstance) TrimIndexPool() error {
+	if p.indexPool == nil {
+		return nil
+	}
+	return p.indexPool.Trim()
 }
 
 func (p *pluginInstance) closeDirect() error {

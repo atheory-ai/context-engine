@@ -66,6 +66,42 @@ func TestWalk_SkipsOversizeFiles(t *testing.T) {
 	}
 }
 
+func TestWalkPaths_OnlyReturnsRequestedFilesAndReportsDeletion(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "kept.go"), "package kept")
+	write(t, filepath.Join(root, "ignored", "skip.go"), "package ignored")
+	w, err := New(root, Config{ExcludePatterns: []string{"ignored/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := make(chan WalkResult, 8)
+	go func() {
+		if err := w.WalkPaths(context.Background(), []string{
+			"kept.go",                      // root-relative paths are accepted
+			filepath.Join(root, "kept.go"), // deduplicated
+			filepath.Join(root, "deleted.go"),
+			filepath.Join(root, "ignored", "skip.go"),
+			filepath.Dir(root), // outside root
+		}, results); err != nil {
+			t.Errorf("WalkPaths: %v", err)
+		}
+	}()
+
+	got := map[string]bool{}
+	for result := range results {
+		got[filepath.ToSlash(result.RelPath)] = result.Deleted
+	}
+	if deleted, ok := got["kept.go"]; !ok || deleted {
+		t.Fatalf("kept.go result = (%v, %v), want present", deleted, ok)
+	}
+	if deleted, ok := got["deleted.go"]; !ok || !deleted {
+		t.Fatalf("deleted.go result = (%v, %v), want deleted", deleted, ok)
+	}
+	if _, ok := got["ignored/skip.go"]; ok {
+		t.Fatal("ignored file was returned")
+	}
+}
+
 func TestStatDir(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, "a.go"), "package a")

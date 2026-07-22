@@ -101,6 +101,12 @@ describe("liftFunction (contract fields)", () => {
     expect(intent.returns).toEqual({ type: "", explicit: false })
   })
 
+  it("never emits an empty input name when a grammar parameter lacks a pattern field", () => {
+    const unfielded = n("required_parameter", { children: [n("identifier", { text: "options" })] })
+    const fn = n("function_declaration", { children: [name("f"), params(unfielded), body()] })
+    expect(liftOf(program(fn))[0].intent.inputs).toEqual([{ name: "options", type: "unknown" }])
+  })
+
   it("lifts an arrow function bound in a lexical declaration", () => {
     const arrow = n("arrow_function", {
       field: "value",

@@ -47,6 +47,22 @@ func (r *Registry) Initialize(ceDataDir string, ch *core.AppChannels) error {
 	return nil
 }
 
+// SetAllowDevStreamPlugins enables legacy Javy stream-I/O plugins for this
+// registry. Call it after Initialize and before loading plugins.
+func (r *Registry) SetAllowDevStreamPlugins(allow bool) {
+	if r.rt != nil {
+		r.rt.SetAllowDevStreamPlugins(allow)
+	}
+}
+
+// SetIndexPoolSize caps concurrent Extism instances per loaded language
+// plugin. Call before Load; existing pools retain their construction size.
+func (r *Registry) SetIndexPoolSize(size int) {
+	if r.rt != nil {
+		r.rt.SetIndexPoolSize(size)
+	}
+}
+
 // Load loads a single plugin from the given path.
 // If Initialize has not been called, returns nil (no-op).
 // Duplicate plugin IDs are silently replaced (last-registered wins).
@@ -126,8 +142,10 @@ func (r *Registry) PluginsForFile(filePath string) []core.Plugin {
 				break
 			}
 		}
-		// Check custom match if declared (slow path).
-		if h.HasCustomMatch() && h.Match(filePath) {
+		// A declared extension is authoritative and avoids a WASM call for the
+		// common case. Custom matching is the fallback for plugins whose file
+		// selection cannot be represented by extensions alone.
+		if !matched && h.HasCustomMatch() && h.Match(filePath) {
 			matched = true
 		}
 		if matched {
@@ -184,4 +202,17 @@ func (r *Registry) UnloadAll() {
 		_ = r.rt.Close()
 		r.rt = nil
 	}
+}
+
+// TrimIndexPools releases surplus extraction instances after a bulk run while
+// retaining one warm instance per active plugin for file-watch latency.
+func (r *Registry) TrimIndexPools() error {
+	for _, plugin := range r.plugins {
+		if trimmer, ok := plugin.(interface{ TrimIndexPool() error }); ok {
+			if err := trimmer.TrimIndexPool(); err != nil {
+				return fmt.Errorf("trim index pool: %w", err)
+			}
+		}
+	}
+	return nil
 }

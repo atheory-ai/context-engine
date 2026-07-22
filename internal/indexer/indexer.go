@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -67,7 +68,7 @@ type preparedFile struct {
 	result   walker.WalkResult
 	content  []byte
 	hash     string
-	treeJSON []byte
+	treeData []byte
 	plugins  []core.Plugin
 	release  func()
 }
@@ -89,7 +90,7 @@ func New(
 	if cfg.DataDir != "" {
 		wasmCacheDir = filepath.Join(cfg.DataDir, "cache", "wazero-parse")
 	}
-	wasm, err := wasmparse.New(context.Background(), wasmCacheDir)
+	wasm, err := wasmparse.NewWithPoolSize(context.Background(), wasmCacheDir, cfg.Indexer.ParseWorkers)
 	if err != nil {
 		channels.Emit(core.Emission{
 			Source:  "indexer",
@@ -132,8 +133,8 @@ func New(
 	}
 }
 
-// parseFile returns the serialized SyntaxTree JSON for the plugin boundary, or
-// nil if no bundled grammar handles the file (plugin receives tree: null).
+// parseFile returns the compact binary CST for the plugin boundary, or nil if
+// no bundled grammar handles the file (plugin receives tree: null).
 func (idx *Indexer) parseFile(ctx context.Context, relPath string, content []byte) ([]byte, error) {
 	if idx.wasm == nil {
 		return nil, nil
@@ -145,23 +146,70 @@ func (idx *Indexer) parseFile(ctx context.Context, relPath string, content []byt
 // projectID identifies the substrate graph to write to.
 // full=true forces reindex of all files regardless of cached hashes.
 // Blocks until complete or ctx is cancelled.
-func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.ProjectID, full bool) (Stats, error) {
+func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.ProjectID, full bool) (finalStats Stats, finalErr error) {
+	return idx.run(ctx, rootDir, projectID, full, nil)
+}
+
+// RunPaths performs a targeted incremental index of the supplied absolute or
+// root-relative paths. It never treats paths omitted from this request as
+// deleted, so it is safe for filesystem watch batches.
+func (idx *Indexer) RunPaths(ctx context.Context, rootDir string, projectID core.ProjectID, paths []string) (finalStats Stats, finalErr error) {
+	return idx.run(ctx, rootDir, projectID, false, paths)
+}
+
+func (idx *Indexer) run(ctx context.Context, rootDir string, projectID core.ProjectID, full bool, paths []string) (finalStats Stats, finalErr error) {
 	start := time.Now()
+	profile, err := startProfile(idx.cfg.Indexer.ProfileDir, idx.cfg.Indexer.ProfileTrace)
+	if err != nil {
+		return Stats{}, fmt.Errorf("start index profile: %w", err)
+	}
+	defer func() {
+		if profile != nil {
+			if finalStats.Duration == 0 {
+				finalStats.Duration = time.Since(start)
+			}
+			if err := profile.Stop(finalStats, finalErr); err != nil {
+				idx.emitWarning(fmt.Sprintf("write index profile: %v", err))
+			}
+		}
+	}()
+	// Parser instances own separate wazero runtimes and linear memories. An
+	// Indexer is per run, so close them deterministically rather than relying on
+	// a later GC cycle (especially important for --watch). Register this after
+	// profiling so the final heap snapshot reflects the post-run steady state.
+	if idx.wasm != nil {
+		defer func() { _ = idx.wasm.Close(context.Background()) }()
+	}
+	runCtx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
+
 	runID, err := newIndexRunID()
 	if err != nil {
 		return Stats{}, fmt.Errorf("create index run id: %w", err)
 	}
 
-	idx.emitProgress(fmt.Sprintf("indexing %s (mode: %s)",
-		projectID, map[bool]string{true: "full", false: "incremental"}[full]))
+	mode := map[bool]string{true: "full", false: "incremental"}[full]
+	pathScoped := paths != nil
+	if pathScoped {
+		mode = "targeted"
+	}
+	idx.emitProgress(fmt.Sprintf("indexing %s (mode: %s)", projectID, mode))
 
 	// Load existing file hashes for incremental mode.
 	var existingHashes map[string]string
+	extractorFingerprint := idx.extractorFingerprint()
 	if !full && idx.queries != nil {
-		var err error
-		existingHashes, err = idx.queries.GetFileHashes(ctx, string(projectID))
+		previousFingerprint, err := idx.queries.LatestCompletedExtractorFingerprint(runCtx, string(projectID))
 		if err != nil {
-			return Stats{}, fmt.Errorf("load file hashes: %w", err)
+			return Stats{}, fmt.Errorf("load extractor fingerprint: %w", err)
+		}
+		if previousFingerprint == extractorFingerprint {
+			existingHashes, err = idx.queries.GetFileHashes(runCtx, string(projectID))
+			if err != nil {
+				return Stats{}, fmt.Errorf("load file hashes: %w", err)
+			}
+		} else if previousFingerprint != "" {
+			idx.emitProgress("extractor inputs changed; reindexing matching files")
 		}
 	}
 	if idx.queries != nil {
@@ -169,14 +217,14 @@ func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.Proj
 		for _, plugin := range idx.plugins.Loaded() {
 			pluginIDs = append(pluginIDs, string(plugin.ID()))
 		}
-		if err := idx.queries.StartIndexRun(ctx, runID, string(projectID), pluginIDs, start.UnixMilli()); err != nil {
+		if err := idx.queries.StartIndexRun(runCtx, runID, string(projectID), pluginIDs, extractorFingerprint, start.UnixMilli()); err != nil {
 			return Stats{}, err
 		}
 	}
 	transaction, atomicCommit := idx.substrate.(indexTransactionWriter)
 	transactionOpen := false
 	if atomicCommit {
-		if err := transaction.BeginIndexTransaction(ctx); err != nil {
+		if err := transaction.BeginIndexTransaction(runCtx); err != nil {
 			idx.failRun(ctx, runID, err)
 			return Stats{}, fmt.Errorf("begin atomic index write: %w", err)
 		}
@@ -199,11 +247,21 @@ func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.Proj
 		idx.failRun(ctx, runID, err)
 		return Stats{}, fmt.Errorf("create walker: %w", err)
 	}
+	var staging *stageBatcher
+	if idx.queries != nil {
+		staging = newStageBatcher(runCtx, cancelRun, idx.queries, runID, string(projectID), profile)
+	}
 
 	fileResults := make(chan walker.WalkResult, 64)
 	walkErrCh := make(chan error, 1)
 	go func() {
-		walkErrCh <- w.Walk(ctx, fileResults)
+		started := time.Now()
+		if pathScoped {
+			walkErrCh <- w.WalkPaths(runCtx, paths, fileResults)
+		} else {
+			walkErrCh <- w.Walk(runCtx, fileResults)
+		}
+		profile.Record("walk", time.Since(started))
 	}()
 
 	workerCount := idx.cfg.Indexer.ExtractWorkers
@@ -241,18 +299,30 @@ func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.Proj
 			defer wg.Done()
 			for result := range fileResults {
 				atomic.AddInt64(&filesWalked, 1)
-				if idx.queries != nil {
-					if err := idx.queries.StageWalked(ctx, runID, string(projectID), result.RelPath); err != nil {
+				if result.Deleted {
+					if staging != nil {
+						if err := staging.StageDeleted(runCtx, result.RelPath); err != nil {
+							atomic.AddInt64(&filesErrored, 1)
+						}
+					}
+					continue
+				}
+				if staging != nil {
+					if err := staging.StageWalked(runCtx, result.RelPath); err != nil {
 						atomic.AddInt64(&filesErrored, 1)
 						continue
 					}
 				}
-				release, err := limiter.acquire(ctx, int(result.Info.Size())*8)
+				started := time.Now()
+				release, err := limiter.acquire(runCtx, idx.estimateInFlightBytes(result.Info.Size()))
+				profile.Record("admission.wait", time.Since(started))
 				if err != nil {
 					atomic.AddInt64(&filesErrored, 1)
 					continue
 				}
-				prepared, skipped, err := idx.prepareFile(ctx, projectID, result, existingHashes, now)
+				started = time.Now()
+				prepared, skipped, err := idx.prepareFile(runCtx, projectID, result, existingHashes, now)
+				profile.Record("prepare.read_hash_plan_parse", time.Since(started))
 				if skipped {
 					release()
 					atomic.AddInt64(&filesSkipped, 1)
@@ -267,7 +337,7 @@ func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.Proj
 				prepared.release = release
 				select {
 				case preparedCh <- prepared:
-				case <-ctx.Done():
+				case <-runCtx.Done():
 					release()
 					atomic.AddInt64(&filesErrored, 1)
 				}
@@ -282,68 +352,101 @@ func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.Proj
 		go func() {
 			defer extractWG.Done()
 			for prepared := range preparedCh {
-				n, e, err := idx.processFile(ctx, projectID, prepared, now, runID)
+				started := time.Now()
+				n, e, output, err := idx.processFile(runCtx, projectID, prepared, now, runID, profile)
+				profile.Record("extract_merge_enqueue", time.Since(started))
 				prepared.release()
 				if err != nil {
 					atomic.AddInt64(&filesErrored, 1)
 					idx.emitWarning(fmt.Sprintf("index %s: %v", prepared.result.RelPath, err))
 					continue
 				}
+				if staging != nil {
+					started = time.Now()
+					if err := staging.StageOutput(runCtx, prepared.result.RelPath, output); err != nil {
+						atomic.AddInt64(&filesErrored, 1)
+						idx.emitWarning(fmt.Sprintf("stage %s: %v", prepared.result.RelPath, err))
+						continue
+					}
+					profile.Record("stage.enqueue", time.Since(started))
+				}
 				atomic.AddInt64(&filesIndexed, 1)
 				atomic.AddInt64(&nodesWritten, int64(n))
 				atomic.AddInt64(&edgesWritten, int64(e))
 				atomic.AddInt64(&sourceBytes, int64(len(prepared.content)))
-				atomic.AddInt64(&cstBytes, int64(len(prepared.treeJSON)))
-				atomic.AddInt64(&pluginPayloadBytes, int64(len(prepared.plugins)*(len(prepared.content)+len(prepared.treeJSON))))
+				atomic.AddInt64(&cstBytes, int64(len(prepared.treeData)))
+				atomic.AddInt64(&pluginPayloadBytes, int64(len(prepared.plugins)*(len(prepared.content)+len(prepared.treeData))))
 			}
 		}()
 	}
 	extractWG.Wait()
+	stageErr := error(nil)
+	if staging != nil {
+		stageErr = staging.Close()
+	}
 
 	stats := func() Stats {
 		return Stats{FilesWalked: int(filesWalked), FilesIndexed: int(filesIndexed), FilesSkipped: int(filesSkipped), FilesErrored: int(filesErrored), NodesWritten: int(nodesWritten), EdgesWritten: int(edgesWritten), SourceBytesProcessed: atomic.LoadInt64(&sourceBytes), CSTBytesProcessed: atomic.LoadInt64(&cstBytes), PluginPayloadBytesEstimated: atomic.LoadInt64(&pluginPayloadBytes), Duration: time.Since(start)}
 	}
-	if walkErr := <-walkErrCh; walkErr != nil && ctx.Err() == nil {
+	if stageErr != nil {
+		idx.failRun(ctx, runID, stageErr)
+		return stats(), stageErr
+	}
+	if walkErr := <-walkErrCh; walkErr != nil && runCtx.Err() == nil {
 		err := fmt.Errorf("walk: %w", walkErr)
 		idx.failRun(ctx, runID, err)
 		return stats(), err
 	}
 
-	if filesErrored > 0 || ctx.Err() != nil {
-		runErr := ctx.Err()
+	if filesErrored > 0 || runCtx.Err() != nil {
+		runErr := runCtx.Err()
 		if runErr == nil {
 			runErr = fmt.Errorf("%d files failed; graph changes were not committed as an index run", filesErrored)
 		}
 		idx.failRun(ctx, runID, runErr)
 		return stats(), runErr
 	}
-	// Make the fully-validated run visible only after every file completed.
-	// Legacy writers fall back to Flush; the engine writer holds all index ops
-	// and commits them in a single graph transaction.
+	// Drain the bounded graph writer after every file contribution has completed.
+	// Its normal size/timer flushes already made bounded staging batches durable;
+	// ReconcileStagedIndexRun below is the sole publication point.
 	if atomicCommit {
-		if err := transaction.CommitIndexTransaction(ctx); err != nil {
+		started := time.Now()
+		if err := transaction.CommitIndexTransaction(runCtx); err != nil {
 			runErr := fmt.Errorf("commit atomic index write: %w", err)
 			idx.failRun(ctx, runID, runErr)
 			return stats(), runErr
 		}
+		profile.Record("graph.flush", time.Since(started))
 		transactionOpen = false
-	} else if err := idx.substrate.Flush(ctx); err != nil {
-		runErr := fmt.Errorf("flush write buffer: %w", err)
-		idx.failRun(ctx, runID, runErr)
-		return stats(), runErr
+	} else {
+		started := time.Now()
+		if err := idx.substrate.Flush(runCtx); err != nil {
+			runErr := fmt.Errorf("flush write buffer: %w", err)
+			idx.failRun(ctx, runID, runErr)
+			return stats(), runErr
+		}
+		profile.Record("graph.flush", time.Since(started))
 	}
 
 	// This transaction is the authoritative index-run commit marker. It replaces
 	// each processed file's prior membership, removes vanished output (including
 	// moved-offset facts), then advances hashes last in the same transaction.
 	if idx.queries != nil {
-		if err := idx.queries.ReconcileStagedIndexRun(ctx, string(projectID), runID, full, int(filesIndexed), int(nodesWritten), int(edgesWritten), time.Now().UnixMilli()); err != nil {
-			idx.failRun(ctx, runID, err)
-			return stats(), fmt.Errorf("reconcile index run: %w", err)
+		started := time.Now()
+		var reconcileErr error
+		if pathScoped {
+			reconcileErr = idx.queries.ReconcileStagedIndexRunPaths(runCtx, string(projectID), runID, int(filesIndexed), int(nodesWritten), int(edgesWritten), time.Now().UnixMilli())
+		} else {
+			reconcileErr = idx.queries.ReconcileStagedIndexRun(runCtx, string(projectID), runID, full, int(filesIndexed), int(nodesWritten), int(edgesWritten), time.Now().UnixMilli())
 		}
+		if reconcileErr != nil {
+			idx.failRun(ctx, runID, reconcileErr)
+			return stats(), fmt.Errorf("reconcile index run: %w", reconcileErr)
+		}
+		profile.Record("reconcile", time.Since(started))
 	}
 
-	finalStats := stats()
+	finalStats = stats()
 
 	idx.emitProgress(fmt.Sprintf(
 		"index complete: %d files, %d nodes, %d edges (%s)",
@@ -351,8 +454,8 @@ func (idx *Indexer) Run(ctx context.Context, rootDir string, projectID core.Proj
 		finalStats.Duration.Round(time.Millisecond),
 	))
 
-	if ctx.Err() != nil {
-		return finalStats, ctx.Err()
+	if runCtx.Err() != nil {
+		return finalStats, runCtx.Err()
 	}
 	return finalStats, nil
 }
@@ -374,34 +477,30 @@ func (idx *Indexer) prepareFile(ctx context.Context, projectID core.ProjectID, r
 	if len(plugins) == 0 {
 		return nil, true, nil
 	}
-	treeJSON, err := idx.parseFile(ctx, result.RelPath, content)
+	treeData, err := idx.parseFile(ctx, result.RelPath, content)
 	if err != nil {
 		return nil, false, fmt.Errorf("parse: %w", err)
 	}
-	if idx.queries != nil {
-		compact, err := compactCST(treeJSON)
-		if err != nil {
-			return nil, false, err
-		}
-		if err := idx.queries.StoreParseArtifact(ctx, string(projectID), hash, "tree-sitter-wasm/v1", filepath.Ext(result.RelPath), content, compact, now); err != nil {
-			return nil, false, err
-		}
-	}
-	return &preparedFile{result: result, content: content, hash: hash, treeJSON: treeJSON, plugins: plugins}, false, nil
+	// Source and CST are deliberately ephemeral. Plugins consume the one parse
+	// while this contribution is in flight; durable state is the source hash,
+	// extractor fingerprint, and the derived graph contribution.
+	return &preparedFile{result: result, content: content, hash: hash, treeData: treeData, plugins: plugins}, false, nil
 }
 
-// processFile performs extraction and staged graph writes for a prepared file.
-// Returns (nodesWritten, edgesWritten, nil) on success.
-// Returns (-1, 0, nil) if the file should be skipped (unchanged or no plugin).
-// Returns (0, 0, err) on a processing error.
+// processFile performs extraction and graph writes for a prepared file. Its
+// file-output manifest is returned to the caller, which batches it separately
+// from graph writes for final index-run reconciliation.
+// Returns (nodesWritten, edgesWritten, output, nil) on success.
+// Returns (0, 0, empty output, err) on a processing error.
 func (idx *Indexer) processFile(
 	ctx context.Context,
 	projectID core.ProjectID,
 	prepared *preparedFile,
 	now int64,
 	runID string,
-) (int, int, error) {
-	result, content, hash, treeJSON, matchingPlugins := prepared.result, prepared.content, prepared.hash, prepared.treeJSON, prepared.plugins
+	profile *Profile,
+) (int, int, queries.FileOutput, error) {
+	result, content, hash, treeData, matchingPlugins := prepared.result, prepared.content, prepared.hash, prepared.treeData, prepared.plugins
 
 	nodesOut := 0
 	edgesOut := 0
@@ -426,7 +525,10 @@ func (idx *Indexer) processFile(
 				if lang == nil {
 					return
 				}
-				extraction, err := lang.Extract(result.RelPath, content, treeJSON)
+				started := time.Now()
+				extraction, err := lang.Extract(result.RelPath, content, treeData)
+				profile.Record("plugin."+string(p.ID())+".extract", time.Since(started))
+				profile.Add("plugin."+string(p.ID())+".input_bytes", int64(len(content)+len(treeData)))
 				if err != nil {
 					errs[i] = err
 					return
@@ -437,7 +539,7 @@ func (idx *Indexer) processFile(
 		layerWG.Wait()
 		for i, err := range errs {
 			if err != nil {
-				return 0, 0, fmt.Errorf("extract %s with %s: %w", result.RelPath, layer[i].ID(), err)
+				return 0, 0, queries.FileOutput{}, fmt.Errorf("extract %s with %s: %w", result.RelPath, layer[i].ID(), err)
 			}
 		}
 		for _, extraction := range results {
@@ -487,7 +589,7 @@ func (idx *Indexer) processFile(
 		for _, analyzer := range p.Analyzers() {
 			extraEdges, err := analyzer.Analyze(remapped.Nodes)
 			if err != nil {
-				return 0, 0, fmt.Errorf("analyzer %s on %s: %w", analyzer.Name(), result.RelPath, err)
+				return 0, 0, queries.FileOutput{}, fmt.Errorf("analyzer %s on %s: %w", analyzer.Name(), result.RelPath, err)
 			}
 			for _, edge := range extraEdges {
 				edge.ProjectID = projectID
@@ -501,24 +603,29 @@ func (idx *Indexer) processFile(
 			}
 		}
 	}
+	// Plugins may intentionally emit a speculative relationship to a symbol
+	// that is not declared in the current project (for example `extends
+	// ExternalBase`). Preserve that evidence without violating the graph's
+	// endpoint invariant by materializing an explicit unresolved anchor.
+	candidateNodes = materializeUnresolvedEndpoints(candidateNodes, candidateEdges, projectID, result.RelPath, runID, now)
 	mergedNodes, err := mergeContributionNodes(candidateNodes)
 	if err != nil {
-		return 0, 0, fmt.Errorf("merge file contribution: %w", err)
+		return 0, 0, queries.FileOutput{}, fmt.Errorf("merge file contribution: %w", err)
 	}
 	mergedEdges, err := mergeContributionEdges(candidateEdges)
 	if err != nil {
-		return 0, 0, fmt.Errorf("merge file contribution: %w", err)
+		return 0, 0, queries.FileOutput{}, fmt.Errorf("merge file contribution: %w", err)
 	}
 	for _, node := range mergedNodes {
 		if err := idx.substrate.UpsertNode(ctx, node); err != nil {
-			return 0, 0, fmt.Errorf("write node %s: %w", node.CanonicalID, err)
+			return 0, 0, queries.FileOutput{}, fmt.Errorf("write node %s: %w", node.CanonicalID, err)
 		}
 		output.NodeIDs = append(output.NodeIDs, string(node.ID))
 		nodesOut++
 	}
 	for _, edge := range mergedEdges {
 		if err := idx.substrate.UpsertEdge(ctx, edge); err != nil {
-			return 0, 0, fmt.Errorf("write edge: %w", err)
+			return 0, 0, queries.FileOutput{}, fmt.Errorf("write edge: %w", err)
 		}
 		output.EdgeIDs = append(output.EdgeIDs, string(edge.ID))
 		edgesOut++
@@ -530,18 +637,12 @@ func (idx *Indexer) processFile(
 	if idx.cfg.IIR.Enabled && len(filePluginIIR) > 0 {
 		iirIDs, err := idx.writePluginIIR(ctx, projectID, hash, filePluginIIR, runID, now)
 		if err != nil {
-			return 0, 0, err
+			return 0, 0, queries.FileOutput{}, err
 		}
 		output.IIRIDs = append(output.IIRIDs, iirIDs...)
 	}
 
-	if idx.queries != nil {
-		if err := idx.queries.StageFileOutput(ctx, runID, string(projectID), result.RelPath, output); err != nil {
-			return 0, 0, fmt.Errorf("stage file output: %w", err)
-		}
-	}
-
-	return nodesOut, edgesOut, nil
+	return nodesOut, edgesOut, output, nil
 }
 
 // fileHash returns the SHA-256 hash of content as a lowercase hex string.
@@ -550,34 +651,46 @@ func fileHash(content []byte) string {
 	return hex.EncodeToString(h[:])
 }
 
-// compactCST removes source and duplicated per-node text while preserving the
-// node type, fields, offsets, positions, and child topology needed to recover
-// text from the content-addressed source artifact later.
-func compactCST(treeJSON []byte) ([]byte, error) {
-	if len(treeJSON) == 0 {
-		return nil, nil
+// estimateInFlightBytes reserves for source, the compact CST node table, and
+// active plugin ABI copies. ABI-v4 removes the JSON tree/object expansion and
+// avoids eager node text; keep a conservative allowance for the source string,
+// lazy SDK wrappers, parser memory, and all configured plugin pools.
+func (idx *Indexer) estimateInFlightBytes(sourceSize int64) int {
+	const cstExpansion = int64(16)
+	if sourceSize < 1 {
+		sourceSize = 1
 	}
-	var tree any
-	if err := json.Unmarshal(treeJSON, &tree); err != nil {
-		return nil, err
+	pluginCount := 0
+	if idx.plugins != nil {
+		pluginCount = len(idx.plugins.Loaded())
 	}
-	var compact func(any)
-	compact = func(v any) {
-		switch x := v.(type) {
-		case map[string]any:
-			delete(x, "source")
-			delete(x, "text")
-			for _, child := range x {
-				compact(child)
-			}
-		case []any:
-			for _, child := range x {
-				compact(child)
-			}
-		}
+	pluginCopies := int64(pluginCount + 1) // CE plus matching ABI consumers
+	if pluginCopies < 2 {
+		pluginCopies = 2
 	}
-	compact(tree)
-	return json.Marshal(tree)
+	maxInt := int64(^uint(0) >> 1)
+	multiplier := cstExpansion * pluginCopies
+	if sourceSize > maxInt/multiplier {
+		return int(maxInt)
+	}
+	return int(sourceSize * multiplier)
+}
+
+// extractorFingerprint invalidates hashes when the parser or configured
+// extractors change, without retaining source or a CST in the graph database.
+func (idx *Indexer) extractorFingerprint() string {
+	contributors := make([]string, 0, len(idx.plugins.Loaded()))
+	for _, plugin := range idx.plugins.Loaded() {
+		contributors = append(contributors, string(plugin.ID())+"@"+plugin.Version())
+	}
+	sort.Strings(contributors)
+	payload, _ := json.Marshal(struct {
+		Parser       string   `json:"parser"`
+		Contributors []string `json:"contributors"`
+		IIREnabled   bool     `json:"iir_enabled"`
+	}{Parser: "tree-sitter-wasm/v1", Contributors: contributors, IIREnabled: idx.cfg.IIR.Enabled})
+	digest := sha256.Sum256(payload)
+	return hex.EncodeToString(digest[:])
 }
 
 // pluginExtractionLayers recreates the manifest dependency DAG as execution
@@ -725,6 +838,48 @@ func mergeContributionEdges(edges []core.Edge) ([]core.Edge, error) {
 		out = append(out, byID[id])
 	}
 	return out, nil
+}
+
+// materializeUnresolvedEndpoints guarantees every accepted edge has an
+// endpoint node. A plugin can only provide an opaque ID for a symbol it did
+// not declare, so the host must not invent a false canonical symbol identity.
+// Instead it creates a clearly-marked speculative anchor keyed by that opaque
+// ID. Should a plugin later provide a resolvable node, it uses its own
+// canonical identity and the plugin can emit a definitive edge to it.
+func materializeUnresolvedEndpoints(nodes []core.Node, edges []core.Edge, projectID core.ProjectID, sourceFile, runID string, now int64) []core.Node {
+	known := make(map[core.NodeID]struct{}, len(nodes))
+	for _, node := range nodes {
+		known[node.ID] = struct{}{}
+	}
+	for _, edge := range edges {
+		for _, endpoint := range []core.NodeID{edge.SourceID, edge.TargetID} {
+			if endpoint == "" {
+				continue
+			}
+			if _, exists := known[endpoint]; exists {
+				continue
+			}
+			nodes = append(nodes, core.Node{
+				ID:             endpoint,
+				ProjectID:      projectID,
+				Type:           "unresolved",
+				Label:          string(endpoint),
+				CanonicalID:    "unresolved:" + string(endpoint),
+				SourceClass:    core.SourceSpeculative,
+				PluginID:       edge.PluginID,
+				SourceFile:     sourceFile,
+				IndexManaged:   true,
+				LastIndexRunID: runID,
+				Properties: map[string]any{
+					"unresolved_endpoint": true,
+				},
+				CreatedAt: now,
+				UpdatedAt: now,
+			})
+			known[endpoint] = struct{}{}
+		}
+	}
+	return nodes
 }
 
 func mergeContributionProperties(left, right map[string]any) (map[string]any, error) {

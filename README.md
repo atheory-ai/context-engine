@@ -313,9 +313,13 @@ data:
   dir: "~/.ce"                  # override data directory
 
 plugins:
-  - path: /path/to/my-plugin.wasm
-    config:
-      some_option: value
+  # Installed means available; CE activates only the project-relevant subset.
+  # Use enabled for an explicit, reproducible selection.
+  enabled: ["com.example.my-plugin"]
+  installed:
+    - path: /path/to/my-plugin.wasm
+      config:
+        some_option: value
 ```
 
 **Environment variables** (all prefixed `CE_`):

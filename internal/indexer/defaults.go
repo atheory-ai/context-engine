@@ -31,10 +31,13 @@ func ExtractDefaults(dataDir string) error {
 
 	files := []string{
 		"go-language.wasm",
+		"go-language.wasm.manifest.json",
 		"go-grammar.wasm",
 		"typescript.wasm",
+		"typescript.wasm.manifest.json",
 		"typescript-grammar.wasm",
 		"python.wasm",
+		"python.wasm.manifest.json",
 		"python-grammar.wasm",
 		"php.wasm",
 		"wordpress-conventions.wasm",

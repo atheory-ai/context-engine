@@ -47,7 +47,7 @@ export async function scaffold(answers: ScaffoldAnswers): Promise<void> {
   write(dir, "package.json",        renderTemplate(PACKAGE_JSON_TEMPLATE, vars))
   write(dir, "tsconfig.json",       TSCONFIG_TEMPLATE)
   write(dir, "eslint.config.mjs",   ESLINT_CONFIG_TEMPLATE)
-  write(dir, "wasm-toolkit.config.mjs", WASM_TOOLKIT_CONFIG_TEMPLATE)
+  write(dir, "wasm-toolkit.dev.config.mjs", WASM_TOOLKIT_CONFIG_TEMPLATE)
   write(dir, ".gitignore",          GITIGNORE_TEMPLATE)
   write(dir, "README.md",           renderTemplate(README_TEMPLATE, vars))
 
@@ -211,16 +211,17 @@ const PACKAGE_JSON_TEMPLATE = `{
   "description": "{{DESCRIPTION}}",
   "type": "module",
   "scripts": {
-    "build": "wasm-toolkit-build --plugin . --config wasm-toolkit.config.mjs --output dist/{{SLUG}}.wasm",
+    "build": "ce-plugin-build --plugin . --output dist/{{SLUG}}.wasm",
+    "build:stream": "wasm-toolkit-build --plugin . --config wasm-toolkit.dev.config.mjs --output dist/{{SLUG}}.dev.wasm",
     "test":  "vitest run",
     "lint":  "eslint src",
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@atheory-ai/ce-plugin-sdk": "^0.1.0"
+    "@atheory-ai/ce-plugin-sdk": "^0.3.0"
   },
   "devDependencies": {
-    "@atheory-ai/ce-plugin-sdk": "^0.1.0",
+    "@atheory-ai/ce-plugin-sdk": "^0.3.0",
     "@atheory-ai/wasm-plugin-toolkit": "^0.0.4",
     "typescript":     "^5.x",
     "esbuild":        "^0.20.x",
@@ -264,10 +265,13 @@ const README_TEMPLATE = `# {{NAME}}
 
 \`\`\`bash
 pnpm install
-pnpm bundle && pnpm build   # compile to .wasm
+pnpm build                  # compile a production Extism ABI .wasm
 ce plugin validate dist/{{SLUG}}.wasm
 ce-sandbox coverage         # check extraction coverage
 \`\`\`
+
+\`pnpm build:stream\` is available only for local Javy development. Run CE with
+\`--allow-dev-stream-plugins\` to load that development artifact.
 
 ## Testing
 

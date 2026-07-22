@@ -1,11 +1,14 @@
 {
   "name": "@atheory-ai/ce-plugin-sdk",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "TypeScript SDK for authoring Context Engine plugins.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "ce-plugin-build": "./bin/ce-plugin-build.mjs"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -15,6 +18,10 @@
     "./abi": {
       "import": "./dist/abi.js",
       "types": "./dist/abi.d.ts"
+    },
+    "./extism": {
+      "import": "./dist/extism.js",
+      "types": "./dist/extism.d.ts"
     },
     "./build/abi": {
       "import": "./dist/build/ce-abi.js",
@@ -32,11 +39,15 @@
     "@atheory-ai/wasm-plugin-toolkit": "^0.0.4",
     "eslint": "^8.57.0 || ^9.0.0"
   },
+  "dependencies": {
+    "esbuild": "*"
+  },
   "peerDependenciesMeta": {
     "@atheory-ai/wasm-plugin-toolkit": { "optional": true },
     "eslint": { "optional": true }
   },
   "files": [
+    "bin",
     "dist",
     "tsconfig.plugin.json",
     "README.md",

@@ -57,8 +57,19 @@ func normalizePluginConfig() {
 	if !ok {
 		return
 	}
+	activation := map[string]any{}
+	if enabled, ok := plugins["enabled"]; ok {
+		activation["enabled"] = enabled
+	}
+	if profile, ok := plugins["profile"]; ok {
+		activation["profile"] = profile
+	}
+	if len(activation) > 0 {
+		viper.Set("plugin_activation", activation)
+	}
 	installed, ok := plugins["installed"]
 	if !ok {
+		viper.Set("plugins", []any{})
 		return
 	}
 	viper.Set("plugins", installed)
@@ -120,10 +131,10 @@ func applyDefaults(cfg *Config) {
 		cfg.Indexer.WatchDebounceMS = 500
 	}
 	if cfg.Indexer.ParseWorkers == 0 {
-		cfg.Indexer.ParseWorkers = min(runtime.NumCPU(), 8)
+		cfg.Indexer.ParseWorkers = defaultIndexWorkers()
 	}
 	if cfg.Indexer.ExtractWorkers == 0 {
-		cfg.Indexer.ExtractWorkers = min(runtime.NumCPU(), 8)
+		cfg.Indexer.ExtractWorkers = defaultIndexWorkers()
 	}
 	if cfg.Indexer.MaxInFlightBytes == 0 {
 		cfg.Indexer.MaxInFlightBytes = 64 * 1024 * 1024
@@ -141,4 +152,12 @@ func applyDefaults(cfg *Config) {
 			"**/*.pb.go", "**/*_gen.go", "dist/**", "build/**",
 		}
 	}
+}
+
+// defaultIndexWorkers permits modest oversubscription because indexing mixes
+// parser/Extism work with write-buffer and SQLite waits. The in-flight byte
+// limiter remains the memory safety boundary; callers can override either
+// worker count in ce.yaml or on the CLI for constrained environments.
+func defaultIndexWorkers() int {
+	return min(max(1, runtime.NumCPU()*2), 12)
 }

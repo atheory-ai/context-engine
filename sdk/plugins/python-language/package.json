@@ -4,7 +4,8 @@
   "description": "Default Python language plugin — functions, classes, methods, imports, decorators",
   "type": "module",
   "scripts": {
-    "build":     "wasm-toolkit-build --plugin . --config ../../wasm-toolkit.config.mjs --output dist/python.wasm",
+    "build":     "ce-plugin-build --plugin . --output dist/python.wasm",
+    "build:stream": "wasm-toolkit-build --plugin . --config ../../wasm-toolkit.config.mjs --output dist/python.dev.wasm",
     "build:dev": "tsc --watch",
     "test":      "vitest run --passWithNoTests",
     "validate":  "ce plugin validate dist/python.wasm",

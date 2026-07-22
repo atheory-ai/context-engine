@@ -5,17 +5,21 @@ package config
 // Config is the fully resolved configuration for a CE session.
 // Built by Load() from ce.yaml + global config + env vars + flags.
 type Config struct {
-	Project  ProjectConfig
-	LLM      LLMConfig
-	Engine   EngineConfig
-	Indexer  IndexerConfig
-	IIR      IIRConfig
-	Plugins  []PluginEntry
-	Tracing  TracingConfig
-	Server   ServerConfig
-	Data     DataConfig
-	Display  DisplayConfig
-	Features FeatureConfig
+	Project ProjectConfig
+	LLM     LLMConfig
+	Engine  EngineConfig
+	Indexer IndexerConfig
+	IIR     IIRConfig
+	Plugins []PluginEntry
+	// PluginActivation selects which installed/default plugins become live WASM
+	// runtimes for this project. Installed plugins remain discoverable without
+	// consuming a runtime until activation.
+	PluginActivation PluginActivationConfig `mapstructure:"plugin_activation"`
+	Tracing          TracingConfig
+	Server           ServerConfig
+	Data             DataConfig
+	Display          DisplayConfig
+	Features         FeatureConfig
 
 	// Runtime fields — not from ce.yaml
 	ReadOnly bool   // true for read-scoped token sessions
@@ -66,12 +70,24 @@ type IndexerConfig struct {
 	ParseWorkers     int      `mapstructure:"parse_workers"`
 	ExtractWorkers   int      `mapstructure:"extract_workers"`
 	MaxInFlightBytes int      `mapstructure:"max_in_flight_bytes"`
+	// ProfileDir enables opt-in index profiling. It is normally set with
+	// `ce index --profile-dir`, not persisted in project configuration.
+	ProfileDir   string `mapstructure:"profile_dir"`
+	ProfileTrace bool   `mapstructure:"profile_trace"`
 }
 
 // PluginEntry describes a single installed plugin.
 type PluginEntry struct {
 	Path   string         `mapstructure:"path"`
 	Config map[string]any `mapstructure:"config"`
+}
+
+// PluginActivationConfig is extracted from plugins.enabled/plugins.profile in
+// ce.yaml. Kept separately from Plugins so the documented installed list and
+// legacy bare-list configuration remain backward compatible.
+type PluginActivationConfig struct {
+	Enabled []string `mapstructure:"enabled"`
+	Profile string   `mapstructure:"profile"`
 }
 
 // TracingConfig controls execution log writing.
@@ -104,5 +120,6 @@ type DisplayConfig struct {
 
 // FeatureConfig controls experimental or pre-release features.
 type FeatureConfig struct {
-	CEQuery bool `mapstructure:"ce_query"`
+	CEQuery               bool `mapstructure:"ce_query"`
+	AllowDevStreamPlugins bool `mapstructure:"allow_dev_stream_plugins"`
 }

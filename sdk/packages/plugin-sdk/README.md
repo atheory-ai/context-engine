@@ -31,6 +31,21 @@ export default definePlugin({
 `extract` receives `tree` — the host's tree-sitter CST for the file. Walk it
 instead of matching raw text; the host already parsed the file.
 
+## Build for production
+
+Production CE plugins use the Extism byte input/output ABI. Install the Extism
+JavaScript PDK compiler (`extism-js`) and build the SDK-backed plugin with:
+
+```bash
+pnpm add @atheory-ai/ce-plugin-sdk
+ce-plugin-build --plugin . --output dist/my-plugin.wasm
+```
+
+The emitted `.wasm` is a compiled artifact suitable for CI publication and for
+CE production indexing. Javy stdin/stdout builds remain available only for
+local development; CE rejects them unless started with
+`--allow-dev-stream-plugins`.
+
 ## What a plugin can provide
 
 - **`language`** — `match` + `extract` for a file type. To support a language

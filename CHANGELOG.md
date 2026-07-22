@@ -6,6 +6,33 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
 
 ## [Unreleased]
 
+## [0.5.0]
+
+### Indexing
+
+- Replaced the plugin extraction transport's JSON CST with ABI-v4 compact
+  binary node tables. Source travels once as bytes; node text is recovered
+  lazily from byte ranges rather than duplicated at every CST node.
+- Production Extism plugins consume raw input bytes and a cached SDK node-view
+  adapter, eliminating full-payload `JSON.parse` and repeated tree-wrapper
+  allocation during multi-pass extraction.
+- Reduced compact-CST admission sizing to match the new transport while
+  preserving the byte-budget backpressure boundary.
+- Added index profiling output and production-plugin golden coverage for the
+  compact binary transport.
+
+### Plugin SDK
+
+- Released Plugin SDK ABI v4. Production and development adapters now decode
+  the same compact extraction envelope; compiled v3 artifacts are rejected
+  with a rebuild instruction.
+
+### Upgrade
+
+- Rebuild every language or convention plugin with
+  `@atheory-ai/ce-plugin-sdk` v0.4.0 before using CE v0.5.0. ABI-v3 artifacts
+  are intentionally not accepted by the v4 host.
+
 ## [0.4.0]
 
 ### Runtime

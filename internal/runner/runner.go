@@ -27,6 +27,7 @@ import (
 	"github.com/atheory-ai/context-engine/internal/llm/openai"
 	"github.com/atheory-ai/context-engine/internal/orggraph"
 	"github.com/atheory-ai/context-engine/internal/plugins"
+	pluginruntime "github.com/atheory-ai/context-engine/internal/plugins/runtime"
 	"github.com/atheory-ai/context-engine/internal/storage/db"
 	"github.com/atheory-ai/context-engine/internal/storage/migrations"
 	"github.com/atheory-ai/context-engine/internal/storage/queries"
@@ -44,6 +45,9 @@ type Engine struct {
 	plugins    *plugins.Registry
 	llmRouter  *llm.Router
 	orgGraph   *orggraph.OrgGraph
+
+	pluginCandidates []pluginCandidate
+	pluginRoot       string
 
 	iirOnce      sync.Once
 	iirExtractor iir.Extractor
@@ -124,7 +128,11 @@ func New(ctx context.Context, cfg *config.Config) (*Engine, error) {
 	}
 
 	// ── Start write buffer goroutine ─────────────────────────────────────────
-	e.buffer = writebuffer.New(ctx, e.dbRegistry,
+	// The buffer is engine infrastructure, not work owned by the caller's
+	// request context. In particular, an interrupted `ce index` must retain a
+	// live writer long enough for the indexer to abort/flush and mark its run
+	// failed. Engine.Close owns this lifecycle.
+	e.buffer = writebuffer.New(context.Background(), e.dbRegistry,
 		writebuffer.DefaultBufferSize,
 		writebuffer.DefaultFlushInterval,
 	)
@@ -142,28 +150,16 @@ func New(ctx context.Context, cfg *config.Config) (*Engine, error) {
 	if err := e.plugins.Initialize(cfg.DataDir, e.channels); err != nil {
 		return nil, fmt.Errorf("initialize plugin runtime: %w", err)
 	}
+	e.plugins.SetAllowDevStreamPlugins(cfg.Features.AllowDevStreamPlugins)
+	e.plugins.SetIndexPoolSize(cfg.Indexer.ExtractWorkers)
 
-	// Load default plugins first (lowest priority — user plugins can override).
+	// Catalog defaults and configured plugins without starting their WASM
+	// runtimes. Index activation selects the language/dependency closure needed
+	// by the project; installed plugins remain available for future activation.
 	defaultsDir := filepath.Join(cfg.DataDir, "plugins", "defaults")
-	for _, name := range defaultPluginNames {
-		path := filepath.Join(defaultsDir, name)
-		if _, err := os.Stat(path); err != nil {
-			continue // not yet built (development) — skip
-		}
-		if err := e.plugins.Load(ctx, path, nil); err != nil {
-			e.channels.Emit(core.Emission{
-				Source:  "runner",
-				Channel: core.ChanWarning,
-				Content: fmt.Sprintf("default plugin %s: %v", name, err),
-			})
-		}
-	}
-
-	// Load user-installed plugins (higher priority — override defaults).
-	for _, entry := range cfg.Plugins {
-		if err := e.plugins.Load(ctx, entry.Path, entry.Config); err != nil {
-			return nil, fmt.Errorf("load plugin %s: %w", entry.Path, err)
-		}
+	e.pluginCandidates, err = catalogPluginCandidates(defaultsDir, cfg.Plugins)
+	if err != nil {
+		return nil, fmt.Errorf("catalog plugins: %w", err)
 	}
 
 	// ── Build LLM router ─────────────────────────────────────────────────────
@@ -525,11 +521,26 @@ func (e *Engine) SearchSubstrate(ctx context.Context, opts SearchOptions) ([]Sea
 // replaces output only for changed/deleted files. Both modes retain a prior
 // corpus only until the replacement transaction succeeds.
 func (e *Engine) Index(ctx context.Context, rootDir string, full bool) (indexer.Stats, error) {
+	return e.index(ctx, rootDir, full, nil)
+}
+
+// IndexPaths incrementally replaces the derived contribution for only the
+// supplied paths. Paths omitted from the request remain authoritative; missing
+// requested paths remove their old contribution. This is used by --watch so a
+// single save does not walk the complete corpus.
+func (e *Engine) IndexPaths(ctx context.Context, rootDir string, paths []string) (indexer.Stats, error) {
+	return e.index(ctx, rootDir, false, paths)
+}
+
+func (e *Engine) index(ctx context.Context, rootDir string, full bool, paths []string) (indexer.Stats, error) {
 	const projectID = core.ProjectID("local")
 	if !e.indexMu.TryLock() {
 		return indexer.Stats{}, fmt.Errorf("index already in progress")
 	}
 	defer e.indexMu.Unlock()
+	if err := e.activateIndexPlugins(ctx, rootDir); err != nil {
+		return indexer.Stats{}, err
+	}
 	published := false
 	defer func() {
 		if !published {
@@ -565,11 +576,25 @@ func (e *Engine) Index(ctx context.Context, rootDir string, full bool) (indexer.
 
 	// Build and run the indexer.
 	idx := indexer.New(e.cfg, e.plugins, e.substrate, iqr, e.channels)
-	stats, runErr := idx.Run(ctx, rootDir, projectID, full)
+	var stats indexer.Stats
+	var runErr error
+	if paths != nil {
+		stats, runErr = idx.RunPaths(ctx, rootDir, projectID, paths)
+	} else {
+		stats, runErr = idx.Run(ctx, rootDir, projectID, full)
+	}
 
 	// Flush the write buffer (indexer.Run also flushes, but be safe).
 	if flushErr := e.buffer.Flush(ctx); flushErr != nil && runErr == nil {
 		return stats, fmt.Errorf("flush write buffer: %w", flushErr)
+	}
+	if runErr == nil {
+		// Bulk indexing may have expanded every active plugin pool. The run is
+		// complete, so retain one warm instance per plugin for watch latency and
+		// release the surplus high-water linear memories.
+		if err := e.plugins.TrimIndexPools(); err != nil {
+			return stats, fmt.Errorf("trim plugin index pools: %w", err)
+		}
 	}
 
 	// Publish readiness only after graph reconciliation has succeeded.
@@ -659,11 +684,163 @@ func (e *Engine) IIRRulePack() iir.RulePack {
 	return pack
 }
 
-// defaultPluginNames are the built-in plugin wasm files loaded from
-// <dataDir>/plugins/defaults, lowest priority (user plugins override).
-var defaultPluginNames = []string{
-	"go-language.wasm", "typescript.wasm", "python.wasm", "php.wasm",
-	"wordpress-conventions.wasm", "woocommerce-conventions.wasm",
+// defaultPluginNames are the built-in plugin wasm files available under
+// <dataDir>/plugins/defaults. Their metadata is cataloged without loading
+// WASM; configured user plugins retain higher registration priority.
+var defaultPluginNames = []string{"go-language.wasm", "typescript.wasm", "python.wasm"}
+
+type pluginCandidate struct {
+	path     string
+	config   map[string]any
+	manifest pluginruntime.PluginManifest
+}
+
+func catalogPluginCandidates(defaultsDir string, entries []config.PluginEntry) ([]pluginCandidate, error) {
+	candidates := make([]pluginCandidate, 0, len(defaultPluginNames)+len(entries))
+	for _, builtin := range builtinPluginCatalog(defaultsDir) {
+		if _, err := os.Stat(builtin.path); err == nil {
+			manifest, err := pluginruntime.ReadCatalogManifest(builtin.path)
+			if err != nil {
+				return nil, fmt.Errorf("default %s: %w", builtin.path, err)
+			}
+			builtin.manifest = manifest.PluginManifest
+			candidates = append(candidates, builtin)
+		}
+	}
+	for _, entry := range entries {
+		manifest, err := pluginruntime.ReadCatalogManifest(entry.Path)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", entry.Path, err)
+		}
+		candidate := pluginCandidate{path: entry.Path, config: entry.Config, manifest: manifest.PluginManifest}
+		candidates = append(candidates, candidate)
+	}
+	return candidates, nil
+}
+
+func builtinPluginCatalog(dir string) []pluginCandidate {
+	return []pluginCandidate{
+		{path: filepath.Join(dir, "go-language.wasm"), manifest: pluginruntime.PluginManifest{ID: "com.atheory-ai.go-language", Capabilities: pluginruntime.PluginCapabilities{Language: true}, Language: &pluginruntime.PluginLanguageInfo{Name: "go", Extensions: []string{".go"}}, Provides: []string{"language:go"}}},
+		{path: filepath.Join(dir, "typescript.wasm"), manifest: pluginruntime.PluginManifest{ID: "com.atheory-ai.typescript", Capabilities: pluginruntime.PluginCapabilities{Language: true}, Language: &pluginruntime.PluginLanguageInfo{Name: "typescript", Extensions: []string{".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"}}, Provides: []string{"language:typescript"}}},
+		{path: filepath.Join(dir, "python.wasm"), manifest: pluginruntime.PluginManifest{ID: "com.atheory-ai.python", Capabilities: pluginruntime.PluginCapabilities{Language: true}, Language: &pluginruntime.PluginLanguageInfo{Name: "python", Extensions: []string{".py", ".pyi"}}, Provides: []string{"language:python"}}},
+	}
+}
+
+// activateIndexPlugins instantiates only candidates selected by explicit
+// project configuration or by the extensions actually present in rootDir. A
+func (e *Engine) activateIndexPlugins(ctx context.Context, rootDir string) error {
+	if e.pluginRoot == rootDir {
+		return nil
+	}
+	if e.pluginRoot != "" {
+		e.plugins.UnloadAll()
+		if err := e.plugins.Initialize(e.cfg.DataDir, e.channels); err != nil {
+			return fmt.Errorf("reinitialize plugin runtime: %w", err)
+		}
+		e.plugins.SetAllowDevStreamPlugins(e.cfg.Features.AllowDevStreamPlugins)
+		e.plugins.SetIndexPoolSize(e.cfg.Indexer.ExtractWorkers)
+	}
+
+	extensions := projectExtensions(rootDir)
+	wanted := make(map[string]struct{}, len(e.cfg.PluginActivation.Enabled))
+	for _, id := range e.cfg.PluginActivation.Enabled {
+		wanted[id] = struct{}{}
+	}
+	explicitSelection := len(wanted) > 0
+	wordpressProfile := e.cfg.PluginActivation.Profile == "wordpress"
+	selected := make([]bool, len(e.pluginCandidates))
+	for i, candidate := range e.pluginCandidates {
+		if _, ok := wanted[candidate.manifest.ID]; ok {
+			selected[i] = true
+			continue
+		}
+		if explicitSelection {
+			continue
+		}
+		if wordpressProfile {
+			selected[i] = candidateMatchesExtensions(candidate.manifest, map[string]struct{}{".php": {}})
+			continue
+		}
+		selected[i] = candidateMatchesExtensions(candidate.manifest, extensions)
+	}
+	// Complete manifest dependencies so selecting an enricher also activates
+	// its language/CST provider even when the provider's extension differs.
+	for changed := true; changed; {
+		changed = false
+		for i, candidate := range e.pluginCandidates {
+			if !selected[i] {
+				continue
+			}
+			for _, required := range append(append([]string{}, candidate.manifest.Requires...), languageRequirements(candidate.manifest.Enriches)...) {
+				for j, provider := range e.pluginCandidates {
+					if selected[j] || !provides(provider.manifest, required) {
+						continue
+					}
+					selected[j], changed = true, true
+				}
+			}
+		}
+	}
+	for i, candidate := range e.pluginCandidates {
+		if !selected[i] {
+			continue
+		}
+		if err := e.plugins.Load(ctx, candidate.path, candidate.config); err != nil {
+			return fmt.Errorf("activate plugin %s: %w", candidate.path, err)
+		}
+	}
+	e.pluginRoot = rootDir
+	return nil
+}
+
+func candidateMatchesExtensions(manifest pluginruntime.PluginManifest, extensions map[string]struct{}) bool {
+	if manifest.Language == nil {
+		return false
+	}
+	for _, extension := range manifest.Language.Extensions {
+		if _, ok := extensions[strings.ToLower(extension)]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func projectExtensions(root string) map[string]struct{} {
+	extensions := map[string]struct{}{}
+	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			if err == nil && entry.IsDir() && (entry.Name() == ".git" || entry.Name() == "node_modules" || entry.Name() == "vendor") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.Type().IsRegular() {
+			if extension := strings.ToLower(filepath.Ext(path)); extension != "" {
+				extensions[extension] = struct{}{}
+			}
+		}
+		return nil
+	}); err != nil {
+		return extensions
+	}
+	return extensions
+}
+
+func languageRequirements(languages []string) []string {
+	required := make([]string, len(languages))
+	for i, language := range languages {
+		required[i] = "language:" + language
+	}
+	return required
+}
+
+func provides(manifest pluginruntime.PluginManifest, capability string) bool {
+	for _, provided := range manifest.Provides {
+		if provided == capability {
+			return true
+		}
+	}
+	return false
 }
 
 // PluginRulePacks loads the configured plugins and returns their contributed IIR
@@ -678,6 +855,7 @@ func PluginRulePacks(ctx context.Context, cfg *config.Config, ch *core.AppChanne
 	if err := reg.Initialize(cfg.DataDir, ch); err != nil {
 		return nil, noop
 	}
+	reg.SetAllowDevStreamPlugins(cfg.Features.AllowDevStreamPlugins)
 
 	defaultsDir := filepath.Join(cfg.DataDir, "plugins", "defaults")
 	for _, name := range defaultPluginNames {

@@ -85,6 +85,10 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           package_json_file: sdk/package.json
+      - name: Install Extism production plugin compiler
+        run: |
+          ./sdk/scripts/install-extism-js.sh sdk/.tools/extism
+          echo "$PWD/sdk/.tools/extism/bin" >> "$GITHUB_PATH"
       - name: Build and stage in-tree default plugins
         run: make bundle-default-plugins
       - name: Verify IIR runtime and matching default plugin build

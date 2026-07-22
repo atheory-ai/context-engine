@@ -77,6 +77,28 @@ func (r *Runtime) Load(ctx context.Context, wasmPath string, pluginConfig map[st
 		_ = extismPlugin.Close(ctx)
 		return nil, fmt.Errorf("unsupported plugin ABI in %s: %w", wasmPath, err)
 	}
+	if pmeta.ABI.CallConvention == callConventionJavyStreamIO && !r.allowDevStreamPlugins {
+		_ = extismPlugin.Close(ctx)
+		return nil, fmt.Errorf("plugin %s uses development-only Javy stream-I/O; rebuild it with the Extism input/output ABI or pass --allow-dev-stream-plugins", wasmPath)
+	}
+
+	// Compile production modules once, then create independent instances from
+	// the compiled module for concurrent extraction. This avoids the costly
+	// per-worker wazero validation/compilation path.
+	var compiled *extism.CompiledPlugin
+	if pmeta.ABI.CallConvention == callConventionExtismInputOutput {
+		compiled, err = extism.NewCompiledPlugin(ctx, newExtismManifest(wasmBytes), extismConfig, hostFuncs)
+		if err != nil {
+			_ = extismPlugin.Close(ctx)
+			return nil, fmt.Errorf("compile extism plugin %s: %w", wasmPath, err)
+		}
+		_ = extismPlugin.Close(ctx)
+		extismPlugin, err = compiled.Instance(ctx, extism.PluginInstanceConfig{})
+		if err != nil {
+			_ = compiled.Close(ctx)
+			return nil, fmt.Errorf("create extism plugin instance %s: %w", wasmPath, err)
+		}
+	}
 
 	// ── 7. Write cache metadata (first load only) ────────────────────────────
 	if !r.cache.IsCached(wasmHash) {
@@ -95,6 +117,7 @@ func (r *Runtime) Load(ctx context.Context, wasmPath string, pluginConfig map[st
 		name:      pmeta.Name,
 		version:   pmeta.Version,
 		wasm:      extismPlugin,
+		compiled:  compiled,
 		manifest:  pmeta,
 		wasmDir:   filepath.Dir(wasmPath),
 		wasmBytes: wasmBytes,
@@ -102,22 +125,22 @@ func (r *Runtime) Load(ctx context.Context, wasmPath string, pluginConfig map[st
 		config:    extismConfig,
 		exports:   exports,
 	}
-	instance.indexPool = newPluginInstancePool(instance)
+	instance.indexPool = newPluginInstancePool(instance, r.indexPoolSize)
 	return instance, nil
 }
 
 func validateManifestABI(abi *PluginABIInfo) error {
 	if abi == nil {
-		return nil
+		return fmt.Errorf("missing ABI declaration (expected ce-plugin v4 extism-input-output)")
 	}
 	if abi.Name != "" && abi.Name != "ce-plugin" {
 		return fmt.Errorf("name %q", abi.Name)
 	}
-	if abi.Version != 0 && abi.Version != 1 {
-		return fmt.Errorf("version %d", abi.Version)
+	if abi.Version != 4 {
+		return fmt.Errorf("version %d (rebuild with the CE Plugin SDK that supports ABI v4)", abi.Version)
 	}
 	switch abi.CallConvention {
-	case "", callConventionExtismInputOutput, callConventionJavyStreamIO:
+	case callConventionExtismInputOutput, callConventionJavyStreamIO:
 		return nil
 	default:
 		return fmt.Errorf("call convention %q", abi.CallConvention)

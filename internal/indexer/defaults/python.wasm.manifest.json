@@ -1,0 +1,27 @@
+{
+  "id": "com.atheory-ai.python",
+  "name": "Python Language",
+  "version": "1.0.0",
+  "abi": {
+    "name": "ce-plugin",
+    "version": 4,
+    "callConvention": "extism-input-output"
+  },
+  "capabilities": {
+    "language": true,
+    "role": false,
+    "analyzers": [
+      "module-deps",
+      "class-hierarchy"
+    ],
+    "tools": []
+  },
+  "language": {
+    "extensions": [
+      ".py",
+      ".pyi",
+      ".pyw"
+    ]
+  },
+  "wasm_sha256": "702134b17150dc93a25d8f161432837fd02e5023b5f7689d7befee5aa7854e2c"
+}
