@@ -94,8 +94,25 @@ jobs:
       - name: Verify IIR runtime and matching default plugin build
         run: make verify-iir-contract
 
+      # The production plugin compiler writes a content hash into each default
+      # plugin manifest. Those three sidecars must be freshly generated so they
+      # match the WASM embedded in this release binary. Do not let skipping
+      # GoReleaser's generic clean-tree validation hide any other mutation.
+      - name: Verify generated default plugin sidecars are the only tracked changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          allowed='^(internal/indexer/defaults/(go-language|typescript|python)\.wasm\.manifest\.json)$'
+          changed="$(git diff --name-only)"
+          unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
+          if [[ -n "$unexpected" ]]; then
+            echo "unexpected tracked changes after building default plugins:"
+            printf '%s\n' "$unexpected"
+            exit 1
+          fi
+
       - name: Build release archives (no publish yet)
-        run: goreleaser release --clean --skip=publish
+        run: goreleaser release --clean --skip=publish --skip=validate
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
