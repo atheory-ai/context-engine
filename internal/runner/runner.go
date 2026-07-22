@@ -592,7 +592,9 @@ func (e *Engine) index(ctx context.Context, rootDir string, full bool, paths []s
 		// Bulk indexing may have expanded every active plugin pool. The run is
 		// complete, so retain one warm instance per plugin for watch latency and
 		// release the surplus high-water linear memories.
-		e.plugins.TrimIndexPools()
+		if err := e.plugins.TrimIndexPools(); err != nil {
+			return stats, fmt.Errorf("trim plugin index pools: %w", err)
+		}
 	}
 
 	// Publish readiness only after graph reconciliation has succeeded.
@@ -805,7 +807,7 @@ func candidateMatchesExtensions(manifest pluginruntime.PluginManifest, extension
 
 func projectExtensions(root string) map[string]struct{} {
 	extensions := map[string]struct{}{}
-	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil || entry.IsDir() {
 			if err == nil && entry.IsDir() && (entry.Name() == ".git" || entry.Name() == "node_modules" || entry.Name() == "vendor") {
 				return filepath.SkipDir
@@ -818,7 +820,9 @@ func projectExtensions(root string) map[string]struct{} {
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return extensions
+	}
 	return extensions
 }
 

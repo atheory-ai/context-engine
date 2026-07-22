@@ -141,9 +141,14 @@ func (p *Profile) Stop(stats Stats, runErr error) error {
 			return err
 		}
 		if prof := pprof.Lookup(entry.name); prof != nil {
-			_ = prof.WriteTo(f, 0)
+			if err := prof.WriteTo(f, 0); err != nil {
+				_ = f.Close()
+				return err
+			}
 		}
-		_ = f.Close()
+		if err := f.Close(); err != nil {
+			return err
+		}
 	}
 	p.mu.Lock()
 	phases := make(map[string]phaseSample, len(p.phases))

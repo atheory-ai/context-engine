@@ -23,13 +23,20 @@ func compactExtractionInput(filePath string, content, tree []byte) []byte {
 		off += 4
 	}
 	put(compactExtractionVersion)
-	put(uint32(len(filePath)))
-	put(uint32(len(anchor)))
-	put(uint32(len(content)))
-	put(uint32(len(tree)))
+	put(compactLength(len(filePath)))
+	put(compactLength(len(anchor)))
+	put(compactLength(len(content)))
+	put(compactLength(len(tree)))
 	for _, value := range [][]byte{[]byte(filePath), []byte(anchor), content, tree} {
 		copy(input[off:], value)
 		off += len(value)
 	}
 	return input
+}
+
+func compactLength(value int) uint32 {
+	if value < 0 || uint64(value) > uint64(^uint32(0)) {
+		panic("compact extraction input field exceeds uint32 length")
+	}
+	return uint32(value)
 }

@@ -206,10 +206,13 @@ func (r *Registry) UnloadAll() {
 
 // TrimIndexPools releases surplus extraction instances after a bulk run while
 // retaining one warm instance per active plugin for file-watch latency.
-func (r *Registry) TrimIndexPools() {
+func (r *Registry) TrimIndexPools() error {
 	for _, plugin := range r.plugins {
 		if trimmer, ok := plugin.(interface{ TrimIndexPool() error }); ok {
-			_ = trimmer.TrimIndexPool()
+			if err := trimmer.TrimIndexPool(); err != nil {
+				return fmt.Errorf("trim index pool: %w", err)
+			}
 		}
 	}
+	return nil
 }
