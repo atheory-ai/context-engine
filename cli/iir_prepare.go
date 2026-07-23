@@ -57,8 +57,14 @@ func runIirPrepare(cmd *cobra.Command, args []string) error {
 	target, _ := cmd.Flags().GetString("target")
 	language, _ := cmd.Flags().GetString("language")
 	printPrompt, _ := cmd.Flags().GetBool("prompt")
-	contexts, _ := cmd.Flags().GetStringArray("context")
-	tags, _ := cmd.Flags().GetStringArray("tag")
+	contexts, err := cmd.Flags().GetStringArray("context")
+	if err != nil {
+		return fmt.Errorf("read context flags: %w", err)
+	}
+	tags, err := cmd.Flags().GetStringArray("tag")
+	if err != nil {
+		return fmt.Errorf("read tag flags: %w", err)
+	}
 	description := strings.TrimSpace(strings.Join(args, " "))
 	if intentPath == "" && description == "" {
 		return fmt.Errorf("provide a description or --intent")
