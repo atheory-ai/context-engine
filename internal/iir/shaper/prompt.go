@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/atheory-ai/context-engine/internal/semantic/vocabulary"
 )
 
 // systemPrompt instructs the model to emit a FunctionIntent as JSON. It mirrors
@@ -15,24 +17,45 @@ Output ONLY a single JSON object inside a fenced code block:
 
 ` + "```json" + `
 {
-  "kind": "FunctionIntent",
-  "name": "<functionName>",
-  "language": "typescript",
-  "visibility": "public" | "private",
-  "inputs": [ { "name": "<param>", "type": "<TsType>" } ],
-  "returns": { "type": "<TsType>" },
-  "behavior": [ { "when": "<condition>", "then": "<outcome>" } ],
-  "sideEffects": [ "<client.method>" ],
-  "failureModes": [ "<failure_tag>" ],
-  "constraints": [ "<durable expectation>" ]
+  "intent": {
+    "kind": "FunctionIntent",
+    "name": "<functionName>",
+    "language": "<targetLanguage>",
+    "visibility": "public" | "private",
+    "inputs": [ { "name": "<param>", "type": "<TsType>" } ],
+    "returns": { "type": "<TsType>" },
+    "behavior": [{
+      "when": "<human-readable condition>",
+      "then": "<human-readable outcome>",
+      "whenExpr": { "op": "==" | "!" | "&&" | "||" | "path" | "lit", "args": [], "text": "<path-or-literal>" },
+      "thenExpr": { "op": "return" | "throw" | "invoke", "value": "<optional canonical payload>" }
+    }],
+    "sideEffects": [ "<client.method>" ],
+    "failureModes": [ "<failure_tag>" ],
+    "constraints": [ "<durable expectation>" ]
+  },
+  "semanticTags": ["<zero or more controlled semantic tags>"],
+  "openQuestions": [{ "field": "<missing field>", "prompt": "<specific question>", "blocking": true }]
 }
 ` + "```" + `
 
 Rules:
-- kind is always "FunctionIntent"; language is always "typescript".
-- Use [] for empty lists. Use "sideEffects": [] to assert no side effects.
+- kind is always "FunctionIntent"; language is always "<targetLanguage>".
+- Use [] only when the request explicitly says a list is empty. Omit an unknown
+  field and add an openQuestion instead; never use [] to mean "I do not know".
+- Add whenExpr/thenExpr only when you can express the condition and outcome in
+  the bounded vocabulary. Keep the human-readable when/then text in all cases.
+- semanticTags classify the requested implementation context, not source text.
+  Use only the controlled tags below. Omit semanticTags when no tag is clearly
+  supported by the request; do not guess a security or framework context.
+- Controlled semantic tags: <semanticTags>.
 - Prefer a Result/ValidationResult return type when the function has failure modes.
 - Do not write function bodies or prose outside the JSON block.`
+
+func systemPromptForLanguage(language string) string {
+	prompt := strings.ReplaceAll(systemPrompt, "<targetLanguage>", language)
+	return strings.ReplaceAll(prompt, "<semanticTags>", strings.Join(vocabulary.Tags(), ", "))
+}
 
 // userPrompt builds the user message. On a retry it appends the prior failure so
 // the model can self-correct.

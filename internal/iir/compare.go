@@ -438,13 +438,18 @@ func compareFailureModes(intended, extracted *FunctionIntent, matches *[]Match, 
 	declared := toSet(failureCodes(intended.FailureModes))
 	found := toSet(failureCodes(extracted.FailureModes))
 
-	var undetected []string
+	var undetected, undeclared []string
 	for m := range declared {
 		if !found[m] {
 			undetected = append(undetected, m)
 		}
 	}
-	if len(undetected) == 0 {
+	for m := range found {
+		if !declared[m] {
+			undeclared = append(undeclared, m)
+		}
+	}
+	if len(undetected) == 0 && len(undeclared) == 0 {
 		*matches = append(*matches, Match{
 			Kind:    MatchExact,
 			Path:    "FunctionIntent.failureModes",
@@ -453,16 +458,41 @@ func compareFailureModes(intended, extracted *FunctionIntent, matches *[]Match, 
 		return
 	}
 	sort.Strings(undetected)
-	// Warning, not error: Slice 1 failure-mode extraction only sees thrown
-	// string literals, so an unobserved mode is a soft signal.
+	sort.Strings(undeclared)
+
+	message := "failure modes differ from the declared contract"
+	repair := "Align the source failure modes with the declared intent, or update the intent after review."
+	severity := SeverityError
+	kind := MismatchChangedFailureMode
+	switch {
+	case len(undetected) > 0 && len(undeclared) > 0:
+		message = fmt.Sprintf("intended failure modes not observed in source: %s; source produces undeclared failure modes: %s",
+			strings.Join(undetected, ", "), strings.Join(undeclared, ", "))
+	case len(undetected) > 0:
+		// The current extractors do not model every failure representation
+		// (for example, a Result value returned from a branch). With no
+		// conflicting observed failure we cannot establish a violation, but we
+		// must not represent the required failure as verified either.
+		kind = MismatchUnsupported
+		severity = SeverityInfo
+		message = fmt.Sprintf("declared failure modes could not be verified from source: %s", strings.Join(undetected, ", "))
+		repair = fmt.Sprintf("Provide modeled source evidence that the function can produce: %s.", strings.Join(undetected, ", "))
+	case len(undeclared) > 0:
+		message = fmt.Sprintf("source produces undeclared failure modes: %s", strings.Join(undeclared, ", "))
+		repair = fmt.Sprintf("Either handle %s without exposing it or declare the failure mode(s) in intended IIR.", strings.Join(undeclared, ", "))
+	}
+
+	// An observed contradiction is a fidelity error. A complete absence of
+	// failure evidence is explicitly unsupported instead, so callers receive an
+	// inconclusive result rather than a false pass or a false claim of coverage.
 	*mismatches = append(*mismatches, Mismatch{
-		Kind:         MismatchChangedFailureMode,
-		Severity:     SeverityWarning,
+		Kind:         kind,
+		Severity:     severity,
 		Path:         "FunctionIntent.failureModes",
-		Message:      fmt.Sprintf("intended failure modes not observed in source: %s", strings.Join(undetected, ", ")),
+		Message:      message,
 		Expected:     intended.FailureModes,
 		Actual:       extracted.FailureModes,
-		RepairTarget: fmt.Sprintf("Confirm the source can produce: %s.", strings.Join(undetected, ", ")),
+		RepairTarget: repair,
 	})
 }
 

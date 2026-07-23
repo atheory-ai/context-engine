@@ -93,14 +93,16 @@ func (r *Router) ModelForTier(tier string) string {
 }
 
 // Complete sends a completion request to the active provider.
-// If req.Model is empty, it is resolved via ModelForTier using the model's tier
-// from the provider's model info.
+// If req.Model is empty, it is resolved to the configured standard-tier model.
+// A caller that needs another tier supplies its own model after calling
+// ModelForTier. This makes llm.models.standard effective for model-agnostic
+// callers such as IIR shaping.
 func (r *Router) Complete(ctx context.Context, req core.CompletionRequest) (core.CompletionResponse, error) {
 	if r.provider == nil {
 		return core.CompletionResponse{}, fmt.Errorf("llm router: no provider configured")
 	}
 	if req.Model == "" {
-		req.Model = r.provider.ModelInfo().ID
+		req.Model = r.ModelForTier(core.TierStandard)
 	}
 	return r.provider.Complete(ctx, req)
 }
@@ -112,7 +114,7 @@ func (r *Router) Stream(ctx context.Context, req core.CompletionRequest, ch chan
 		return fmt.Errorf("llm router: no provider configured")
 	}
 	if req.Model == "" {
-		req.Model = r.provider.ModelInfo().ID
+		req.Model = r.ModelForTier(core.TierStandard)
 	}
 	return r.provider.Stream(ctx, req, ch)
 }

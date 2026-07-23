@@ -291,6 +291,8 @@ llm:
     fast: claude-haiku-4-5-20251001
     standard: claude-sonnet-4-6
     thinking: claude-opus-4-6
+  # Optional for OpenAI reasoning-capable models: low | medium | high
+  reasoning_effort: ""
 
 engine:
   max_loops: 5                  # max cognitive loop iterations

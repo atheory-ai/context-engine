@@ -33,6 +33,25 @@ func TestLoadAcceptsDocumentedPluginInstalledShape(t *testing.T) {
 	}
 }
 
+func TestLoadRetainsLLMReasoningEffort(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.Set("data", map[string]any{"dir": t.TempDir()})
+	viper.Set("llm", map[string]any{
+		"provider":         "openai",
+		"models":           map[string]string{"standard": "gpt-5.6-luna"},
+		"reasoning_effort": "medium",
+	})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LLM.ReasoningEffort != "medium" {
+		t.Errorf("reasoning effort = %q, want medium", cfg.LLM.ReasoningEffort)
+	}
+}
+
 func TestDefaultIndexWorkersCapsOversubscription(t *testing.T) {
 	want := min(max(1, runtime.NumCPU()*2), 12)
 	if got := defaultIndexWorkers(); got != want {

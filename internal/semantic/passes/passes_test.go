@@ -66,6 +66,31 @@ func TestApplyUsesCompilerPhaseOrderAndRecordsSkips(t *testing.T) {
 	}
 }
 
+func TestApplyAllClaimKindsRequiresEveryCondition(t *testing.T) {
+	p := base(t)
+	p.Claims = append(p.Claims,
+		plan.SemanticClaim{ID: "cart", Kind: "operation.cart.modify", Statement: "cart update", State: plan.KnowledgeDeclared, Evidence: []plan.Evidence{{ID: "cart-e", Source: "test", Producer: "test", Explanation: "fixture"}}},
+		plan.SemanticClaim{ID: "input", Kind: "input.user_controlled", Statement: "request input", State: plan.KnowledgeDeclared, Evidence: []plan.Evidence{{ID: "input-e", Source: "test", Producer: "test", Explanation: "fixture"}}},
+	)
+	policy := Policy{ID: "cart.validate", Version: "v1", Phase: PhaseConstrain, Severity: SeverityError, When: Selector{AllClaimKinds: []string{"operation.cart.modify", "input.user_controlled"}}, Add: &Obligation{Kind: "validation", Requirement: "validate cart input", Mandatory: true}}
+	out, err := Apply(p, []Policy{policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Plan.Obligations) != 1 {
+		t.Fatalf("obligations = %#v", out.Plan.Obligations)
+	}
+
+	p.Claims = p.Claims[:len(p.Claims)-1]
+	out, err = Apply(p, []Policy{policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Plan.Obligations) != 0 || out.Plan.PassRecords[len(out.Plan.PassRecords)-1].Outputs[0] != "skipped" {
+		t.Fatalf("incomplete selector must skip: %#v", out.Plan)
+	}
+}
+
 func TestApplyBlocksMandatoryConflict(t *testing.T) {
 	p := base(t)
 	a := policy("a", PhaseConstrain, 0)

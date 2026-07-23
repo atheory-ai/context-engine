@@ -156,6 +156,12 @@ func (p *pluginInstance) IIRRulePackJSON() []byte {
 	return p.manifest.IIRRules
 }
 
+// SemanticPoliciesJSON returns the plugin's declarative semantic-policy pack.
+// The host, rather than WASM, evaluates it against a semantic plan.
+func (p *pluginInstance) SemanticPoliciesJSON() []byte {
+	return p.manifest.SemanticPolicies
+}
+
 // Tools returns the tools this plugin defines.
 // Returns nil if the plugin declares no tools.
 func (p *pluginInstance) Tools() []core.Tool {

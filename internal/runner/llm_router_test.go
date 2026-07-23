@@ -28,3 +28,18 @@ func TestBuildLLMRouter_SelectsProvider(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildLLMRouter_UsesConfiguredOpenAIStandardModel(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.LLM.Provider = "openai"
+	cfg.LLM.Models = map[string]string{"standard": "gpt-5.6-luna"}
+	cfg.LLM.ReasoningEffort = "medium"
+
+	r := buildLLMRouter(cfg)
+	if got := r.ModelInfo().ID; got != "gpt-5.6-luna" {
+		t.Fatalf("default model = %q, want gpt-5.6-luna", got)
+	}
+	if got := r.ModelForTier("standard"); got != "gpt-5.6-luna" {
+		t.Errorf("standard model = %q, want gpt-5.6-luna", got)
+	}
+}

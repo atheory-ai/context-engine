@@ -35,12 +35,16 @@ type ProjectConfig struct {
 
 // LLMConfig holds provider selection and API configuration.
 type LLMConfig struct {
-	Provider       string            `mapstructure:"provider"`
-	Models         map[string]string `mapstructure:"models"` // tier → model ID
-	APIKey         string            `mapstructure:"api_key"`
-	BaseURL        string            `mapstructure:"base_url"`
-	TimeoutSeconds int               `mapstructure:"timeout_seconds"`
-	MaxRetries     int               `mapstructure:"max_retries"`
+	Provider string            `mapstructure:"provider"`
+	Models   map[string]string `mapstructure:"models"` // tier → model ID
+	// ReasoningEffort is forwarded to OpenAI reasoning-capable models when set
+	// (for example: low, medium, or high). It is intentionally provider-neutral
+	// in project config so a project can select a model and its effort together.
+	ReasoningEffort string `mapstructure:"reasoning_effort"`
+	APIKey          string `mapstructure:"api_key"`
+	BaseURL         string `mapstructure:"base_url"`
+	TimeoutSeconds  int    `mapstructure:"timeout_seconds"`
+	MaxRetries      int    `mapstructure:"max_retries"`
 }
 
 // EngineConfig controls cognitive loop behaviour.

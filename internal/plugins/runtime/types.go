@@ -22,6 +22,12 @@ type PluginManifest struct {
 	// host merges it over the built-in defaults with no WASM call. Opaque here;
 	// internal/iir owns the schema.
 	IIRRules json.RawMessage `json:"iirRules,omitempty"`
+
+	// SemanticPolicies is an optional declarative contribution used while CE
+	// prepares an implementation contract. It is data, never executable WASM:
+	// the host validates, selects, orders, and applies it to a SemanticPlan.
+	// The semantic/decorate package owns the schema.
+	SemanticPolicies json.RawMessage `json:"semanticPolicies,omitempty"`
 }
 
 // PluginABIInfo declares the SDK/runtime ABI contract a plugin was built for.

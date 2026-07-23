@@ -266,6 +266,8 @@ sideEffects: []
 
 const testThrowSource = `export function f(): void { throw new Error("bad_input"); }`
 
+const testWrongFailureSource = `export function f(): void { throw new Error("entity_not_found"); }`
+
 // A project rule pack that promotes the failure-strategy rule to an error.
 const testProjectPack = `
 rules:
@@ -306,5 +308,17 @@ func TestIirVerify_DiscoversAndLayersProjectRulePack(t *testing.T) {
 	err := runVerify(t, intent, src)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("expected failure after project pack promotes the rule, got %v", err)
+	}
+}
+
+func TestIirVerify_ChangedFailureModeReturnsSilentError(t *testing.T) {
+	requirePluginLift(t)
+	intent := writeTemp(t, "intent.yaml", testFailureModeIntent)
+	src := writeTemp(t, "wrong-failure.ts", testWrongFailureSource)
+	t.Chdir(t.TempDir())
+
+	err := runVerify(t, intent, src, "--json")
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("changed failure mode should fail verification, got %v", err)
 	}
 }

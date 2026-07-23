@@ -43,6 +43,11 @@ type contributorPlugin struct {
 	rules []byte
 }
 
+type semanticContributorPlugin struct {
+	basePlugin
+	policies []byte
+}
+
 func TestIndexPlanForFile_UsesCapabilitiesNotLoadOrder(t *testing.T) {
 	r := NewRegistry()
 	wp := contractPlugin{basePlugin: basePlugin{"wp"}, contract: core.PluginIndexContract{Requires: []string{"cst:php", "facts:php-structure"}, Enriches: []string{"php"}}}
@@ -86,5 +91,29 @@ func TestIIRRulePackJSONs(t *testing.T) {
 	// Order follows load order.
 	if string(got[0]) != `{"rules":[{"id":"x"}]}` || string(got[1]) != `{"rules":[{"id":"y"}]}` {
 		t.Errorf("unexpected packs or order: %q, %q", got[0], got[1])
+	}
+}
+
+func (c semanticContributorPlugin) SemanticPoliciesJSON() []byte { return c.policies }
+
+func TestSemanticPolicyContributionsPreservePluginOriginAndOrder(t *testing.T) {
+	r := NewRegistry()
+	r.plugins = map[core.PluginID]core.Plugin{
+		"a": semanticContributorPlugin{basePlugin: basePlugin{"a"}, policies: []byte(`{"schemaVersion":"v1","policies":[{"id":"a.rule"}]}`)},
+		"b": basePlugin{"b"},
+		"c": semanticContributorPlugin{basePlugin: basePlugin{"c"}, policies: nil},
+		"d": semanticContributorPlugin{basePlugin: basePlugin{"d"}, policies: []byte(`{"schemaVersion":"v1","policies":[{"id":"d.rule"}]}`)},
+	}
+	r.loadOrder = []core.PluginID{"a", "b", "c", "d"}
+
+	got := r.SemanticPolicyContributions()
+	if len(got) != 2 {
+		t.Fatalf("want 2 contributions, got %#v", got)
+	}
+	if got[0].PluginID != "a" || got[1].PluginID != "d" {
+		t.Fatalf("plugin order = %#v", got)
+	}
+	if string(got[0].Raw) == "" || got[0].Version != "0" {
+		t.Fatalf("contribution origin = %#v", got[0])
 	}
 }

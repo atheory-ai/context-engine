@@ -7,6 +7,7 @@ import (
 	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"
+	"github.com/openai/openai-go/shared"
 
 	"github.com/atheory-ai/context-engine/internal/core"
 	"github.com/atheory-ai/context-engine/internal/llm"
@@ -18,12 +19,16 @@ type Config struct {
 	BaseURL      string // optional — for Azure/OpenAI-compatible endpoints or testing
 	DefaultModel string // model ID to use when a request omits one
 	MaxRetries   int    // 0 uses the SDK default
+	// ReasoningEffort is sent as OpenAI's reasoning_effort request field when
+	// non-empty. OpenAI validates model-specific support at request time.
+	ReasoningEffort string
 }
 
 // Provider implements core.LLMProvider against the OpenAI Chat Completions API.
 type Provider struct {
-	client       openai.Client
-	defaultModel string
+	client          openai.Client
+	defaultModel    string
+	reasoningEffort shared.ReasoningEffort
 }
 
 // New creates an OpenAI Provider from config.
@@ -39,7 +44,11 @@ func New(cfg Config) *Provider {
 	if model == "" {
 		model = ModelGPT4o
 	}
-	return &Provider{client: openai.NewClient(opts...), defaultModel: model}
+	return &Provider{
+		client:          openai.NewClient(opts...),
+		defaultModel:    model,
+		reasoningEffort: shared.ReasoningEffort(cfg.ReasoningEffort),
+	}
 }
 
 // Complete sends a completion request and returns the full response. The SDK
@@ -49,7 +58,7 @@ func (p *Provider) Complete(ctx context.Context, req core.CompletionRequest) (co
 	if model == "" {
 		model = p.defaultModel
 	}
-	res, err := p.client.Chat.Completions.New(ctx, buildParams(model, req))
+	res, err := p.client.Chat.Completions.New(ctx, buildParams(model, req, p.reasoningEffort))
 	if err != nil {
 		return core.CompletionResponse{}, fmt.Errorf("openai complete: %w", err)
 	}
@@ -74,7 +83,7 @@ func (p *Provider) Stream(ctx context.Context, req core.CompletionRequest, ch ch
 	if model == "" {
 		model = p.defaultModel
 	}
-	stream := p.client.Chat.Completions.NewStreaming(ctx, buildParams(model, req))
+	stream := p.client.Chat.Completions.NewStreaming(ctx, buildParams(model, req, p.reasoningEffort))
 	go func() {
 		defer close(ch)
 		defer stream.Close()
@@ -106,7 +115,7 @@ func (p *Provider) EstimateTokens(text string) int { return llm.EstimateTokensRo
 // buildParams maps a core.CompletionRequest onto OpenAI Chat Completions params.
 // A system prompt becomes a leading system message; max tokens uses the modern
 // max_completion_tokens field (required by the o-series, accepted by gpt-4o).
-func buildParams(model string, req core.CompletionRequest) openai.ChatCompletionNewParams {
+func buildParams(model string, req core.CompletionRequest, reasoningEffort shared.ReasoningEffort) openai.ChatCompletionNewParams {
 	msgs := make([]openai.ChatCompletionMessageParamUnion, 0, len(req.Messages)+1)
 	if req.System != "" {
 		msgs = append(msgs, openai.SystemMessage(req.System))
@@ -127,6 +136,9 @@ func buildParams(model string, req core.CompletionRequest) openai.ChatCompletion
 	}
 	if req.Temperature > 0 {
 		params.Temperature = param.NewOpt(float64(req.Temperature))
+	}
+	if reasoningEffort != "" {
+		params.ReasoningEffort = reasoningEffort
 	}
 	return params
 }

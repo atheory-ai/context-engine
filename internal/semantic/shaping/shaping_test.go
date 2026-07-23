@@ -6,6 +6,7 @@ import (
 
 	"github.com/atheory-ai/context-engine/internal/core"
 	"github.com/atheory-ai/context-engine/internal/iir"
+	iirshaper "github.com/atheory-ai/context-engine/internal/iir/shaper"
 	"github.com/atheory-ai/context-engine/internal/semantic/plan"
 )
 
@@ -13,6 +14,16 @@ type fakeIntentShaper struct {
 	intent *iir.FunctionIntent
 	err    error
 	calls  int
+}
+
+type candidateIntentShaper struct{ candidate *iirshaper.Candidate }
+
+func (f candidateIntentShaper) Shape(context.Context, string) (*iir.FunctionIntent, error) {
+	return f.candidate.Intent, nil
+}
+
+func (f candidateIntentShaper) ShapeCandidate(context.Context, string) (*iirshaper.Candidate, error) {
+	return f.candidate, nil
 }
 
 func (f *fakeIntentShaper) Shape(context.Context, string) (*iir.FunctionIntent, error) {
@@ -130,5 +141,48 @@ func TestInputGuards(t *testing.T) {
 	}
 	if _, err := NewWithShaper(&fakeIntentShaper{}).Shape(context.Background(), Input{Description: "x"}); err == nil {
 		t.Fatal("expected nil shaped intent error")
+	}
+}
+
+func TestShape_ModelOpenQuestionDoesNotBecomeFieldAssertion(t *testing.T) {
+	intent := declaredIntent(t)
+	intent.Origin = iir.OriginInferred
+	planner := NewWithShaper(candidateIntentShaper{candidate: &iirshaper.Candidate{
+		Intent:        intent,
+		OpenQuestions: []iirshaper.OpenQuestion{{Field: "visibility", Prompt: "Should this be public?", Blocking: true}},
+	}})
+	semanticPlan, err := planner.Shape(context.Background(), Input{ProjectID: "project", Description: "update customer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, evidence := range semanticPlan.Provenance {
+		if evidence.Field == "intent.visibility" {
+			t.Fatalf("unknown visibility must not be recorded as model-inferred: %#v", semanticPlan.Provenance)
+		}
+	}
+	if len(semanticPlan.OpenQuestions) < 2 { // target + model visibility
+		t.Fatalf("open questions = %#v", semanticPlan.OpenQuestions)
+	}
+}
+
+func TestShapeModelSemanticTagsBecomeInferredClaims(t *testing.T) {
+	intent := declaredIntent(t)
+	intent.Origin = iir.OriginInferred
+	planner := NewWithShaper(candidateIntentShaper{candidate: &iirshaper.Candidate{
+		Intent: intent, SemanticTags: []string{"context.woocommerce.cart", "operation.cart.modify"},
+	}})
+	semanticPlan, err := planner.Shape(context.Background(), Input{ProjectID: "project", Description: "modify the cart"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims := map[string]plan.SemanticClaim{}
+	for _, claim := range semanticPlan.Claims {
+		claims[claim.Kind] = claim
+	}
+	for _, tag := range []string{"context.woocommerce.cart", "operation.cart.modify"} {
+		claim, ok := claims[tag]
+		if !ok || claim.State != plan.KnowledgeInferred || claim.Evidence[0].Source != "model" {
+			t.Fatalf("claim for %q = %#v", tag, claim)
+		}
 	}
 }

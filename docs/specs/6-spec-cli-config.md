@@ -594,6 +594,10 @@ llm:
     standard: claude-sonnet-4-6
     thinking: claude-opus-4-6
 
+  # Optional reasoning setting for OpenAI reasoning-capable models.
+  # Supported values depend on the selected model (for example: low, medium, high).
+  reasoning_effort: ""
+
   # API key. Prefer environment variable: CE_LLM_API_KEY or provider-specific
   # ANTHROPIC_API_KEY / OPENAI_API_KEY. Do not commit this field.
   api_key: ""
@@ -742,6 +746,7 @@ type ProjectConfig struct {
 type LLMConfig struct {
     Provider       string            `mapstructure:"provider"`
     Models         map[string]string `mapstructure:"models"` // tier → model ID
+    ReasoningEffort string            `mapstructure:"reasoning_effort"`
     APIKey         string            `mapstructure:"api_key"`
     BaseURL        string            `mapstructure:"base_url"`
     TimeoutSeconds int               `mapstructure:"timeout_seconds"`
