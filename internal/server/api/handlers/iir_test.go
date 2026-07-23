@@ -103,6 +103,45 @@ func TestIIRVerify_RoundTripsGeneratedSource(t *testing.T) {
 	}
 }
 
+func TestIIRVerify_ChangedFailureModeReportsFailed(t *testing.T) {
+	ext := iirExtractor(t)
+	intent := `{
+  "kind": "FunctionIntent",
+  "name": "f",
+  "language": "typescript",
+  "returns": {"type": "void"},
+  "sideEffects": [],
+  "failureModes": ["invalid_entity_key"]
+}`
+	body, _ := json.Marshal(map[string]any{
+		"intent": json.RawMessage(intent),
+		"source": `export function f(): void { throw new Error("entity_not_found"); }`,
+	})
+	rec := postJSON(t, IIRVerify(ext, defaultRules), string(body))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var report struct {
+		Status     string `json:"status"`
+		Mismatches []struct {
+			Kind     string `json:"kind"`
+			Severity string `json:"severity"`
+		} `json:"mismatches"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &report); err != nil {
+		t.Fatalf("decode report: %v", err)
+	}
+	if report.Status != "failed" {
+		t.Fatalf("status = %q, want failed; body: %s", report.Status, rec.Body.String())
+	}
+	for _, mismatch := range report.Mismatches {
+		if mismatch.Kind == "changed_failure_mode" && mismatch.Severity == "error" {
+			return
+		}
+	}
+	t.Errorf("expected error-severity changed_failure_mode mismatch, got: %s", rec.Body.String())
+}
+
 func TestIIRGenTests_ReturnsArtifact(t *testing.T) {
 	rec := postJSON(t, IIRGenTests(), `{"intent": `+validIntentJSON+`}`)
 	if rec.Code != http.StatusOK {

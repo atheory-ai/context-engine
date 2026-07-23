@@ -42,8 +42,13 @@ type Finding struct {
 // Additional selector vocabulary can be introduced without allowing a policy
 // contributor to execute arbitrary host code.
 type Selector struct {
+	// ClaimKinds retains v1's any-of behavior for backwards compatibility.
 	ClaimKinds []string `json:"claimKinds,omitempty"`
-	Languages  []string `json:"languages,omitempty"`
+	// AllClaimKinds requires every named fact. It is used for security and
+	// framework rules that would be unsafe or noisy when one context tag alone
+	// activates them.
+	AllClaimKinds []string `json:"allClaimKinds,omitempty"`
+	Languages     []string `json:"languages,omitempty"`
 }
 
 type Obligation struct {
@@ -56,8 +61,12 @@ type Obligation struct {
 // contributions are merged by MergePolicies, where it explicitly replaces a
 // lower-layer policy and must carry a human-readable rationale.
 type Policy struct {
-	ID                string      `json:"id"`
-	Version           string      `json:"version"`
+	ID      string `json:"id"`
+	Version string `json:"version"`
+	// Producer is assigned by the host for plugin contributions. It is not a
+	// policy-author-controlled applicability input; it exists solely so the
+	// resulting obligation and pass evidence names the contributing plugin.
+	Producer          string      `json:"-"`
 	Phase             Phase       `json:"phase"`
 	Priority          int         `json:"priority"`
 	When              Selector    `json:"when"`
@@ -218,17 +227,28 @@ func selects(p *plan.SemanticPlan, selector Selector) bool {
 			return false
 		}
 	}
-	if len(selector.ClaimKinds) == 0 {
-		return true
-	}
+	claimKinds := make(map[string]struct{}, len(p.Claims))
 	for _, claim := range p.Claims {
+		claimKinds[claim.Kind] = struct{}{}
+	}
+	if len(selector.ClaimKinds) > 0 {
+		matched := false
 		for _, kind := range selector.ClaimKinds {
-			if claim.Kind == kind {
-				return true
+			if _, ok := claimKinds[kind]; ok {
+				matched = true
+				break
 			}
 		}
+		if !matched {
+			return false
+		}
 	}
-	return false
+	for _, kind := range selector.AllClaimKinds {
+		if _, ok := claimKinds[kind]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func validatePolicy(policy Policy) error {
@@ -283,10 +303,14 @@ func passRecord(source *plan.SemanticPlan, policy Policy, outcome string) plan.P
 }
 
 func policyEvidence(source *plan.SemanticPlan, policy Policy, field, explanation string) plan.Evidence {
+	producer := policy.Producer
+	if producer == "" {
+		producer = policy.ID
+	}
 	return plan.Evidence{
 		ID:          plan.StableRecordID("evidence", source.ID, policy.ID, field),
 		Source:      "policy",
-		Producer:    policy.ID,
+		Producer:    producer,
 		Field:       field,
 		Confidence:  plan.ConfidenceHigh,
 		Explanation: explanation,

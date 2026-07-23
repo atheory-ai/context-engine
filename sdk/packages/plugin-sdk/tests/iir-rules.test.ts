@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { IIRRulePack, PluginDefinition } from "../src/types.js"
+import type { IIRRulePack, PluginDefinition, SemanticPolicyPack } from "../src/types.js"
 import { buildPluginManifest } from "../src/abi.js"
 import { definePlugin } from "../src/define.js"
 
@@ -23,6 +23,19 @@ const pack: IIRRulePack = {
       },
     },
   ],
+}
+
+const semanticPolicies: SemanticPolicyPack = {
+  schemaVersion: "v1",
+  languages: ["php"],
+  policies: [{
+    id: "wordpress.require-hook",
+    version: "v1",
+    phase: "constrain",
+    severity: "error",
+    when: { allClaimKinds: ["context.woocommerce.checkout", "operation.checkout.validate"] },
+    add: { kind: "hook", requirement: "run checkout validation hook", mandatory: true },
+  }],
 }
 
 describe("iirRules in the plugin manifest", () => {
@@ -59,5 +72,22 @@ describe("definePlugin iirRules validation", () => {
   it("rejects a rule missing target or severity", () => {
     const bad = { rules: [{ id: "x" }] } as unknown as IIRRulePack
     expect(() => definePlugin({ ...base, iirRules: bad })).toThrow(/target and severity/)
+  })
+})
+
+describe("semanticPolicies in the plugin manifest", () => {
+  it("emits and validates declarative implementation requirements", () => {
+    expect(() => definePlugin({ ...base, semanticPolicies })).not.toThrow()
+    const round = JSON.parse(JSON.stringify(buildPluginManifest({ ...base, semanticPolicies })))
+    expect(round.semanticPolicies).toEqual(semanticPolicies)
+		expect(round.semanticPolicies.policies[0].when?.allClaimKinds).toEqual([
+			"context.woocommerce.checkout",
+			"operation.checkout.validate",
+		])
+  })
+
+  it("rejects an unsupported pack version", () => {
+    const bad = { ...semanticPolicies, schemaVersion: "v2" } as unknown as SemanticPolicyPack
+    expect(() => definePlugin({ ...base, semanticPolicies: bad })).toThrow(/schemaVersion/)
   })
 })

@@ -65,6 +65,32 @@ func TestVerify_FailsForDeclaredButUndetectedEffect(t *testing.T) {
 	}
 }
 
+func TestVerify_FailsForChangedFailureMode(t *testing.T) {
+	intended := mustLoad(t, validIntentYAML)
+	intended.FailureModes = stringFailures("invalid_entity_key")
+	extracted := &FunctionIntent{
+		Kind:         KindFunctionIntent,
+		Name:         intended.Name,
+		Language:     intended.Language,
+		Visibility:   VisibilityPublic,
+		Inputs:       intended.Inputs,
+		Returns:      intended.Returns,
+		Behavior:     intended.Behavior,
+		SideEffects:  intended.SideEffects,
+		FailureModes: stringFailures("entity_not_found"),
+		Constraints:  []string{},
+	}
+
+	report := Verify(intended, extracted, DefaultRulePack())
+	if report.Status != StatusFailed {
+		t.Fatalf("status = %s, want %s; mismatches: %+v", report.Status, StatusFailed, report.Mismatches)
+	}
+	mismatch := findMismatch(report.Mismatches, MismatchChangedFailureMode)
+	if mismatch == nil || mismatch.Severity != SeverityError {
+		t.Fatalf("expected error changed_failure_mode mismatch, got %+v", report.Mismatches)
+	}
+}
+
 func mustLoad(t *testing.T, doc string) *FunctionIntent {
 	t.Helper()
 	intent, err := LoadIntent([]byte(doc))

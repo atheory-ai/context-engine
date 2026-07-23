@@ -161,6 +161,40 @@ failureModes:
 	}
 }
 
+func TestVerifySource_ChangedFailureModeFailsClosed(t *testing.T) {
+	ext := requireIIRExtractor(t)
+	intent := mustLoad(t, `
+kind: FunctionIntent
+name: refreshEditorEntityCache
+language: typescript
+inputs:
+  - name: entityKey
+    type: string
+returns:
+  type: void
+failureModes:
+  - invalid_entity_key
+sideEffects: []
+`)
+	source := []byte(`export function refreshEditorEntityCache(entityKey: string): void {
+  if (entityKey === "") {
+    throw new Error("entity_not_found");
+  }
+}`)
+
+	report, err := iir.VerifySource(context.Background(), ext, intent, source, iir.DefaultRulePack())
+	if err != nil {
+		t.Fatalf("VerifySource: %v", err)
+	}
+	if report.Status != iir.StatusFailed {
+		t.Fatalf("status = %s, want failed; report: %+v", report.Status, report)
+	}
+	mismatch := findMismatch(report.Mismatches, iir.MismatchChangedFailureMode)
+	if mismatch == nil || mismatch.Severity != iir.SeverityError {
+		t.Fatalf("expected error changed_failure_mode mismatch, got %+v", report.Mismatches)
+	}
+}
+
 func TestGenerate_DeclaredSideEffectsRoundTrip(t *testing.T) {
 	ext := requireIIRExtractor(t)
 	intent := mustLoad(t, `
@@ -271,7 +305,7 @@ failureModes:
   - amount_below_minimum
 `
 
-func TestVerifySource_PassesForCleanImplementation(t *testing.T) {
+func TestVerifySource_IsInconclusiveForUnmodeledResultFailure(t *testing.T) {
 	ext := requireIIRExtractor(t)
 	intent := mustLoad(t, donationIntentYAML)
 	src := `
@@ -287,8 +321,8 @@ export function validateDonationAmount(amount: Money, campaign: Campaign): Valid
 	if err != nil {
 		t.Fatalf("VerifySource: %v", err)
 	}
-	if report.Status != iir.StatusPassed {
-		t.Errorf("status = %s, want passed\nmismatches: %+v", report.Status, report.Mismatches)
+	if report.Status != iir.StatusInconclusive {
+		t.Errorf("status = %s, want inconclusive\nmismatches: %+v", report.Status, report.Mismatches)
 	}
 }
 
@@ -437,6 +471,36 @@ func TestRepairLoop_ConvergesViaRegenerate(t *testing.T) {
 	}
 	if !res.Iterations[0].Applied {
 		t.Errorf("first proposal should have been applied under auto-approve")
+	}
+}
+
+func TestRepairLoop_RepairsChangedFailureMode(t *testing.T) {
+	ext := requireIIRExtractor(t)
+	intent := mustLoad(t, `
+kind: FunctionIntent
+name: parsePort
+language: typescript
+inputs:
+  - name: raw
+    type: string
+returns:
+  type: number
+sideEffects: []
+failureModes:
+  - invalid_port
+`)
+	wrongFailure := `export function parsePort(raw: string): number { throw new Error("not_a_port"); }`
+
+	result, err := iir.RepairLoop(context.Background(), ext, intent, wrongFailure,
+		iir.DefaultRulePack(), iir.RegenerateStage{}, iir.RepairOptions{})
+	if err != nil {
+		t.Fatalf("RepairLoop: %v", err)
+	}
+	if !result.Converged || result.FinalReport.Status != iir.StatusPassed {
+		t.Fatalf("changed failure mode should repair to a verified candidate: %+v", result)
+	}
+	if len(result.Iterations) < 2 || result.Iterations[0].Report.Status != iir.StatusFailed {
+		t.Fatalf("expected an initial failed contradiction followed by repair: %+v", result.Iterations)
 	}
 }
 

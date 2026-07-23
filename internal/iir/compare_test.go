@@ -1,6 +1,9 @@
 package iir
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // baseIntent returns a minimal, matching intended/extracted pair.
 func baseIntent() *FunctionIntent {
@@ -114,6 +117,58 @@ func TestCompare_UndeclaredSideEffect(t *testing.T) {
 	}
 	if m.RepairTarget == "" {
 		t.Error("undeclared side effect must carry a repair target")
+	}
+}
+
+func TestCompare_FailureModeContractDistinguishesUnknownFromContradiction(t *testing.T) {
+	base := baseIntent()
+	base.FailureModes = stringFailures("invalid_entity_key")
+
+	tests := []struct {
+		name     string
+		observed []FailureMode
+		kind     MismatchKind
+		severity Severity
+		contains []string
+	}{
+		{
+			name:     "failure evidence absent is inconclusive",
+			observed: []FailureMode{},
+			kind:     MismatchUnsupported,
+			severity: SeverityInfo,
+			contains: []string{"could not be verified", "invalid_entity_key"},
+		},
+		{
+			name:     "undeclared failure observed",
+			observed: stringFailures("invalid_entity_key", "entity_not_found"),
+			kind:     MismatchChangedFailureMode,
+			severity: SeverityError,
+			contains: []string{"undeclared", "entity_not_found"},
+		},
+		{
+			name:     "failure code changed",
+			observed: stringFailures("entity_not_found"),
+			kind:     MismatchChangedFailureMode,
+			severity: SeverityError,
+			contains: []string{"not observed", "undeclared", "invalid_entity_key", "entity_not_found"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			extracted := baseIntent()
+			extracted.FailureModes = tt.observed
+			_, mismatches := Compare(base, extracted)
+			mismatch := findMismatch(mismatches, tt.kind)
+			if mismatch == nil || mismatch.Severity != tt.severity {
+				t.Fatalf("expected %s %s failure-mode mismatch, got %+v", tt.severity, tt.kind, mismatches)
+			}
+			for _, want := range tt.contains {
+				if !strings.Contains(mismatch.Message, want) {
+					t.Errorf("message %q does not contain %q", mismatch.Message, want)
+				}
+			}
+		})
 	}
 }
 

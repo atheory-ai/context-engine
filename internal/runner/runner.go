@@ -229,9 +229,11 @@ func buildLLMRouter(cfg *config.Config) *llm.Router {
 		openaiKey = os.Getenv("OPENAI_API_KEY")
 	}
 	openaiProv := openai.New(openai.Config{
-		APIKey:     openaiKey,
-		BaseURL:    cfg.LLM.BaseURL,
-		MaxRetries: cfg.LLM.MaxRetries,
+		APIKey:          openaiKey,
+		BaseURL:         cfg.LLM.BaseURL,
+		DefaultModel:    cfg.LLM.Models[core.TierStandard],
+		MaxRetries:      cfg.LLM.MaxRetries,
+		ReasoningEffort: cfg.LLM.ReasoningEffort,
 	})
 
 	// Local Ollama uses BaseURL as its server endpoint (default localhost:11434).
@@ -850,6 +852,43 @@ func provides(manifest pluginruntime.PluginManifest, capability string) bool {
 // If the plugin runtime can't be initialized (e.g. no data dir), it returns nil
 // packs and a no-op cleanup so callers fall back to the built-in defaults.
 func PluginRulePacks(ctx context.Context, cfg *config.Config, ch *core.AppChannels) (packs [][]byte, cleanup func()) {
+	reg, cleanup := loadStandalonePlugins(ctx, cfg, ch)
+	if reg == nil {
+		return nil, cleanup
+	}
+	return reg.IIRRulePackJSONs(), cleanup
+}
+
+// PluginSemanticPolicies loads the standalone active plugin set and returns
+// declarative policy contributions for semantic-plan decoration. Like
+// PluginRulePacks, this is read-only and best-effort; callers still receive an
+// empty set when no project plugin runtime is available.
+func PluginSemanticPolicies(ctx context.Context, cfg *config.Config, ch *core.AppChannels) (contributions []plugins.SemanticPolicyContribution, cleanup func()) {
+	reg, cleanup := loadStandalonePlugins(ctx, cfg, ch)
+	if reg == nil {
+		return nil, cleanup
+	}
+	return filterSemanticPolicies(reg.SemanticPolicyContributions(), cfg.PluginActivation.Enabled), cleanup
+}
+
+func filterSemanticPolicies(contributions []plugins.SemanticPolicyContribution, enabledIDs []string) []plugins.SemanticPolicyContribution {
+	if len(enabledIDs) == 0 {
+		return contributions
+	}
+	enabled := make(map[core.PluginID]struct{}, len(enabledIDs))
+	for _, id := range enabledIDs {
+		enabled[core.PluginID(id)] = struct{}{}
+	}
+	filtered := make([]plugins.SemanticPolicyContribution, 0, len(contributions))
+	for _, contribution := range contributions {
+		if _, ok := enabled[contribution.PluginID]; ok {
+			filtered = append(filtered, contribution)
+		}
+	}
+	return filtered
+}
+
+func loadStandalonePlugins(ctx context.Context, cfg *config.Config, ch *core.AppChannels) (*plugins.Registry, func()) {
 	noop := func() {}
 	reg := plugins.NewRegistry()
 	if err := reg.Initialize(cfg.DataDir, ch); err != nil {
@@ -874,7 +913,7 @@ func PluginRulePacks(ctx context.Context, cfg *config.Config, ch *core.AppChanne
 				Content: fmt.Sprintf("plugin %s: %v", entry.Path, err)})
 		}
 	}
-	return reg.IIRRulePackJSONs(), reg.UnloadAll
+	return reg, reg.UnloadAll
 }
 
 // ActiveProjectPath returns the file system path of the active project.

@@ -6,6 +6,44 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
 
 ## [Unreleased]
 
+## [0.6.0]
+
+### Semantic preparation
+
+- Added `ce iir prepare`, which shapes a declared or natural-language request
+  into an evidence-backed implementation packet for an LLM or harness agent.
+  CE deliberately does not generate source at this boundary.
+- Added a controlled semantic-tag vocabulary for operation, framework context,
+  trust boundary, presentation, and effect facts. Model-proposed tags are
+  validated and recorded as inferred; caller-supplied tags are recorded as
+  declared rather than silently treated as observed code facts.
+- Added deterministic host-side decoration of semantic plans with active
+  plugin policy packs. The host owns validation, selection, ordering,
+  conflict handling, provenance, and packet construction; plugin WASM never
+  receives arbitrary plan-mutation authority.
+- Added conjunctive `allClaimKinds` policy selectors, so framework security and
+  quality rules activate only for the intended combination of semantic facts.
+
+### IIR and model routing
+
+- Corrected failure comparison: absent comparable failure evidence is now
+  inconclusive, while an observed conflicting failure code is a failure.
+- Added configurable OpenAI reasoning effort and correct standard-tier model
+  routing for direct semantic shaping.
+
+### Plugin SDK
+
+- Added typed, versioned `semanticPolicies` manifest support, including
+  `allClaimKinds` selectors and build-time validation.
+- Corrected the project-local Extism compiler bootstrap on macOS by preserving
+  Binaryen's required dynamic library directory.
+
+### Compatibility
+
+- CE v0.6.0 is tested with Plugin SDK v0.5.0. Rebuild policy-contributing
+  plugins with SDK v0.5.0 so their compiled manifest sidecars include their
+  semantic policy packs.
+
 ## [0.5.0]
 
 ### Indexing

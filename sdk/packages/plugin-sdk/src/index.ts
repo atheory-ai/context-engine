@@ -40,6 +40,11 @@ export type {
   IIRRuleRequire,
   IIRRule,
   IIRRulePack,
+  SemanticPolicyPhase,
+  SemanticPolicySelector,
+  SemanticPolicyObligation,
+  SemanticPolicy,
+  SemanticPolicyPack,
 } from "./types.js"
 export { IIRTypeUnknown } from "./iir.js"
 export type {

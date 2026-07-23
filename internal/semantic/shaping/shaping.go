@@ -40,6 +40,22 @@ type IntentShaper interface {
 	Shape(ctx context.Context, description string) (*iir.FunctionIntent, error)
 }
 
+// CandidateIntentShaper is implemented by the built-in model shaper and can be
+// implemented by a harness adapter. It carries model-identified uncertainty in
+// addition to the valid IIR node.
+type CandidateIntentShaper interface {
+	IntentShaper
+	ShapeCandidate(ctx context.Context, description string) (*iirshaper.Candidate, error)
+}
+
+// LanguageCandidateIntentShaper adds the resolved target language to the
+// model task. The built-in shaper implements it; older/harness adapters remain
+// source-compatible through CandidateIntentShaper.
+type LanguageCandidateIntentShaper interface {
+	CandidateIntentShaper
+	ShapeCandidateForLanguage(ctx context.Context, description, language string) (*iirshaper.Candidate, error)
+}
+
 // Planner produces initial SemanticPlan revisions.
 type Planner struct {
 	shaper IntentShaper
@@ -80,14 +96,116 @@ func (p *Planner) Shape(ctx context.Context, input Input) (*plan.SemanticPlan, e
 	if p == nil || p.shaper == nil {
 		return nil, fmt.Errorf("semantic shaping: no intent shaper configured")
 	}
-	intent, err := p.shaper.Shape(ctx, input.Description)
-	if err != nil {
-		return nil, fmt.Errorf("semantic shaping: shape intent: %w", err)
+	var candidateIntent *iir.FunctionIntent
+	var candidateQuestions []iirshaper.OpenQuestion
+	var candidateTags []string
+	if candidateShaper, ok := p.shaper.(CandidateIntentShaper); ok {
+		var candidate *iirshaper.Candidate
+		var err error
+		if languageShaper, ok := candidateShaper.(LanguageCandidateIntentShaper); ok {
+			candidate, err = languageShaper.ShapeCandidateForLanguage(ctx, input.Description, input.Unit.Language)
+		} else {
+			candidate, err = candidateShaper.ShapeCandidate(ctx, input.Description)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("semantic shaping: shape intent: %w", err)
+		}
+		if candidate == nil || candidate.Intent == nil {
+			return nil, fmt.Errorf("semantic shaping: intent shaper returned no intent")
+		}
+		candidateIntent, candidateQuestions, candidateTags = candidate.Intent, candidate.OpenQuestions, candidate.SemanticTags
+	} else {
+		intent, err := p.shaper.Shape(ctx, input.Description)
+		if err != nil {
+			return nil, fmt.Errorf("semantic shaping: shape intent: %w", err)
+		}
+		candidateIntent = intent
 	}
-	if intent == nil {
+	if candidateIntent == nil {
 		return nil, fmt.Errorf("semantic shaping: intent shaper returned no intent")
 	}
-	return p.build(input, intent, true)
+	semanticPlan, err := p.build(input, candidateIntent, true)
+	if err != nil {
+		return nil, err
+	}
+	semanticPlan, err = attachCandidateTags(semanticPlan, candidateTags)
+	if err != nil {
+		return nil, err
+	}
+	return attachCandidateQuestions(semanticPlan, candidateQuestions)
+}
+
+// attachCandidateTags records controlled model classifications as inferred
+// claims. A policy can require several tags, so an uncertain model label never
+// becomes an unconditional framework or security obligation.
+func attachCandidateTags(source *plan.SemanticPlan, tags []string) (*plan.SemanticPlan, error) {
+	if len(tags) == 0 {
+		return source, nil
+	}
+	candidate := *source
+	candidate.Claims = append([]plan.SemanticClaim{}, source.Claims...)
+	candidate.PassRecords = append([]plan.PassRecord{}, source.PassRecords...)
+	for _, tag := range tags {
+		id := plan.StableRecordID("claim", "model", tag)
+		candidate.Claims = append(candidate.Claims, plan.SemanticClaim{
+			ID: id, Kind: tag, Statement: tag, State: plan.KnowledgeInferred,
+			Evidence: []plan.Evidence{{ID: id + ".evidence", Field: "semanticTags", Source: "model", Producer: "semantic.shaping", Confidence: plan.ConfidenceMedium, Explanation: "Model-proposed controlled semantic tag."}},
+		})
+	}
+	candidate.PassRecords = append(candidate.PassRecords, plan.PassRecord{
+		ID: plan.StableRecordID("pass", source.ID, "model-semantic-tags"), PassID: "semantic.shaping.tags", Version: "v1", Phase: "resolve", Inputs: []string{source.ID}, Outputs: append([]string(nil), tags...),
+		Evidence: []plan.Evidence{{ID: plan.StableRecordID("evidence", source.ID, "model-semantic-tags"), Source: "model", Producer: "semantic.shaping", Confidence: plan.ConfidenceMedium, Explanation: "Validated model semantic tags attached to plan."}},
+	})
+	return plan.NewRevision(source, &candidate)
+}
+
+func attachCandidateQuestions(source *plan.SemanticPlan, questions []iirshaper.OpenQuestion) (*plan.SemanticPlan, error) {
+	if len(questions) == 0 {
+		return source, nil
+	}
+	candidate := *source
+	candidate.OpenQuestions = append([]plan.OpenQuestion{}, source.OpenQuestions...)
+	candidate.PassRecords = append([]plan.PassRecord{}, source.PassRecords...)
+	candidate.Provenance = append([]plan.Evidence{}, source.Provenance...)
+	unknownFields := make(map[string]struct{}, len(questions))
+	for _, question := range questions {
+		field := strings.TrimSpace(question.Field)
+		if field == "" {
+			continue
+		}
+		// FunctionIntent has a few historical defaults (notably public
+		// visibility). A model question wins over such a default: do not record
+		// the defaulted field as a model assertion.
+		root := strings.Split(field, ".")[0]
+		unknownFields["intent."+root] = struct{}{}
+	}
+	if len(unknownFields) > 0 {
+		provenance := candidate.Provenance[:0]
+		for _, evidence := range candidate.Provenance {
+			if _, unknown := unknownFields[evidence.Field]; unknown {
+				continue
+			}
+			provenance = append(provenance, evidence)
+		}
+		candidate.Provenance = provenance
+	}
+	for index, question := range questions {
+		field := strings.TrimSpace(question.Field)
+		if field == "" {
+			field = fmt.Sprintf("model-question-%d", index+1)
+		}
+		id := plan.StableRecordID("question", "model", field, question.Prompt)
+		candidate.OpenQuestions = append(candidate.OpenQuestions, plan.OpenQuestion{
+			ID: id, Prompt: question.Prompt, Blocking: question.Blocking, State: plan.KnowledgeUnknown,
+			Evidence:   []plan.Evidence{{ID: id + ".evidence", Field: field, Source: "model", Producer: "semantic.shaping", Confidence: plan.ConfidenceMedium, Explanation: "Model identified a missing decision rather than inventing it."}},
+			Candidates: []plan.Candidate{},
+		})
+	}
+	candidate.PassRecords = append(candidate.PassRecords, plan.PassRecord{
+		ID: plan.StableRecordID("pass", source.ID, "model-open-questions"), PassID: "semantic.shaping.questions", Version: "v1", Phase: "resolve", Inputs: []string{source.ID}, Outputs: []string{"open questions"},
+		Evidence: []plan.Evidence{{ID: plan.StableRecordID("evidence", source.ID, "model-open-questions"), Source: "model", Producer: "semantic.shaping", Confidence: plan.ConfidenceMedium, Explanation: "Validated model open questions attached to plan."}},
+	})
+	return plan.NewRevision(source, &candidate)
 }
 
 func (p *Planner) build(input Input, intent *iir.FunctionIntent, inferred bool) (*plan.SemanticPlan, error) {

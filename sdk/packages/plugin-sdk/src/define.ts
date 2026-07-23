@@ -103,6 +103,32 @@ export function definePlugin(definition: PluginDefinition): PluginDefinition {
     }
   }
 
+  if (definition.semanticPolicies) {
+    const pack = definition.semanticPolicies
+    if (pack.schemaVersion !== "v1") {
+      throw new Error("semanticPolicies.schemaVersion must be v1")
+    }
+    if (!Array.isArray(pack.policies) || pack.policies.length === 0) {
+      throw new Error("semanticPolicies.policies must be a non-empty array")
+    }
+    for (const policy of pack.policies) {
+      if (!policy.id || !policy.version || !policy.phase || !policy.severity) {
+        throw new Error("Each semantic policy requires id, version, phase, and severity")
+      }
+      if (policy.add && (!policy.add.kind || !policy.add.requirement)) {
+        throw new Error(`Semantic policy "${policy.id}" has an invalid add obligation`)
+      }
+		if (policy.when) {
+			for (const field of ["claimKinds", "allClaimKinds", "languages"] as const) {
+				const values = policy.when[field]
+				if (values !== undefined && (!Array.isArray(values) || values.some((value) => !value.trim()))) {
+					throw new Error(`Semantic policy "${policy.id}" has invalid when.${field}`)
+				}
+			}
+		}
+    }
+  }
+
   setPluginDefinition(definition)
   return definition
 }

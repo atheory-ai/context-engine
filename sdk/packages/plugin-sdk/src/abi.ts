@@ -1,4 +1,4 @@
-import type { AnalyzerDefinition, IIRRulePack, Node, PluginDefinition, SubstrateQuery, ToolDefinition } from "./types.js"
+import type { AnalyzerDefinition, IIRRulePack, Node, PluginDefinition, SemanticPolicyPack, SubstrateQuery, ToolDefinition } from "./types.js"
 import { decodeCompactExtractionInput } from "./compact-cst.js"
 
 declare const Javy: {
@@ -47,6 +47,7 @@ export interface PluginManifest {
 	requires?: string[]
 	enriches?: string[]
   iirRules?: IIRRulePack
+  semanticPolicies?: SemanticPolicyPack
 }
 
 // buildPluginManifest is the pure manifest builder, kept separate from the IO so
@@ -75,6 +76,7 @@ export function buildPluginManifest(plugin: PluginDefinition): PluginManifest {
 	enriches: plugin.enriches,
     // Contributed IIR conformance rules; the host merges them over its defaults.
     iirRules: plugin.iirRules,
+    semanticPolicies: plugin.semanticPolicies,
   }
 }
 

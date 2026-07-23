@@ -21,8 +21,8 @@ declared intent  →  source code  →  extracted intent  →  compare  →  ver
 Agents are strongest when they convert one representation into another and check
 that meaning is preserved. IIR gives code a representation that is more semantic
 than an AST, more verifiable than prose, more compact than raw source, and more
-durable than a prompt instruction — usable for verification, code generation,
-and test generation alike.
+durable than a prompt instruction — usable for verification, implementation
+planning, and test planning alike.
 
 ## The model: `FunctionIntent`
 
@@ -55,6 +55,12 @@ Two orthogonal gates operate over IIR:
   returns, forbidden condition shapes, …)? Rules target an intent *kind*, not a
   language, so a rule written once applies across all languages.
 
+Failure modes are fidelity claims, not style preferences. When source exposes a
+failure mode that conflicts with a declared failure contract, verification fails
+closed. When the current extractor cannot establish any comparable failure
+evidence (for example, an unmodeled `Result` representation), verification is
+`inconclusive`, never `passed`.
+
 **Indexed source lift is plugin-owned.** During `ce index`, a language plugin
 may attach observed `FunctionIntent` records to its symbol nodes. The host
 validates the payload and stores it in `iir`, keyed by `(project_id, node_id,
@@ -70,18 +76,25 @@ run through wazero plus Extism. CGO is not supported.
 
 ```bash
 ce iir verify <intent-file> <source-file>   # does the source match declared intent?
-ce iir generate <intent-file> [--verify]    # emit TypeScript from intent (round-trips)
 ce iir gen-tests <intent-file> [--coverage] # emit tests (Vitest/Jest) from intent
 ce iir repair <intent-file> <source-file>   # iteratively repair source to match intent
-ce iir shape "<description>" [--generate]   # natural language → IIR (uses the model)
-ce iir implement <description> [--write]    # semantic-plan mutation slice (TypeScript)
+ce iir shape "<description>"                # natural language → candidate IIR
+ce iir prepare <description> --target X      # candidate IIR → decorated LLM contract
 ```
 
-Intent files are JSON/YAML `FunctionIntent`s. `generate` and `gen-tests` are
-deterministic TypeScript emitters. `verify` and `repair` depend on an installed
-language plugin; `shape` is the model-backed hop and always revalidates its
-output before use. `implement` is an experimental, explicit-write TypeScript
-mutation slice; without `--write` it is read-only.
+Intent files are JSON/YAML `FunctionIntent`s. `verify` and `repair` depend on
+an installed language plugin; `shape` is the model-backed hop and always
+revalidates its output before use. `prepare` accepts either natural language or
+`--intent`, applies the semantic policies declared by active plugins, and emits
+an evidence-backed packet for an implementation LLM or harness agent. It never
+generates or writes source. Use repeated `--context` tags only when a caller
+already knows contextual facts; those tags remain explicitly user-declared until
+graph/plugin enrichment can establish them as observed evidence.
+
+The package retains deterministic source emitters as parser/lift test fixtures.
+They are not the product implementation path: production code is written by an
+LLM or agent from the prepared contract and then lifted back through the same
+active plugin set for verification.
 
 ## Conformance rules
 
@@ -91,6 +104,13 @@ Rules live in a rule pack. The engine ships defaults, a project can add
 top-level intent fields (`when` visibility/failure modes) or on the *structure*
 of a normalized condition (`require.forbidConditionShape`) — e.g. forbid
 `== null` across every language at once.
+
+Plugins can additionally contribute `semanticPolicies` in their manifest. A
+policy is declarative data, evaluated by CE rather than executable WASM. It can
+add a requirement such as a required hook or failure strategy when its language
+and evidence selectors match the resolved semantic plan. CE records the plugin
+ID/version as provenance, rejects policy conflicts, and presents unresolved
+requirements as blocking questions rather than asking a model to guess.
 
 ## Calling IIR programmatically
 

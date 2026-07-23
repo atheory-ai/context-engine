@@ -40,7 +40,7 @@ The verify command reads intended IIR, parses a source file, extracts the
 actual IIR, compares them, applies rules, and prints a verification report.`,
 	}
 
-	cmd.AddCommand(newIirVerifyCmd(), newIirGenerateCmd(), newIirGenTestsCmd(), newIirRepairCmd(), newIirShapeCmd(), newIirImplementCmd())
+	cmd.AddCommand(newIirVerifyCmd(), newIirGenerateCmd(), newIirGenTestsCmd(), newIirRepairCmd(), newIirShapeCmd(), newIirPrepareCmd(), newIirImplementCmd())
 	return cmd
 }
 

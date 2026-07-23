@@ -32,4 +32,13 @@ if [ -z "$binaryen_merge" ]; then
 fi
 binaryen_bin=$(dirname "$binaryen_merge")
 cp "$binaryen_bin/wasm-merge" "$binaryen_bin/wasm-opt" "$dest/bin/"
+# macOS Binaryen executables link to ../lib/libbinaryen.dylib. Copy the full
+# release lib directory next to the project-local binaries; Linux releases may
+# be self-contained, but retaining the library directory is harmless and keeps
+# the bootstrap portable.
+binaryen_root=$(dirname "$binaryen_bin")
+if [ -d "$binaryen_root/lib" ]; then
+  mkdir -p "$dest/lib"
+  cp -R "$binaryen_root/lib/." "$dest/lib/"
+fi
 echo "$dest/bin"

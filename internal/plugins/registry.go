@@ -163,6 +163,19 @@ type iirRuleContributor interface {
 	IIRRulePackJSON() []byte
 }
 
+// SemanticPolicyContribution identifies declarative policy data with the
+// plugin that supplied it. The semantic compiler keeps this origin so every
+// derived obligation can explain why it applies.
+type SemanticPolicyContribution struct {
+	PluginID core.PluginID
+	Version  string
+	Raw      []byte
+}
+
+type semanticPolicyContributor interface {
+	SemanticPoliciesJSON() []byte
+}
+
 // IIRRulePackJSONs returns the raw IIR rule-pack JSON declared by loaded
 // plugins, in load order. Plugins that contribute none are skipped. The host
 // merges these over the built-in defaults (see iir.MergePluginRulePacks).
@@ -175,6 +188,27 @@ func (r *Registry) IIRRulePackJSONs() [][]byte {
 		}
 		if raw := c.IIRRulePackJSON(); len(raw) > 0 {
 			out = append(out, raw)
+		}
+	}
+	return out
+}
+
+// SemanticPolicyContributions returns each loaded plugin's declarative
+// implementation-policy pack in deterministic registration order. Plugins
+// without a contribution are omitted.
+func (r *Registry) SemanticPolicyContributions() []SemanticPolicyContribution {
+	out := make([]SemanticPolicyContribution, 0)
+	for _, p := range r.Loaded() {
+		c, ok := p.(semanticPolicyContributor)
+		if !ok {
+			continue
+		}
+		if raw := c.SemanticPoliciesJSON(); len(raw) > 0 {
+			out = append(out, SemanticPolicyContribution{
+				PluginID: p.ID(),
+				Version:  p.Version(),
+				Raw:      append([]byte(nil), raw...),
+			})
 		}
 	}
 	return out

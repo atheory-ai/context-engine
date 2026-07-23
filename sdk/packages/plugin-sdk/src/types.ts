@@ -249,6 +249,54 @@ export interface IIRRulePack {
   rules: IIRRule[]
 }
 
+// ── Semantic implementation policies ─────────────────────────────────────
+// Plugins declare requirements as data. CE owns evaluation, ordering, conflict
+// handling, provenance, and prompt-packet construction; plugin WASM never gets
+// arbitrary plan mutation authority.
+
+export type SemanticPolicyPhase =
+  | "resolve"
+  | "enrich"
+  | "constrain"
+  | "pre_generate"
+  | "verify"
+  | "repair_guidance"
+
+export interface SemanticPolicySelector {
+  /** Match when any listed semantic fact is present (v1 compatibility). */
+  claimKinds?: string[]
+  /** Match only when every listed semantic fact is present. */
+  allClaimKinds?: string[]
+  languages?: string[]
+}
+
+export interface SemanticPolicyObligation {
+  kind: string
+  requirement: string
+  mandatory?: boolean
+}
+
+export interface SemanticPolicy {
+  id: string
+  version: string
+  phase: SemanticPolicyPhase
+  priority?: number
+  when?: SemanticPolicySelector
+  add?: SemanticPolicyObligation
+  requireApproval?: boolean
+  severity: IIRSeverity
+  supersedes?: string[]
+  overrideRationale?: string
+}
+
+export interface SemanticPolicyPack {
+  schemaVersion: "v1"
+  // A pack is ignored when its language selector does not match the resolved
+  // implementation unit. Policies may further narrow applicability with when.
+  languages?: string[]
+  policies: SemanticPolicy[]
+}
+
 export interface PluginDefinition {
   id:          string
   name:        string
@@ -262,4 +310,7 @@ export interface PluginDefinition {
   tools?:      ToolDefinition[]
   // iirRules is contributed to the host's IIR conformance layer via the manifest.
   iirRules?:   IIRRulePack
+  // semanticPolicies decorate a shaped intent into an evidence-backed
+  // implementation contract. They are evaluated by CE, not by plugin WASM.
+  semanticPolicies?: SemanticPolicyPack
 }

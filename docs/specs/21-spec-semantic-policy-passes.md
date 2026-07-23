@@ -8,8 +8,11 @@ extends the existing IIR rule-pack model without breaking it.
 Current implementation: `internal/semantic/passes` supplies host-evaluated,
 declarative policy merging and application. It records applied, skipped, and
 conflicting policies; preserves declared facts; adds approval questions; and
-blocks plans on incompatible mandatory obligations. Plugin manifest loading and
-persisting policy sources are deferred to the plugin and build-graph slices.
+blocks plans on incompatible mandatory obligations. Plugin manifests may now
+contribute versioned `semanticPolicies`; `internal/semantic/decorate` selects
+them by target language, assigns host-owned plugin provenance, and applies them
+before an implementation packet is produced. Persisting policy sources remains
+part of the build-graph slice.
 
 ## Goal
 

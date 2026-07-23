@@ -17,6 +17,10 @@ llm:
     standard: claude-sonnet-4-6
     thinking: claude-opus-4-6
 
+  # Optional reasoning setting for OpenAI reasoning-capable models.
+  # Supported values depend on the selected model (for example: low, medium, high).
+  reasoning_effort: ""
+
 engine:
   max_loops: 5
   k_limit: 20

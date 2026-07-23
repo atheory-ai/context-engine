@@ -61,6 +61,42 @@ func TestShape_HappyPath(t *testing.T) {
 	}
 }
 
+func TestShapeCandidatePreservesExplicitUnknowns(t *testing.T) {
+	response := "```json\n" + `{
+  "intent": {
+    "kind":"FunctionIntent", "name":"validateKey", "language":"php",
+    "inputs":[{"name":"key","type":"string"}], "returns":{"type":"WP_Error"}
+  },
+  "openQuestions":[{"field":"failureStrategy","prompt":"Should this return WP_Error or add a notice?","blocking":true}]
+	  ,"semanticTags":["operation.checkout.validate","context.woocommerce.checkout"]
+}` + "\n```"
+	llm := &fakeLLM{responses: []string{response}}
+	candidate, err := New(llm).ShapeCandidateForLanguage(context.Background(), "validate a checkout key", "php")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if candidate.Intent.Language != "php" || candidate.Intent.SideEffects != nil {
+		t.Fatalf("candidate intent = %#v", candidate.Intent)
+	}
+	if len(candidate.OpenQuestions) != 1 || !candidate.OpenQuestions[0].Blocking {
+		t.Fatalf("candidate questions = %#v", candidate.OpenQuestions)
+	}
+	if got := strings.Join(candidate.SemanticTags, ","); got != "context.woocommerce.checkout,operation.checkout.validate" {
+		t.Fatalf("semantic tags = %q", got)
+	}
+	if !strings.Contains(llm.requests[0].System, `"language": "php"`) {
+		t.Fatalf("language-aware prompt = %q", llm.requests[0].System)
+	}
+}
+
+func TestShapeCandidateRejectsUnknownSemanticTag(t *testing.T) {
+	response := "```json\n" + `{"intent":{"kind":"FunctionIntent","name":"x","language":"php","inputs":[],"returns":{"type":"void"}},"semanticTags":["operation.not-real"]}` + "\n```"
+	_, err := New(&fakeLLM{responses: []string{response, response}}).ShapeCandidateForLanguage(context.Background(), "x", "php")
+	if err == nil || !strings.Contains(err.Error(), "unknown semantic tag") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestShape_RetriesWithErrorFeedback(t *testing.T) {
 	// First response is invalid (missing name), second is valid.
 	bad := "```json\n{\"kind\":\"FunctionIntent\",\"language\":\"typescript\"}\n```"

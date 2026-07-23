@@ -28,7 +28,12 @@ func TestComplete(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := New(Config{APIKey: "test", BaseURL: srv.URL})
+	p := New(Config{
+		APIKey:          "test",
+		BaseURL:         srv.URL,
+		DefaultModel:    "gpt-5.6-luna",
+		ReasoningEffort: "medium",
+	})
 	res, err := p.Complete(context.Background(), core.CompletionRequest{
 		System:    "be terse",
 		Messages:  []core.Message{{Role: "user", Content: "hi"}},
@@ -56,6 +61,12 @@ func TestComplete(t *testing.T) {
 	}
 	if _, ok := body["max_completion_tokens"]; !ok {
 		t.Errorf("expected max_completion_tokens in request, got %v", body)
+	}
+	if got := body["model"]; got != "gpt-5.6-luna" {
+		t.Errorf("model = %v, want gpt-5.6-luna", got)
+	}
+	if got := body["reasoning_effort"]; got != "medium" {
+		t.Errorf("reasoning_effort = %v, want medium", got)
 	}
 }
 

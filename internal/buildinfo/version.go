@@ -2,4 +2,4 @@
 package buildinfo
 
 // Version is overridden by release builds through Go linker flags.
-var Version = "0.4.0-dev"
+var Version = "0.6.0-dev"

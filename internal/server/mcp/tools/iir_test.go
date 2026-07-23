@@ -80,6 +80,33 @@ func TestHandleIIRVerify_RoundTrips(t *testing.T) {
 	}
 }
 
+func TestHandleIIRVerify_ChangedFailureModeIsFailed(t *testing.T) {
+	ext := iirExtractor(t)
+	intent := `{
+  "kind": "FunctionIntent",
+  "name": "f",
+  "language": "typescript",
+  "returns": {"type": "void"},
+  "sideEffects": [],
+  "failureModes": ["invalid_entity_key"]
+}`
+	args, _ := json.Marshal(map[string]any{
+		"intent": json.RawMessage(intent),
+		"source": `export function f(): void { throw new Error("entity_not_found"); }`,
+	})
+	res, err := handleIIRVerify(ext, iir.DefaultRulePack)(context.Background(), args)
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("verify returned transport error: %+v", res.Content)
+	}
+	got := res.Content[0].Text
+	if !strings.Contains(got, `"status": "failed"`) || !strings.Contains(got, `"severity": "error"`) {
+		t.Errorf("expected failed error-severity report, got: %s", got)
+	}
+}
+
 func TestHandleIIRVerify_UsesProvidedRulePack(t *testing.T) {
 	ext := iirExtractor(t)
 	// A uniquely-named rule in the provided pack must appear in the report,
